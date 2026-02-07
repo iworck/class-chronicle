@@ -1,0 +1,714 @@
+export type Json =
+  | string
+  | number
+  | boolean
+  | null
+  | { [key: string]: Json | undefined }
+  | Json[]
+
+export type Database = {
+  // Allows to automatically instantiate createClient with right options
+  // instead of createClient<Database, { PostgrestVersion: 'XX' }>(URL, KEY)
+  __InternalSupabase: {
+    PostgrestVersion: "14.1"
+  }
+  public: {
+    Tables: {
+      attendance_adjustments: {
+        Row: {
+          approved_at: string | null
+          approved_by_user_id: string | null
+          changed_by_role: Database["public"]["Enums"]["app_role"]
+          changed_by_user_id: string
+          created_at: string
+          from_status: Database["public"]["Enums"]["attendance_status"]
+          id: string
+          justification: string
+          record_id: string
+          to_status: Database["public"]["Enums"]["attendance_status"]
+        }
+        Insert: {
+          approved_at?: string | null
+          approved_by_user_id?: string | null
+          changed_by_role: Database["public"]["Enums"]["app_role"]
+          changed_by_user_id: string
+          created_at?: string
+          from_status: Database["public"]["Enums"]["attendance_status"]
+          id?: string
+          justification: string
+          record_id: string
+          to_status: Database["public"]["Enums"]["attendance_status"]
+        }
+        Update: {
+          approved_at?: string | null
+          approved_by_user_id?: string | null
+          changed_by_role?: Database["public"]["Enums"]["app_role"]
+          changed_by_user_id?: string
+          created_at?: string
+          from_status?: Database["public"]["Enums"]["attendance_status"]
+          id?: string
+          justification?: string
+          record_id?: string
+          to_status?: Database["public"]["Enums"]["attendance_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_adjustments_record_id_fkey"
+            columns: ["record_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_records: {
+        Row: {
+          created_at: string
+          final_status: Database["public"]["Enums"]["attendance_status"]
+          geo_lat: number | null
+          geo_lng: number | null
+          geo_ok: boolean | null
+          id: string
+          ip_address: string | null
+          protocol: string
+          registered_at: string | null
+          selfie_path: string | null
+          session_id: string
+          signature_path: string | null
+          source: Database["public"]["Enums"]["attendance_source"] | null
+          student_id: string
+          user_agent: string | null
+        }
+        Insert: {
+          created_at?: string
+          final_status?: Database["public"]["Enums"]["attendance_status"]
+          geo_lat?: number | null
+          geo_lng?: number | null
+          geo_ok?: boolean | null
+          id?: string
+          ip_address?: string | null
+          protocol?: string
+          registered_at?: string | null
+          selfie_path?: string | null
+          session_id: string
+          signature_path?: string | null
+          source?: Database["public"]["Enums"]["attendance_source"] | null
+          student_id: string
+          user_agent?: string | null
+        }
+        Update: {
+          created_at?: string
+          final_status?: Database["public"]["Enums"]["attendance_status"]
+          geo_lat?: number | null
+          geo_lng?: number | null
+          geo_ok?: boolean | null
+          id?: string
+          ip_address?: string | null
+          protocol?: string
+          registered_at?: string | null
+          selfie_path?: string | null
+          session_id?: string
+          signature_path?: string | null
+          source?: Database["public"]["Enums"]["attendance_source"] | null
+          student_id?: string
+          user_agent?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_records_session_id_fkey"
+            columns: ["session_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_sessions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_records_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      attendance_sessions: {
+        Row: {
+          audit_deadline_at: string | null
+          class_id: string
+          closed_at: string | null
+          created_at: string
+          entry_code_hash: string
+          geo_lat: number | null
+          geo_lng: number | null
+          geo_radius_m: number | null
+          id: string
+          opened_at: string
+          professor_user_id: string
+          public_token: string
+          require_geo: boolean
+          status: Database["public"]["Enums"]["session_status"]
+          subject_id: string
+        }
+        Insert: {
+          audit_deadline_at?: string | null
+          class_id: string
+          closed_at?: string | null
+          created_at?: string
+          entry_code_hash: string
+          geo_lat?: number | null
+          geo_lng?: number | null
+          geo_radius_m?: number | null
+          id?: string
+          opened_at?: string
+          professor_user_id: string
+          public_token?: string
+          require_geo?: boolean
+          status?: Database["public"]["Enums"]["session_status"]
+          subject_id: string
+        }
+        Update: {
+          audit_deadline_at?: string | null
+          class_id?: string
+          closed_at?: string | null
+          created_at?: string
+          entry_code_hash?: string
+          geo_lat?: number | null
+          geo_lng?: number | null
+          geo_radius_m?: number | null
+          id?: string
+          opened_at?: string
+          professor_user_id?: string
+          public_token?: string
+          require_geo?: boolean
+          status?: Database["public"]["Enums"]["session_status"]
+          subject_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "attendance_sessions_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      change_requests: {
+        Row: {
+          created_at: string
+          decided_at: string | null
+          decided_by_user_id: string | null
+          decision_note: string | null
+          id: string
+          justification: string
+          record_id: string
+          requested_by_role: Database["public"]["Enums"]["app_role"]
+          requested_by_user_id: string
+          requested_to_status: Database["public"]["Enums"]["attendance_status"]
+          status: Database["public"]["Enums"]["change_request_status"]
+        }
+        Insert: {
+          created_at?: string
+          decided_at?: string | null
+          decided_by_user_id?: string | null
+          decision_note?: string | null
+          id?: string
+          justification: string
+          record_id: string
+          requested_by_role: Database["public"]["Enums"]["app_role"]
+          requested_by_user_id: string
+          requested_to_status: Database["public"]["Enums"]["attendance_status"]
+          status?: Database["public"]["Enums"]["change_request_status"]
+        }
+        Update: {
+          created_at?: string
+          decided_at?: string | null
+          decided_by_user_id?: string | null
+          decision_note?: string | null
+          id?: string
+          justification?: string
+          record_id?: string
+          requested_by_role?: Database["public"]["Enums"]["app_role"]
+          requested_by_user_id?: string
+          requested_to_status?: Database["public"]["Enums"]["attendance_status"]
+          status?: Database["public"]["Enums"]["change_request_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "change_requests_record_id_fkey"
+            columns: ["record_id"]
+            isOneToOne: false
+            referencedRelation: "attendance_records"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      class_students: {
+        Row: {
+          class_id: string
+          end_date: string | null
+          id: string
+          start_date: string
+          status: Database["public"]["Enums"]["entity_status"]
+          student_id: string
+        }
+        Insert: {
+          class_id: string
+          end_date?: string | null
+          id?: string
+          start_date?: string
+          status?: Database["public"]["Enums"]["entity_status"]
+          student_id: string
+        }
+        Update: {
+          class_id?: string
+          end_date?: string | null
+          id?: string
+          start_date?: string
+          status?: Database["public"]["Enums"]["entity_status"]
+          student_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_students_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_students_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      class_subjects: {
+        Row: {
+          class_id: string
+          id: string
+          professor_user_id: string
+          status: Database["public"]["Enums"]["entity_status"]
+          subject_id: string
+        }
+        Insert: {
+          class_id: string
+          id?: string
+          professor_user_id: string
+          status?: Database["public"]["Enums"]["entity_status"]
+          subject_id: string
+        }
+        Update: {
+          class_id?: string
+          id?: string
+          professor_user_id?: string
+          status?: Database["public"]["Enums"]["entity_status"]
+          subject_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "class_subjects_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "class_subjects_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      classes: {
+        Row: {
+          code: string
+          course_id: string
+          created_at: string
+          id: string
+          period: string
+          shift: string | null
+          status: Database["public"]["Enums"]["entity_status"]
+        }
+        Insert: {
+          code: string
+          course_id: string
+          created_at?: string
+          id?: string
+          period: string
+          shift?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Update: {
+          code?: string
+          course_id?: string
+          created_at?: string
+          id?: string
+          period?: string
+          shift?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "classes_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      courses: {
+        Row: {
+          created_at: string
+          director_user_id: string | null
+          id: string
+          name: string
+          status: Database["public"]["Enums"]["entity_status"]
+        }
+        Insert: {
+          created_at?: string
+          director_user_id?: string | null
+          id?: string
+          name: string
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Update: {
+          created_at?: string
+          director_user_id?: string | null
+          id?: string
+          name?: string
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Relationships: []
+      }
+      enrollment_suggestions: {
+        Row: {
+          class_id: string
+          created_at: string
+          decided_at: string | null
+          decided_by_user_id: string | null
+          id: string
+          justification: string
+          status: Database["public"]["Enums"]["change_request_status"]
+          student_enrollment: string
+          suggested_by_user_id: string
+        }
+        Insert: {
+          class_id: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by_user_id?: string | null
+          id?: string
+          justification: string
+          status?: Database["public"]["Enums"]["change_request_status"]
+          student_enrollment: string
+          suggested_by_user_id: string
+        }
+        Update: {
+          class_id?: string
+          created_at?: string
+          decided_at?: string | null
+          decided_by_user_id?: string | null
+          id?: string
+          justification?: string
+          status?: Database["public"]["Enums"]["change_request_status"]
+          student_enrollment?: string
+          suggested_by_user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "enrollment_suggestions_class_id_fkey"
+            columns: ["class_id"]
+            isOneToOne: false
+            referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          email: string | null
+          id: string
+          name: string
+          phone: string | null
+          status: Database["public"]["Enums"]["entity_status"]
+          updated_at: string | null
+        }
+        Insert: {
+          created_at?: string
+          email?: string | null
+          id: string
+          name: string
+          phone?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+          updated_at?: string | null
+        }
+        Update: {
+          created_at?: string
+          email?: string | null
+          id?: string
+          name?: string
+          phone?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+          updated_at?: string | null
+        }
+        Relationships: []
+      }
+      students: {
+        Row: {
+          course_id: string
+          created_at: string
+          enrollment: string
+          id: string
+          name: string
+          status: Database["public"]["Enums"]["entity_status"]
+        }
+        Insert: {
+          course_id: string
+          created_at?: string
+          enrollment: string
+          id?: string
+          name: string
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Update: {
+          course_id?: string
+          created_at?: string
+          enrollment?: string
+          id?: string
+          name?: string
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "students_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      subjects: {
+        Row: {
+          code: string
+          created_at: string
+          id: string
+          name: string
+          status: Database["public"]["Enums"]["entity_status"]
+          workload_hours: number
+        }
+        Insert: {
+          code: string
+          created_at?: string
+          id?: string
+          name: string
+          status?: Database["public"]["Enums"]["entity_status"]
+          workload_hours?: number
+        }
+        Update: {
+          code?: string
+          created_at?: string
+          id?: string
+          name?: string
+          status?: Database["public"]["Enums"]["entity_status"]
+          workload_hours?: number
+        }
+        Relationships: []
+      }
+      user_roles: {
+        Row: {
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+    }
+    Views: {
+      [_ in never]: never
+    }
+    Functions: {
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
+      is_staff: { Args: { _user_id: string }; Returns: boolean }
+    }
+    Enums: {
+      app_role: "admin" | "diretor" | "coordenador" | "professor"
+      attendance_source: "AUTO_ALUNO" | "MANUAL_PROF" | "MANUAL_COORD"
+      attendance_status: "PRESENTE" | "FALTA" | "JUSTIFICADO"
+      change_request_status: "PENDENTE" | "APROVADO" | "REPROVADO"
+      entity_status: "ATIVO" | "INATIVO"
+      session_status:
+        | "ABERTA"
+        | "ENCERRADA"
+        | "AUDITORIA_FINALIZADA"
+        | "BLOQUEADA"
+    }
+    CompositeTypes: {
+      [_ in never]: never
+    }
+  }
+}
+
+type DatabaseWithoutInternals = Omit<Database, "__InternalSupabase">
+
+type DefaultSchema = DatabaseWithoutInternals[Extract<keyof Database, "public">]
+
+export type Tables<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof (DefaultSchema["Tables"] & DefaultSchema["Views"])
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+        DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? (DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"] &
+      DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Views"])[TableName] extends {
+      Row: infer R
+    }
+    ? R
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])
+    ? (DefaultSchema["Tables"] &
+        DefaultSchema["Views"])[DefaultSchemaTableNameOrOptions] extends {
+        Row: infer R
+      }
+      ? R
+      : never
+    : never
+
+export type TablesInsert<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Insert: infer I
+    }
+    ? I
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Insert: infer I
+      }
+      ? I
+      : never
+    : never
+
+export type TablesUpdate<
+  DefaultSchemaTableNameOrOptions extends
+    | keyof DefaultSchema["Tables"]
+    | { schema: keyof DatabaseWithoutInternals },
+  TableName extends DefaultSchemaTableNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"]
+    : never = never,
+> = DefaultSchemaTableNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaTableNameOrOptions["schema"]]["Tables"][TableName] extends {
+      Update: infer U
+    }
+    ? U
+    : never
+  : DefaultSchemaTableNameOrOptions extends keyof DefaultSchema["Tables"]
+    ? DefaultSchema["Tables"][DefaultSchemaTableNameOrOptions] extends {
+        Update: infer U
+      }
+      ? U
+      : never
+    : never
+
+export type Enums<
+  DefaultSchemaEnumNameOrOptions extends
+    | keyof DefaultSchema["Enums"]
+    | { schema: keyof DatabaseWithoutInternals },
+  EnumName extends DefaultSchemaEnumNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"]
+    : never = never,
+> = DefaultSchemaEnumNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[DefaultSchemaEnumNameOrOptions["schema"]]["Enums"][EnumName]
+  : DefaultSchemaEnumNameOrOptions extends keyof DefaultSchema["Enums"]
+    ? DefaultSchema["Enums"][DefaultSchemaEnumNameOrOptions]
+    : never
+
+export type CompositeTypes<
+  PublicCompositeTypeNameOrOptions extends
+    | keyof DefaultSchema["CompositeTypes"]
+    | { schema: keyof DatabaseWithoutInternals },
+  CompositeTypeName extends PublicCompositeTypeNameOrOptions extends {
+    schema: keyof DatabaseWithoutInternals
+  }
+    ? keyof DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"]
+    : never = never,
+> = PublicCompositeTypeNameOrOptions extends {
+  schema: keyof DatabaseWithoutInternals
+}
+  ? DatabaseWithoutInternals[PublicCompositeTypeNameOrOptions["schema"]]["CompositeTypes"][CompositeTypeName]
+  : PublicCompositeTypeNameOrOptions extends keyof DefaultSchema["CompositeTypes"]
+    ? DefaultSchema["CompositeTypes"][PublicCompositeTypeNameOrOptions]
+    : never
+
+export const Constants = {
+  public: {
+    Enums: {
+      app_role: ["admin", "diretor", "coordenador", "professor"],
+      attendance_source: ["AUTO_ALUNO", "MANUAL_PROF", "MANUAL_COORD"],
+      attendance_status: ["PRESENTE", "FALTA", "JUSTIFICADO"],
+      change_request_status: ["PENDENTE", "APROVADO", "REPROVADO"],
+      entity_status: ["ATIVO", "INATIVO"],
+      session_status: [
+        "ABERTA",
+        "ENCERRADA",
+        "AUDITORIA_FINALIZADA",
+        "BLOQUEADA",
+      ],
+    },
+  },
+} as const
