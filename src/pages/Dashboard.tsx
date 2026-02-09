@@ -1,5 +1,5 @@
-import { useEffect } from 'react';
-import { useNavigate, Outlet, Link, useLocation } from 'react-router-dom';
+import { useEffect, lazy, Suspense } from 'react';
+import { useNavigate, Link, useLocation, Routes, Route } from 'react-router-dom';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { 
@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
+import Disciplinas from '@/pages/dashboard/Disciplinas';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -227,7 +228,13 @@ const Dashboard = () => {
 
         {/* Page content */}
         <div className="flex-1 p-6 overflow-auto">
-          {location.pathname === '/dashboard' ? <DashboardHome /> : <Outlet />}
+          <Suspense fallback={<div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>}>
+            <Routes>
+              <Route index element={<DashboardHome />} />
+              <Route path="disciplinas" element={<Disciplinas />} />
+              <Route path="*" element={<div className="text-center py-16 text-muted-foreground">Página em construção</div>} />
+            </Routes>
+          </Suspense>
         </div>
       </main>
     </div>
