@@ -66,7 +66,7 @@ const Dashboard = () => {
       icon: BookOpen, 
       label: 'Disciplinas', 
       path: '/dashboard/disciplinas',
-      roles: ['admin'] 
+      roles: ['admin', 'coordenador'] 
     },
     { 
       icon: Users, 
