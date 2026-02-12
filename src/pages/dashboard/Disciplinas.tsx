@@ -8,7 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -30,7 +30,7 @@ type ClassSubject = Tables<'class_subjects'> & {
 
 const Disciplinas = () => {
   const { hasRole } = useAuth();
-  const canManage = hasRole('admin');
+  const canManage = hasRole('admin') || hasRole('coordenador');
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [loading, setLoading] = useState(true);
@@ -49,14 +49,14 @@ const Disciplinas = () => {
   const [bindings, setBindings] = useState<ClassSubject[]>([]);
   const [bindingsLoading, setBindingsLoading] = useState(true);
   const [bindDialogOpen, setBindDialogOpen] = useState(false);
+  const [editingBinding, setEditingBinding] = useState<ClassSubject | null>(null);
   const [classes, setClasses] = useState<{ id: string; code: string; period: string }[]>([]);
   const [professors, setProfessors] = useState<{ id: string; name: string }[]>([]);
   const [bindSubjectId, setBindSubjectId] = useState('');
   const [bindClassId, setBindClassId] = useState('');
   const [bindProfessorId, setBindProfessorId] = useState('');
   const [bindSaving, setBindSaving] = useState(false);
-
-  const canManageBindings = hasRole('admin') || hasRole('coordenador');
+  const [bindSearch, setBindSearch] = useState('');
 
   useEffect(() => {
     fetchSubjects();
@@ -117,6 +117,8 @@ const Disciplinas = () => {
       setProfessors(profiles || []);
     }
   }
+
+  // === Subject CRUD ===
 
   function openCreate() {
     setEditing(null);
@@ -192,28 +194,61 @@ const Disciplinas = () => {
     }
   }
 
+  // === Binding CRUD ===
+
+  function openCreateBinding() {
+    setEditingBinding(null);
+    setBindSubjectId('');
+    setBindClassId('');
+    setBindProfessorId('');
+    setBindDialogOpen(true);
+  }
+
+  function openEditBinding(b: ClassSubject) {
+    setEditingBinding(b);
+    setBindSubjectId(b.subject_id);
+    setBindClassId(b.class_id);
+    setBindProfessorId(b.professor_user_id);
+    setBindDialogOpen(true);
+  }
+
   async function handleSaveBinding() {
     if (!bindSubjectId || !bindClassId || !bindProfessorId) {
       toast({ title: 'Preencha todos os campos', variant: 'destructive' });
       return;
     }
     setBindSaving(true);
-    const { error } = await supabase
-      .from('class_subjects')
-      .insert({
-        subject_id: bindSubjectId,
-        class_id: bindClassId,
-        professor_user_id: bindProfessorId,
-      });
-    if (error) {
-      toast({ title: 'Erro ao criar vínculo', description: error.message, variant: 'destructive' });
+    if (editingBinding) {
+      const { error } = await supabase
+        .from('class_subjects')
+        .update({
+          subject_id: bindSubjectId,
+          class_id: bindClassId,
+          professor_user_id: bindProfessorId,
+        })
+        .eq('id', editingBinding.id);
+      if (error) {
+        toast({ title: 'Erro ao atualizar vínculo', description: error.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'Vínculo atualizado com sucesso' });
+        setBindDialogOpen(false);
+        fetchBindings();
+      }
     } else {
-      toast({ title: 'Vínculo criado com sucesso' });
-      setBindDialogOpen(false);
-      setBindSubjectId('');
-      setBindClassId('');
-      setBindProfessorId('');
-      fetchBindings();
+      const { error } = await supabase
+        .from('class_subjects')
+        .insert({
+          subject_id: bindSubjectId,
+          class_id: bindClassId,
+          professor_user_id: bindProfessorId,
+        });
+      if (error) {
+        toast({ title: 'Erro ao criar vínculo', description: error.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'Vínculo criado com sucesso' });
+        setBindDialogOpen(false);
+        fetchBindings();
+      }
     }
     setBindSaving(false);
   }
@@ -226,10 +261,12 @@ const Disciplinas = () => {
     if (error) {
       toast({ title: 'Erro ao remover vínculo', description: error.message, variant: 'destructive' });
     } else {
-      toast({ title: 'Vínculo removido' });
+      toast({ title: 'Vínculo inativado' });
       fetchBindings();
     }
   }
+
+  // === Filters ===
 
   const filtered = subjects.filter(
     (s) =>
@@ -237,7 +274,20 @@ const Disciplinas = () => {
       s.code.toLowerCase().includes(search.toLowerCase())
   );
 
+  const filteredBindings = bindings.filter((b) => {
+    if (!bindSearch) return true;
+    const q = bindSearch.toLowerCase();
+    const profName = professors.find((p) => p.id === b.professor_user_id)?.name || '';
+    return (
+      (b.subjects?.name || '').toLowerCase().includes(q) ||
+      (b.subjects?.code || '').toLowerCase().includes(q) ||
+      (b.classes?.code || '').toLowerCase().includes(q) ||
+      profName.toLowerCase().includes(q)
+    );
+  });
+
   const activeCount = subjects.filter((s) => s.status === 'ATIVO').length;
+  const activeBindings = bindings.filter((b) => b.status === 'ATIVO').length;
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in">
@@ -247,14 +297,18 @@ const Disciplinas = () => {
       </div>
 
       {/* Stats */}
-      <div className="grid sm:grid-cols-3 gap-4 mb-6">
+      <div className="grid sm:grid-cols-4 gap-4 mb-6">
         <div className="stats-card before:bg-primary">
-          <p className="text-sm text-muted-foreground">Total</p>
+          <p className="text-sm text-muted-foreground">Total Disciplinas</p>
           <p className="text-2xl font-display font-bold text-foreground">{subjects.length}</p>
         </div>
         <div className="stats-card before:bg-success">
           <p className="text-sm text-muted-foreground">Ativas</p>
           <p className="text-2xl font-display font-bold text-foreground">{activeCount}</p>
+        </div>
+        <div className="stats-card before:bg-accent">
+          <p className="text-sm text-muted-foreground">Vínculos Ativos</p>
+          <p className="text-2xl font-display font-bold text-foreground">{activeBindings}</p>
         </div>
         <div className="stats-card before:bg-destructive">
           <p className="text-sm text-muted-foreground">Inativas</p>
@@ -347,10 +401,18 @@ const Disciplinas = () => {
         {/* ===== TAB VÍNCULOS ===== */}
         <TabsContent value="vinculos">
           <div className="bg-card rounded-xl border border-border shadow-card">
-            <div className="p-4 flex items-center justify-between border-b border-border">
-              <p className="font-medium text-foreground">Vínculos Disciplina → Turma → Professor</p>
-              {canManageBindings && (
-                <Button onClick={() => setBindDialogOpen(true)} size="sm">
+            <div className="p-4 flex flex-col sm:flex-row gap-3 items-start sm:items-center justify-between border-b border-border">
+              <div className="relative w-full sm:w-72">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                <Input
+                  placeholder="Buscar vínculo..."
+                  value={bindSearch}
+                  onChange={(e) => setBindSearch(e.target.value)}
+                  className="pl-9"
+                />
+              </div>
+              {canManage && (
+                <Button onClick={openCreateBinding} size="sm">
                   <Plus className="w-4 h-4 mr-2" /> Novo Vínculo
                 </Button>
               )}
@@ -360,9 +422,9 @@ const Disciplinas = () => {
               <div className="flex items-center justify-center py-16">
                 <Loader2 className="w-6 h-6 animate-spin text-primary" />
               </div>
-            ) : bindings.length === 0 ? (
+            ) : filteredBindings.length === 0 ? (
               <div className="text-center py-16 text-muted-foreground">
-                Nenhum vínculo cadastrado.
+                Nenhum vínculo encontrado.
               </div>
             ) : (
               <Table>
@@ -372,11 +434,11 @@ const Disciplinas = () => {
                     <TableHead>Turma</TableHead>
                     <TableHead>Professor</TableHead>
                     <TableHead>Status</TableHead>
-                    {canManageBindings && <TableHead className="text-right">Ações</TableHead>}
+                    {canManage && <TableHead className="text-right">Ações</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {bindings.map((b) => {
+                  {filteredBindings.map((b) => {
                     const profName = professors.find((p) => p.id === b.professor_user_id)?.name || b.professor_user_id;
                     return (
                       <TableRow key={b.id}>
@@ -391,12 +453,17 @@ const Disciplinas = () => {
                             {b.status}
                           </Badge>
                         </TableCell>
-                        {canManageBindings && (
-                          <TableCell className="text-right">
+                        {canManage && (
+                          <TableCell className="text-right space-x-2">
                             {b.status === 'ATIVO' && (
-                              <Button variant="ghost" size="icon" onClick={() => handleRemoveBinding(b.id)}>
-                                <Trash2 className="w-4 h-4 text-destructive" />
-                              </Button>
+                              <>
+                                <Button variant="ghost" size="icon" onClick={() => openEditBinding(b)}>
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                                <Button variant="ghost" size="icon" onClick={() => handleRemoveBinding(b.id)}>
+                                  <Trash2 className="w-4 h-4 text-destructive" />
+                                </Button>
+                              </>
                             )}
                           </TableCell>
                         )}
@@ -454,11 +521,11 @@ const Disciplinas = () => {
         </DialogContent>
       </Dialog>
 
-      {/* ===== Dialog: Novo Vínculo ===== */}
+      {/* ===== Dialog: Criar/Editar Vínculo ===== */}
       <Dialog open={bindDialogOpen} onOpenChange={setBindDialogOpen}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>Novo Vínculo</DialogTitle>
+            <DialogTitle>{editingBinding ? 'Editar Vínculo' : 'Novo Vínculo'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
             <div>
@@ -505,7 +572,7 @@ const Disciplinas = () => {
             </DialogClose>
             <Button onClick={handleSaveBinding} disabled={bindSaving}>
               {bindSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
-              Criar Vínculo
+              {editingBinding ? 'Salvar' : 'Criar Vínculo'}
             </Button>
           </DialogFooter>
         </DialogContent>
