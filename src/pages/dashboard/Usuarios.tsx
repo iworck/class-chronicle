@@ -58,6 +58,15 @@ const ROLE_LABELS: Record<AppRole, string> = {
   aluno: 'Aluno',
 };
 
+const ROLE_SINGULAR: Record<string, string> = {
+  ADMs: 'Administrador',
+  Diretores: 'Diretor',
+  Gerentes: 'Gerente',
+  Coordenadores: 'Coordenador',
+  Professores: 'Professor',
+  Alunos: 'Aluno',
+};
+
 const ALL_ROLES: AppRole[] = ['super_admin', 'admin', 'diretor', 'gerente', 'coordenador', 'professor', 'aluno'];
 
 type TabKey = 'todos' | 'admin' | 'diretor' | 'gerente' | 'coordenador' | 'professor' | 'aluno';
@@ -120,6 +129,16 @@ const Usuarios = () => {
   const [quickAddRole, setQuickAddRole] = useState<AppRole | null>(null);
   const [quickAddUserId, setQuickAddUserId] = useState('');
   const [quickAddSaving, setQuickAddSaving] = useState(false);
+
+  // Create user dialog
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [newName, setNewName] = useState('');
+  const [newEmail, setNewEmail] = useState('');
+  const [newPassword, setNewPassword] = useState('');
+  const [newPhone, setNewPhone] = useState('');
+  const [newInstitutionId, setNewInstitutionId] = useState('');
+  const [newRole, setNewRole] = useState('');
+  const [creatingUser, setCreatingUser] = useState(false);
 
   useEffect(() => { fetchAll(); }, []);
 
@@ -324,6 +343,59 @@ const Usuarios = () => {
   }
 
   const institutionMap = Object.fromEntries(institutions.map(i => [i.id, i.name]));
+
+  // --- Create user ---
+  function openCreateDialog() {
+    setNewName('');
+    setNewEmail('');
+    setNewPassword('');
+    setNewPhone('');
+    setNewInstitutionId('');
+    setNewRole(activeTab !== 'todos' && currentTabConfig?.role ? currentTabConfig.role : '');
+    setCreateDialogOpen(true);
+  }
+
+  async function handleCreateUser() {
+    if (!newName.trim() || !newEmail.trim() || !newPassword) {
+      toast({ title: 'Preencha nome, email e senha', variant: 'destructive' });
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast({ title: 'Senha deve ter no mínimo 6 caracteres', variant: 'destructive' });
+      return;
+    }
+    setCreatingUser(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/create-user`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({
+          name: newName.trim(),
+          email: newEmail.trim(),
+          password: newPassword,
+          phone: newPhone.trim() || undefined,
+          institution_id: newInstitutionId || undefined,
+          role: newRole || undefined,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        toast({ title: 'Erro ao criar usuário', description: result.error, variant: 'destructive' });
+      } else {
+        toast({ title: 'Usuário criado com sucesso' });
+        setCreateDialogOpen(false);
+        fetchAll();
+      }
+    } catch (err: any) {
+      toast({ title: 'Erro ao criar usuário', description: err.message, variant: 'destructive' });
+    }
+    setCreatingUser(false);
+  }
   const filtered = getFilteredProfiles();
   const currentTabConfig = TABS.find(t => t.key === activeTab);
 
@@ -334,11 +406,19 @@ const Usuarios = () => {
 
   return (
     <div className="max-w-7xl mx-auto animate-fade-in">
-      <div className="mb-6">
-        <h1 className="text-2xl font-display font-bold text-foreground">Usuários</h1>
-        <p className="text-muted-foreground text-sm">
-          Gerencie os usuários, papéis e vínculos com campus/unidades.
-        </p>
+      <div className="mb-6 flex items-center justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-foreground">Usuários</h1>
+          <p className="text-muted-foreground text-sm">
+            Gerencie os usuários, papéis e vínculos com campus/unidades.
+          </p>
+        </div>
+        {canManage && (
+          <Button onClick={openCreateDialog}>
+            <Plus className="w-4 h-4 mr-2" />
+            Novo Usuário
+          </Button>
+        )}
       </div>
 
       {/* Stats */}
@@ -406,7 +486,7 @@ const Usuarios = () => {
             {canManage && activeTab !== 'todos' && currentTabConfig?.role && (
               <Button size="sm" onClick={() => openQuickAdd(currentTabConfig.role!)}>
                 <Plus className="w-4 h-4 mr-1" />
-                Adicionar {currentTabConfig.label.replace(/s$/, '')}
+                Adicionar {ROLE_SINGULAR[currentTabConfig.label] || currentTabConfig.label}
               </Button>
             )}
           </div>
@@ -651,6 +731,59 @@ const Usuarios = () => {
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
             <Button onClick={handleQuickAddRole} disabled={quickAddSaving || !quickAddUserId}>
               {quickAddSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Adicionar
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Create User */}
+      <Dialog open={createDialogOpen} onOpenChange={setCreateDialogOpen}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Novo Usuário</DialogTitle></DialogHeader>
+          <div className="space-y-4 py-2">
+            <div>
+              <Label>Nome completo *</Label>
+              <Input value={newName} onChange={(e) => setNewName(e.target.value)} placeholder="Nome completo" />
+            </div>
+            <div>
+              <Label>Email *</Label>
+              <Input value={newEmail} onChange={(e) => setNewEmail(e.target.value)} placeholder="email@exemplo.com" type="email" />
+            </div>
+            <div>
+              <Label>Senha *</Label>
+              <Input value={newPassword} onChange={(e) => setNewPassword(e.target.value)} placeholder="Mínimo 6 caracteres" type="password" />
+            </div>
+            <div>
+              <Label>Telefone</Label>
+              <Input value={newPhone} onChange={(e) => setNewPhone(e.target.value)} placeholder="(11) 99999-9999" />
+            </div>
+            <div>
+              <Label>Instituição</Label>
+              <Select value={newInstitutionId || "none"} onValueChange={(v) => setNewInstitutionId(v === "none" ? "" : v)}>
+                <SelectTrigger><SelectValue placeholder="Selecione a instituição" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhuma</SelectItem>
+                  {institutions.map(inst => <SelectItem key={inst.id} value={inst.id}>{inst.name}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Papel inicial</Label>
+              <Select value={newRole || "none"} onValueChange={(v) => setNewRole(v === "none" ? "" : v)}>
+                <SelectTrigger><SelectValue placeholder="Selecione um papel (opcional)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhum</SelectItem>
+                  {assignableRoles.map(role => (
+                    <SelectItem key={role} value={role}>{ROLE_LABELS[role]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
+            <Button onClick={handleCreateUser} disabled={creatingUser}>
+              {creatingUser && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Criar Usuário
             </Button>
           </DialogFooter>
         </DialogContent>
