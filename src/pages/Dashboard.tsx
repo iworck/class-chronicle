@@ -23,6 +23,7 @@ import { cn } from '@/lib/utils';
 import Disciplinas from '@/pages/dashboard/Disciplinas';
 import Instituicoes from '@/pages/dashboard/Instituicoes';
 import Campi from '@/pages/dashboard/Campi';
+import Unidades from '@/pages/dashboard/Unidades';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -69,6 +70,12 @@ const Dashboard = () => {
       label: 'Campi', 
       path: '/dashboard/campi',
       roles: ['super_admin', 'admin'] 
+    },
+    { 
+      icon: Building2, 
+      label: 'Unidades', 
+      path: '/dashboard/unidades',
+      roles: ['super_admin', 'admin', 'diretor'] 
     },
     { 
       icon: Building2, 
@@ -249,6 +256,7 @@ const Dashboard = () => {
               <Route index element={<DashboardHome />} />
               <Route path="instituicoes" element={<Instituicoes />} />
               <Route path="campi" element={<Campi />} />
+              <Route path="unidades" element={<Unidades />} />
               <Route path="disciplinas" element={<Disciplinas />} />
               <Route path="*" element={<div className="text-center py-16 text-muted-foreground">Página em construção</div>} />
             </Routes>
