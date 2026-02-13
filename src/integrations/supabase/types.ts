@@ -561,7 +561,14 @@ export type Database = {
       is_staff: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
-      app_role: "admin" | "diretor" | "coordenador" | "professor"
+      app_role:
+        | "admin"
+        | "diretor"
+        | "coordenador"
+        | "professor"
+        | "super_admin"
+        | "gerente"
+        | "aluno"
       attendance_source: "AUTO_ALUNO" | "MANUAL_PROF" | "MANUAL_COORD"
       attendance_status: "PRESENTE" | "FALTA" | "JUSTIFICADO"
       change_request_status: "PENDENTE" | "APROVADO" | "REPROVADO"
@@ -698,7 +705,15 @@ export type CompositeTypes<
 export const Constants = {
   public: {
     Enums: {
-      app_role: ["admin", "diretor", "coordenador", "professor"],
+      app_role: [
+        "admin",
+        "diretor",
+        "coordenador",
+        "professor",
+        "super_admin",
+        "gerente",
+        "aluno",
+      ],
       attendance_source: ["AUTO_ALUNO", "MANUAL_PROF", "MANUAL_COORD"],
       attendance_status: ["PRESENTE", "FALTA", "JUSTIFICADO"],
       change_request_status: ["PENDENTE", "APROVADO", "REPROVADO"],
