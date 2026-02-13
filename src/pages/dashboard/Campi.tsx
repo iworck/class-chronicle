@@ -331,10 +331,10 @@ const Campi = () => {
             </div>
             <div>
               <Label>Diretor</Label>
-              <Select value={formDirectorId} onValueChange={setFormDirectorId}>
+              <Select value={formDirectorId || "none"} onValueChange={(v) => setFormDirectorId(v === "none" ? "" : v)}>
                 <SelectTrigger><SelectValue placeholder="Selecione o diretor (opcional)" /></SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="">Nenhum</SelectItem>
+                  <SelectItem value="none">Nenhum</SelectItem>
                   {profiles.map(p => (
                     <SelectItem key={p.id} value={p.id}>
                       {p.name} {p.email ? `(${p.email})` : ''}
