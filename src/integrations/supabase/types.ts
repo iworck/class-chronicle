@@ -199,6 +199,47 @@ export type Database = {
           },
         ]
       }
+      campuses: {
+        Row: {
+          city: string | null
+          created_at: string
+          director_user_id: string | null
+          id: string
+          institution_id: string
+          name: string
+          state: string | null
+          status: Database["public"]["Enums"]["entity_status"]
+        }
+        Insert: {
+          city?: string | null
+          created_at?: string
+          director_user_id?: string | null
+          id?: string
+          institution_id: string
+          name: string
+          state?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Update: {
+          city?: string | null
+          created_at?: string
+          director_user_id?: string | null
+          id?: string
+          institution_id?: string
+          name?: string
+          state?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "campuses_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       change_requests: {
         Row: {
           created_at: string
@@ -337,6 +378,7 @@ export type Database = {
           created_at: string
           id: string
           period: string
+          semester_id: string | null
           shift: string | null
           status: Database["public"]["Enums"]["entity_status"]
         }
@@ -346,6 +388,7 @@ export type Database = {
           created_at?: string
           id?: string
           period: string
+          semester_id?: string | null
           shift?: string | null
           status?: Database["public"]["Enums"]["entity_status"]
         }
@@ -355,6 +398,7 @@ export type Database = {
           created_at?: string
           id?: string
           period?: string
+          semester_id?: string | null
           shift?: string | null
           status?: Database["public"]["Enums"]["entity_status"]
         }
@@ -366,6 +410,13 @@ export type Database = {
             referencedRelation: "courses"
             referencedColumns: ["id"]
           },
+          {
+            foreignKeyName: "classes_semester_id_fkey"
+            columns: ["semester_id"]
+            isOneToOne: false
+            referencedRelation: "semesters"
+            referencedColumns: ["id"]
+          },
         ]
       }
       courses: {
@@ -375,6 +426,7 @@ export type Database = {
           id: string
           name: string
           status: Database["public"]["Enums"]["entity_status"]
+          unit_id: string | null
         }
         Insert: {
           created_at?: string
@@ -382,6 +434,7 @@ export type Database = {
           id?: string
           name: string
           status?: Database["public"]["Enums"]["entity_status"]
+          unit_id?: string | null
         }
         Update: {
           created_at?: string
@@ -389,8 +442,17 @@ export type Database = {
           id?: string
           name?: string
           status?: Database["public"]["Enums"]["entity_status"]
+          unit_id?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "courses_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "units"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       enrollment_suggestions: {
         Row: {
@@ -436,11 +498,36 @@ export type Database = {
           },
         ]
       }
+      institutions: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          slug: string
+          status: Database["public"]["Enums"]["entity_status"]
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          slug: string
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          slug?: string
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Relationships: []
+      }
       profiles: {
         Row: {
           created_at: string
           email: string | null
           id: string
+          institution_id: string | null
           name: string
           phone: string | null
           status: Database["public"]["Enums"]["entity_status"]
@@ -450,6 +537,7 @@ export type Database = {
           created_at?: string
           email?: string | null
           id: string
+          institution_id?: string | null
           name: string
           phone?: string | null
           status?: Database["public"]["Enums"]["entity_status"]
@@ -459,12 +547,59 @@ export type Database = {
           created_at?: string
           email?: string | null
           id?: string
+          institution_id?: string | null
           name?: string
           phone?: string | null
           status?: Database["public"]["Enums"]["entity_status"]
           updated_at?: string | null
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "profiles_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      semesters: {
+        Row: {
+          course_id: string
+          created_at: string
+          end_date: string | null
+          id: string
+          name: string
+          start_date: string | null
+          status: Database["public"]["Enums"]["entity_status"]
+        }
+        Insert: {
+          course_id: string
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          name: string
+          start_date?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Update: {
+          course_id?: string
+          created_at?: string
+          end_date?: string | null
+          id?: string
+          name?: string
+          start_date?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "semesters_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       students: {
         Row: {
@@ -528,6 +663,41 @@ export type Database = {
         }
         Relationships: []
       }
+      units: {
+        Row: {
+          campus_id: string
+          created_at: string
+          id: string
+          manager_user_id: string | null
+          name: string
+          status: Database["public"]["Enums"]["entity_status"]
+        }
+        Insert: {
+          campus_id: string
+          created_at?: string
+          id?: string
+          manager_user_id?: string | null
+          name: string
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Update: {
+          campus_id?: string
+          created_at?: string
+          id?: string
+          manager_user_id?: string | null
+          name?: string
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "units_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       user_roles: {
         Row: {
           id: string
@@ -551,6 +721,7 @@ export type Database = {
       [_ in never]: never
     }
     Functions: {
+      get_user_institution_id: { Args: { _user_id: string }; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -559,6 +730,7 @@ export type Database = {
         Returns: boolean
       }
       is_staff: { Args: { _user_id: string }; Returns: boolean }
+      is_super_admin: { Args: { _user_id: string }; Returns: boolean }
     }
     Enums: {
       app_role:
