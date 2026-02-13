@@ -17,10 +17,13 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import {
-  Plus, Search, Pencil, Shield, Loader2, Users, X,
+  Search, Pencil, Shield, Loader2, Users, MapPin,
 } from 'lucide-react';
 
 type AppRole = 'super_admin' | 'admin' | 'diretor' | 'gerente' | 'coordenador' | 'professor' | 'aluno';
+
+const CAMPUS_ROLES: AppRole[] = ['diretor', 'gerente', 'coordenador', 'professor', 'aluno'];
+const UNIT_ROLES: AppRole[] = ['diretor', 'gerente', 'coordenador', 'professor'];
 
 interface UserProfile {
   id: string;
@@ -43,6 +46,30 @@ interface Institution {
   name: string;
 }
 
+interface Campus {
+  id: string;
+  name: string;
+  institution_id: string;
+}
+
+interface Unit {
+  id: string;
+  name: string;
+  campus_id: string;
+}
+
+interface UserCampus {
+  id: string;
+  user_id: string;
+  campus_id: string;
+}
+
+interface UserUnit {
+  id: string;
+  user_id: string;
+  unit_id: string;
+}
+
 const ROLE_LABELS: Record<AppRole, string> = {
   super_admin: 'Super Admin',
   admin: 'Administrador',
@@ -61,12 +88,15 @@ const Usuarios = () => {
   const isAdmin = hasRole('admin');
   const canManage = isSuperAdmin || isAdmin;
 
-  // Only super_admin can assign super_admin role
   const assignableRoles = isSuperAdmin ? ALL_ROLES : ALL_ROLES.filter(r => r !== 'super_admin');
 
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
   const [allRoles, setAllRoles] = useState<UserRole[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [campuses, setCampuses] = useState<Campus[]>([]);
+  const [units, setUnits] = useState<Unit[]>([]);
+  const [allUserCampuses, setAllUserCampuses] = useState<UserCampus[]>([]);
+  const [allUserUnits, setAllUserUnits] = useState<UserUnit[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -87,16 +117,28 @@ const Usuarios = () => {
   const [selectedRoles, setSelectedRoles] = useState<AppRole[]>([]);
   const [savingRoles, setSavingRoles] = useState(false);
 
+  // Assignments dialog (campus + units)
+  const [assignDialogOpen, setAssignDialogOpen] = useState(false);
+  const [assignUserId, setAssignUserId] = useState<string | null>(null);
+  const [assignUserName, setAssignUserName] = useState('');
+  const [assignUserCampuses, setAssignUserCampuses] = useState<string[]>([]);
+  const [assignUserUnits, setAssignUserUnits] = useState<string[]>([]);
+  const [savingAssign, setSavingAssign] = useState(false);
+
   useEffect(() => {
     fetchAll();
   }, []);
 
   async function fetchAll() {
     setLoading(true);
-    const [profileRes, rolesRes, instRes] = await Promise.all([
+    const [profileRes, rolesRes, instRes, campusRes, unitRes, ucRes, uuRes] = await Promise.all([
       supabase.from('profiles').select('*').order('name'),
       supabase.from('user_roles').select('*'),
       supabase.from('institutions').select('id, name').eq('status', 'ATIVO').order('name'),
+      supabase.from('campuses').select('id, name, institution_id').eq('status', 'ATIVO').order('name'),
+      supabase.from('units').select('id, name, campus_id').eq('status', 'ATIVO').order('name'),
+      supabase.from('user_campuses').select('*'),
+      supabase.from('user_units').select('*'),
     ]);
 
     if (profileRes.error) {
@@ -106,11 +148,20 @@ const Usuarios = () => {
     }
     setAllRoles((rolesRes.data as UserRole[]) || []);
     setInstitutions((instRes.data as Institution[]) || []);
+    setCampuses((campusRes.data as Campus[]) || []);
+    setUnits((unitRes.data as Unit[]) || []);
+    setAllUserCampuses((ucRes.data as UserCampus[]) || []);
+    setAllUserUnits((uuRes.data as UserUnit[]) || []);
     setLoading(false);
   }
 
   function getRolesForUser(userId: string): AppRole[] {
     return allRoles.filter(r => r.user_id === userId).map(r => r.role);
+  }
+
+  function getUserCampusNames(userId: string): string[] {
+    const campusIds = allUserCampuses.filter(uc => uc.user_id === userId).map(uc => uc.campus_id);
+    return campuses.filter(c => campusIds.includes(c.id)).map(c => c.name);
   }
 
   // Edit profile
@@ -175,7 +226,6 @@ const Usuarios = () => {
     const toAdd = selectedRoles.filter(r => !currentRoles.includes(r));
     const toRemove = currentRoles.filter(r => !selectedRoles.includes(r));
 
-    // Remove roles
     for (const role of toRemove) {
       const roleRecord = allRoles.find(r => r.user_id === rolesUserId && r.role === role);
       if (roleRecord) {
@@ -183,7 +233,6 @@ const Usuarios = () => {
       }
     }
 
-    // Add roles
     if (toAdd.length > 0) {
       const inserts = toAdd.map(role => ({ user_id: rolesUserId, role }));
       const { error } = await supabase.from('user_roles').insert(inserts);
@@ -200,7 +249,100 @@ const Usuarios = () => {
     setSavingRoles(false);
   }
 
+  // Assignments dialog
+  function openAssignDialog(profile: UserProfile) {
+    setAssignUserId(profile.id);
+    setAssignUserName(profile.name);
+    setAssignUserCampuses(allUserCampuses.filter(uc => uc.user_id === profile.id).map(uc => uc.campus_id));
+    setAssignUserUnits(allUserUnits.filter(uu => uu.user_id === profile.id).map(uu => uu.unit_id));
+    setAssignDialogOpen(true);
+  }
+
+  function toggleCampus(campusId: string) {
+    setAssignUserCampuses(prev => {
+      if (prev.includes(campusId)) {
+        // Remove campus and also remove units belonging to this campus
+        const unitsOfCampus = units.filter(u => u.campus_id === campusId).map(u => u.id);
+        setAssignUserUnits(prevU => prevU.filter(uid => !unitsOfCampus.includes(uid)));
+        return prev.filter(id => id !== campusId);
+      }
+      return [...prev, campusId];
+    });
+  }
+
+  function toggleUnit(unitId: string) {
+    setAssignUserUnits(prev =>
+      prev.includes(unitId) ? prev.filter(id => id !== unitId) : [...prev, unitId]
+    );
+  }
+
+  async function handleSaveAssignments() {
+    if (!assignUserId) return;
+    setSavingAssign(true);
+
+    // Save campuses
+    const currentCampusIds = allUserCampuses.filter(uc => uc.user_id === assignUserId).map(uc => uc.campus_id);
+    const campusesToAdd = assignUserCampuses.filter(id => !currentCampusIds.includes(id));
+    const campusesToRemove = currentCampusIds.filter(id => !assignUserCampuses.includes(id));
+
+    for (const cid of campusesToRemove) {
+      await supabase.from('user_campuses').delete().eq('user_id', assignUserId).eq('campus_id', cid);
+    }
+    if (campusesToAdd.length > 0) {
+      const { error } = await supabase.from('user_campuses').insert(
+        campusesToAdd.map(campus_id => ({ user_id: assignUserId, campus_id }))
+      );
+      if (error) {
+        toast({ title: 'Erro ao vincular campus', description: error.message, variant: 'destructive' });
+        setSavingAssign(false);
+        return;
+      }
+    }
+
+    // Save units
+    const currentUnitIds = allUserUnits.filter(uu => uu.user_id === assignUserId).map(uu => uu.unit_id);
+    const unitsToAdd = assignUserUnits.filter(id => !currentUnitIds.includes(id));
+    const unitsToRemove = currentUnitIds.filter(id => !assignUserUnits.includes(id));
+
+    for (const uid of unitsToRemove) {
+      await supabase.from('user_units').delete().eq('user_id', assignUserId).eq('unit_id', uid);
+    }
+    if (unitsToAdd.length > 0) {
+      const { error } = await supabase.from('user_units').insert(
+        unitsToAdd.map(unit_id => ({ user_id: assignUserId, unit_id }))
+      );
+      if (error) {
+        toast({ title: 'Erro ao vincular unidades', description: error.message, variant: 'destructive' });
+        setSavingAssign(false);
+        return;
+      }
+    }
+
+    toast({ title: 'Vínculos atualizados com sucesso' });
+    setAssignDialogOpen(false);
+    fetchAll();
+    setSavingAssign(false);
+  }
+
+  // Check if user needs campus/unit assignments
+  function userNeedsAssignment(userId: string): boolean {
+    const roles = getRolesForUser(userId);
+    return roles.some(r => CAMPUS_ROLES.includes(r));
+  }
+
+  function userNeedsUnitAssignment(userId: string): boolean {
+    const roles = getRolesForUser(userId);
+    return roles.some(r => UNIT_ROLES.includes(r));
+  }
+
   const institutionMap = Object.fromEntries(institutions.map(i => [i.id, i.name]));
+
+  // Filter campuses by user's institution
+  function getCampusesForUser(userId: string): Campus[] {
+    const profile = profiles.find(p => p.id === userId);
+    if (!profile?.institution_id) return campuses;
+    return campuses.filter(c => c.institution_id === profile.institution_id);
+  }
 
   const filtered = profiles.filter(
     (p) =>
@@ -213,7 +355,7 @@ const Usuarios = () => {
       <div className="mb-6">
         <h1 className="text-2xl font-display font-bold text-foreground">Usuários</h1>
         <p className="text-muted-foreground text-sm">
-          Gerencie os usuários e seus níveis de acesso.
+          Gerencie os usuários, papéis e vínculos com campus/unidades.
         </p>
       </div>
 
@@ -264,6 +406,7 @@ const Usuarios = () => {
                 <TableHead>Email</TableHead>
                 <TableHead>Instituição</TableHead>
                 <TableHead>Papéis</TableHead>
+                <TableHead>Campus</TableHead>
                 <TableHead>Status</TableHead>
                 {canManage && <TableHead className="text-right">Ações</TableHead>}
               </TableRow>
@@ -271,6 +414,7 @@ const Usuarios = () => {
             <TableBody>
               {filtered.map((profile) => {
                 const userRoles = getRolesForUser(profile.id);
+                const campusNames = getUserCampusNames(profile.id);
                 return (
                   <TableRow key={profile.id}>
                     <TableCell className="font-medium">{profile.name}</TableCell>
@@ -292,18 +436,36 @@ const Usuarios = () => {
                       </div>
                     </TableCell>
                     <TableCell>
+                      <div className="flex flex-wrap gap-1">
+                        {campusNames.length === 0 ? (
+                          <span className="text-sm text-muted-foreground">—</span>
+                        ) : (
+                          campusNames.map(name => (
+                            <Badge key={name} variant="secondary" className="text-xs">
+                              {name}
+                            </Badge>
+                          ))
+                        )}
+                      </div>
+                    </TableCell>
+                    <TableCell>
                       <Badge variant={profile.status === 'ATIVO' ? 'default' : 'secondary'}>
                         {profile.status}
                       </Badge>
                     </TableCell>
                     {canManage && (
-                      <TableCell className="text-right space-x-2">
+                      <TableCell className="text-right space-x-1">
                         <Button variant="ghost" size="icon" onClick={() => openEditProfile(profile)} title="Editar perfil">
                           <Pencil className="w-4 h-4" />
                         </Button>
                         <Button variant="ghost" size="icon" onClick={() => openRolesDialog(profile)} title="Gerenciar papéis">
                           <Shield className="w-4 h-4" />
                         </Button>
+                        {userNeedsAssignment(profile.id) && (
+                          <Button variant="ghost" size="icon" onClick={() => openAssignDialog(profile)} title="Vínculos campus/unidades">
+                            <MapPin className="w-4 h-4" />
+                          </Button>
+                        )}
                       </TableCell>
                     )}
                   </TableRow>
@@ -400,6 +562,80 @@ const Usuarios = () => {
             <Button onClick={handleSaveRoles} disabled={savingRoles}>
               {savingRoles && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Salvar Papéis
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Manage Campus & Unit Assignments */}
+      <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
+        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Vínculos de {assignUserName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Selecione os campi e unidades aos quais este usuário está vinculado.
+            </p>
+
+            {assignUserId && getCampusesForUser(assignUserId).map(campus => {
+              const campusSelected = assignUserCampuses.includes(campus.id);
+              const campusUnits = units.filter(u => u.campus_id === campus.id);
+              const showUnits = campusSelected && userNeedsUnitAssignment(assignUserId);
+
+              return (
+                <div key={campus.id} className="border border-border rounded-lg overflow-hidden">
+                  <label className="flex items-center gap-3 p-3 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors">
+                    <Checkbox
+                      checked={campusSelected}
+                      onCheckedChange={() => toggleCampus(campus.id)}
+                    />
+                    <div className="flex items-center gap-2">
+                      <MapPin className="w-4 h-4 text-primary" />
+                      <p className="font-medium text-sm">{campus.name}</p>
+                    </div>
+                  </label>
+
+                  {showUnits && campusUnits.length > 0 && (
+                    <div className="px-3 py-2 space-y-1 border-t border-border bg-background">
+                      <p className="text-xs text-muted-foreground mb-2">Unidades deste campus:</p>
+                      {campusUnits.map(unit => (
+                        <label
+                          key={unit.id}
+                          className="flex items-center gap-3 p-2 rounded hover:bg-muted/30 cursor-pointer transition-colors"
+                        >
+                          <Checkbox
+                            checked={assignUserUnits.includes(unit.id)}
+                            onCheckedChange={() => toggleUnit(unit.id)}
+                          />
+                          <p className="text-sm">{unit.name}</p>
+                        </label>
+                      ))}
+                    </div>
+                  )}
+
+                  {showUnits && campusUnits.length === 0 && (
+                    <div className="px-3 py-2 border-t border-border">
+                      <p className="text-xs text-muted-foreground italic">Nenhuma unidade cadastrada neste campus.</p>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+
+            {assignUserId && getCampusesForUser(assignUserId).length === 0 && (
+              <p className="text-sm text-muted-foreground italic">
+                Nenhum campus disponível. Verifique se o usuário possui uma instituição vinculada.
+              </p>
+            )}
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button onClick={handleSaveAssignments} disabled={savingAssign}>
+              {savingAssign && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              Salvar Vínculos
             </Button>
           </DialogFooter>
         </DialogContent>
