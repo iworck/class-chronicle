@@ -21,6 +21,7 @@ import {
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import Disciplinas from '@/pages/dashboard/Disciplinas';
+import Instituicoes from '@/pages/dashboard/Instituicoes';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -54,7 +55,13 @@ const Dashboard = () => {
       icon: LayoutDashboard, 
       label: 'Visão Geral', 
       path: '/dashboard',
-      roles: ['admin', 'diretor', 'coordenador', 'professor'] 
+      roles: ['super_admin', 'admin', 'diretor', 'gerente', 'coordenador', 'professor'] 
+    },
+    { 
+      icon: Building2, 
+      label: 'Instituições', 
+      path: '/dashboard/instituicoes',
+      roles: ['super_admin'] 
     },
     { 
       icon: Building2, 
@@ -111,8 +118,10 @@ const Dashboard = () => {
   );
 
   const getRoleLabel = () => {
+    if (hasRole('super_admin')) return 'Super Administrador';
     if (hasRole('admin')) return 'Administrador';
     if (hasRole('diretor')) return 'Diretor';
+    if (hasRole('gerente')) return 'Gerente';
     if (hasRole('coordenador')) return 'Coordenador';
     if (hasRole('professor')) return 'Professor';
     return 'Usuário';
@@ -231,6 +240,7 @@ const Dashboard = () => {
           <Suspense fallback={<div className="flex items-center justify-center py-16"><Loader2 className="w-6 h-6 animate-spin text-primary" /></div>}>
             <Routes>
               <Route index element={<DashboardHome />} />
+              <Route path="instituicoes" element={<Instituicoes />} />
               <Route path="disciplinas" element={<Disciplinas />} />
               <Route path="*" element={<div className="text-center py-16 text-muted-foreground">Página em construção</div>} />
             </Routes>
