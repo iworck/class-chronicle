@@ -23,6 +23,7 @@ import { BoletimAlerts } from '@/components/boletim/BoletimAlerts';
 import { BoletimGradeHistory } from '@/components/boletim/BoletimGradeHistory';
 import { BoletimPdfExport } from '@/components/boletim/BoletimPdfExport';
 import { BoletimClassComparison } from '@/components/boletim/BoletimClassComparison';
+import { BoletimTrendDashboard } from '@/components/boletim/BoletimTrendDashboard';
 
 interface ClassSubject {
   id: string;
@@ -1047,6 +1048,18 @@ const Boletim = () => {
               minAttendance={minAtt}
               gradesClosed={gradesClosed}
               getDisplayStatus={getDisplayStatus}
+            />
+
+            {/* Trend Dashboard */}
+            <BoletimTrendDashboard
+              enrollments={enrollments}
+              grades={grades}
+              templateItems={templateItems}
+              getWeightedAverage={getWeightedAverage}
+              getAttendancePct={getAttendancePct}
+              getDisplayStatus={getDisplayStatus}
+              minGrade={minGrade}
+              minAttendance={minAtt}
             />
 
             {/* Alerts */}
