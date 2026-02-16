@@ -12,6 +12,7 @@ import {
   LogOut,
   Building2,
   UserCheck,
+  Shield,
   FileText,
   ChevronRight,
   Loader2,
@@ -31,6 +32,7 @@ import Matrizes from '@/pages/dashboard/Matrizes';
 import Turmas from '@/pages/dashboard/Turmas';
 import Alunos from '@/pages/dashboard/Alunos';
 import Boletim from '@/pages/dashboard/Boletim';
+import Permissoes from '@/pages/dashboard/Permissoes';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -142,6 +144,12 @@ const Dashboard = () => {
       icon: Users, 
       label: 'Usuários', 
       path: '/dashboard/usuarios',
+      roles: ['super_admin', 'admin'] 
+    },
+    { 
+      icon: Shield, 
+      label: 'Permissões', 
+      path: '/dashboard/permissoes',
       roles: ['super_admin', 'admin'] 
     },
   ];
@@ -284,6 +292,7 @@ const Dashboard = () => {
               <Route path="alunos" element={<Alunos />} />
               <Route path="boletim" element={<Boletim />} />
               <Route path="configuracoes" element={<Configuracoes />} />
+              <Route path="permissoes" element={<Permissoes />} />
               <Route path="*" element={<div className="text-center py-16 text-muted-foreground">Página em construção</div>} />
             </Routes>
           </Suspense>
