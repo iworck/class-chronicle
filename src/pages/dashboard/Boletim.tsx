@@ -229,11 +229,22 @@ const Boletim = () => {
       }
     } else if (isDiretor && !isAdminRole && !isSuperAdmin) {
       // Diretor: class_subjects for courses in their campus
+      // Check both user_campuses table AND campuses.director_user_id
       const { data: userCampuses } = await supabase
         .from('user_campuses')
         .select('campus_id')
         .eq('user_id', user!.id);
-      const campusIds = (userCampuses || []).map(c => c.campus_id);
+      const { data: directedCampuses } = await supabase
+        .from('campuses')
+        .select('id')
+        .eq('director_user_id', user!.id);
+      
+      const campusIdSet = new Set([
+        ...(userCampuses || []).map(c => c.campus_id),
+        ...(directedCampuses || []).map(c => c.id),
+      ]);
+      const campusIds = [...campusIdSet];
+
       if (campusIds.length > 0) {
         const { data: units } = await supabase
           .from('units')
@@ -245,7 +256,18 @@ const Boletim = () => {
             .from('courses')
             .select('id')
             .in('unit_id', unitIds);
-          const courseIds = (campusCourses || []).map(c => c.id);
+          // Also include courses with director_user_id = current user
+          const { data: directedCourses } = await supabase
+            .from('courses')
+            .select('id')
+            .eq('director_user_id', user!.id);
+          
+          const courseIdSet = new Set([
+            ...(campusCourses || []).map(c => c.id),
+            ...(directedCourses || []).map(c => c.id),
+          ]);
+          const courseIds = [...courseIdSet];
+
           if (courseIds.length > 0) {
             const { data: classes } = await supabase
               .from('classes')
@@ -265,14 +287,56 @@ const Boletim = () => {
             return;
           }
         } else {
+          // No units but maybe director has direct courses
+          const { data: directedCourses } = await supabase
+            .from('courses')
+            .select('id')
+            .eq('director_user_id', user!.id);
+          const courseIds = (directedCourses || []).map(c => c.id);
+          if (courseIds.length > 0) {
+            const { data: classes } = await supabase
+              .from('classes')
+              .select('id')
+              .in('course_id', courseIds);
+            const classIds = (classes || []).map(c => c.id);
+            if (classIds.length > 0) {
+              query = query.in('class_id', classIds);
+            } else {
+              setClassSubjects([]);
+              setLoading(false);
+              return;
+            }
+          } else {
+            setClassSubjects([]);
+            setLoading(false);
+            return;
+          }
+        }
+      } else {
+        // No campus assigned, check direct course ownership
+        const { data: directedCourses } = await supabase
+          .from('courses')
+          .select('id')
+          .eq('director_user_id', user!.id);
+        const courseIds = (directedCourses || []).map(c => c.id);
+        if (courseIds.length > 0) {
+          const { data: classes } = await supabase
+            .from('classes')
+            .select('id')
+            .in('course_id', courseIds);
+          const classIds = (classes || []).map(c => c.id);
+          if (classIds.length > 0) {
+            query = query.in('class_id', classIds);
+          } else {
+            setClassSubjects([]);
+            setLoading(false);
+            return;
+          }
+        } else {
           setClassSubjects([]);
           setLoading(false);
           return;
         }
-      } else {
-        setClassSubjects([]);
-        setLoading(false);
-        return;
       }
     }
     // Admin/Super Admin: no filter, see everything
