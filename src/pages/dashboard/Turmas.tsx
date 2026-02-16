@@ -1086,33 +1086,60 @@ const Turmas = () => {
                 <Plus className="w-4 h-4 mr-2" /> Adicionar Item
               </Button>
 
-              {/* Preview */}
-              {templateItems.length > 0 && (
-                <div className="p-3 rounded-md border border-border bg-muted/50">
-                  <p className="text-xs font-semibold text-foreground mb-2">Resumo do Modelo:</p>
-                  <div className="space-y-1">
-                    {templateItems.filter(t => t.counts_in_final && t.name.trim()).map((finalItem, i) => {
+              {/* Preview with formula */}
+              {templateItems.length > 0 && (() => {
+                const parentItems = templateItems.filter(t => t.counts_in_final && t.name.trim());
+                const orphanItems = templateItems.filter(t => !t.counts_in_final && !t.parent_item_id && t.name.trim());
+
+                return (
+                  <div className="p-4 rounded-md border border-border bg-muted/50 space-y-3">
+                    <p className="text-sm font-semibold text-foreground">📐 Fórmula de Cálculo:</p>
+
+                    {parentItems.map((finalItem, i) => {
                       const children = templateItems.filter(t => !t.counts_in_final && t.parent_item_id && (t.parent_item_id === finalItem.id || t.parent_item_id === finalItem.name.trim().toUpperCase()));
                       return (
-                        <div key={i} className="text-xs text-foreground">
-                          <strong>{finalItem.name.trim().toUpperCase()}</strong>
-                          {' '}({GRADE_CATEGORIES.find(c => c.value === finalItem.category)?.label}, peso {finalItem.weight})
-                          {children.length > 0 && (
-                            <span className="text-muted-foreground">
-                              {' = '}composição de {children.map(c => `${c.name.trim().toUpperCase()}(p${c.weight})`).join(' + ')}
-                            </span>
+                        <div key={i} className="p-3 rounded-md bg-background border border-border space-y-1">
+                          <p className="text-sm font-bold text-primary">{finalItem.name.trim().toUpperCase()} (Compõe a Média)</p>
+                          {children.length > 0 ? (
+                            <>
+                              {children.map((c, ci) => (
+                                <p key={ci} className="text-xs text-muted-foreground font-mono pl-2">
+                                  {c.name.trim().toUpperCase()} (nota) × peso {c.weight} = resultado
+                                </p>
+                              ))}
+                              <p className="text-xs font-semibold text-foreground pl-2 pt-1 border-t border-border mt-1">
+                                {finalItem.name.trim().toUpperCase()} = {children.map(c => `${c.name.trim().toUpperCase()}`).join(' + ')}
+                              </p>
+                              <p className="text-[10px] text-muted-foreground pl-2">
+                                Exemplo com nota 10: {children.map(c => `${c.name.trim().toUpperCase()}(10 × ${c.weight} = ${(10 * (parseFloat(c.weight) || 1)).toFixed(2)})`).join(' + ')} = {children.reduce((sum, c) => sum + 10 * (parseFloat(c.weight) || 1), 0).toFixed(2)}
+                              </p>
+                            </>
+                          ) : (
+                            <p className="text-xs text-muted-foreground pl-2">Nota lançada diretamente (peso {finalItem.weight})</p>
                           )}
                         </div>
                       );
                     })}
-                    {templateItems.filter(t => !t.counts_in_final && !t.parent_item_id && t.name.trim()).length > 0 && (
-                      <p className="text-xs text-amber-600 mt-1">
-                        ⚠ Itens sem "Item Pai" definido e que não compõem a média: {templateItems.filter(t => !t.counts_in_final && !t.parent_item_id && t.name.trim()).map(t => t.name.trim().toUpperCase()).join(', ')}
+
+                    {parentItems.length > 0 && (
+                      <div className="p-3 rounded-md bg-primary/10 border border-primary/30">
+                        <p className="text-sm font-bold text-foreground">
+                          MÉDIA = ({parentItems.map(p => p.name.trim().toUpperCase()).join(' + ')}) / {parentItems.length}
+                        </p>
+                        <p className="text-xs text-muted-foreground mt-1">
+                          Média final = soma simples das notas que compõem a média, dividida pela quantidade ({parentItems.length}).
+                        </p>
+                      </div>
+                    )}
+
+                    {orphanItems.length > 0 && (
+                      <p className="text-xs text-amber-600">
+                        ⚠ Itens sem "Item Pai" definido e que não compõem a média: {orphanItems.map(t => t.name.trim().toUpperCase()).join(', ')}
                       </p>
                     )}
                   </div>
-                </div>
-              )}
+                );
+              })()}
             </div>
           )}
 
