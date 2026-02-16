@@ -5,27 +5,20 @@ import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { useToast } from '@/hooks/use-toast';
-import { GraduationCap, Mail, Lock, User, ArrowLeft, Loader2 } from 'lucide-react';
+import { GraduationCap, Mail, Lock, ArrowLeft, Loader2 } from 'lucide-react';
 import { z } from 'zod';
-
 const loginSchema = z.object({
   email: z.string().trim().email('Email inválido').max(190, 'Email muito longo'),
   password: z.string().min(6, 'Senha deve ter no mínimo 6 caracteres'),
 });
 
-const signupSchema = loginSchema.extend({
-  name: z.string().trim().min(2, 'Nome deve ter no mínimo 2 caracteres').max(120, 'Nome muito longo'),
-});
-
 const Auth = () => {
   const navigate = useNavigate();
-  const { user, loading: authLoading, signIn, signUp } = useAuth();
+  const { user, loading: authLoading, signIn } = useAuth();
   const { toast } = useToast();
   
-  const [isLogin, setIsLogin] = useState(true);
   const [loading, setLoading] = useState(false);
   const [form, setForm] = useState({
-    name: '',
     email: '',
     password: '',
   });
@@ -40,11 +33,7 @@ const Auth = () => {
 
   const validateForm = () => {
     try {
-      if (isLogin) {
-        loginSchema.parse(form);
-      } else {
-        signupSchema.parse(form);
-      }
+      loginSchema.parse(form);
       setErrors({});
       return true;
     } catch (error) {
@@ -69,58 +58,33 @@ const Auth = () => {
     setLoading(true);
 
     try {
-      if (isLogin) {
-        const { error } = await signIn(form.email, form.password);
-        if (error) {
-          if (error.message.includes('Invalid login credentials')) {
-            toast({
-              title: 'Credenciais inválidas',
-              description: 'Email ou senha incorretos. Verifique e tente novamente.',
-              variant: 'destructive',
-            });
-          } else if (error.message.includes('Email not confirmed')) {
-            toast({
-              title: 'Email não confirmado',
-              description: 'Por favor, confirme seu email antes de entrar.',
-              variant: 'destructive',
-            });
-          } else {
-            toast({
-              title: 'Erro ao entrar',
-              description: error.message,
-              variant: 'destructive',
-            });
-          }
+      const { error } = await signIn(form.email, form.password);
+      if (error) {
+        if (error.message.includes('Invalid login credentials')) {
+          toast({
+            title: 'Credenciais inválidas',
+            description: 'Email ou senha incorretos. Verifique e tente novamente.',
+            variant: 'destructive',
+          });
+        } else if (error.message.includes('Email not confirmed')) {
+          toast({
+            title: 'Email não confirmado',
+            description: 'Por favor, confirme seu email antes de entrar.',
+            variant: 'destructive',
+          });
         } else {
           toast({
-            title: 'Bem-vindo!',
-            description: 'Login realizado com sucesso.',
+            title: 'Erro ao entrar',
+            description: error.message,
+            variant: 'destructive',
           });
-          navigate('/dashboard');
         }
       } else {
-        const { error } = await signUp(form.email, form.password, form.name);
-        if (error) {
-          if (error.message.includes('already registered')) {
-            toast({
-              title: 'Email já cadastrado',
-              description: 'Este email já está em uso. Tente fazer login.',
-              variant: 'destructive',
-            });
-          } else {
-            toast({
-              title: 'Erro no cadastro',
-              description: error.message,
-              variant: 'destructive',
-            });
-          }
-        } else {
-          toast({
-            title: 'Conta criada!',
-            description: 'Verifique seu email para confirmar o cadastro.',
-          });
-          setIsLogin(true);
-        }
+        toast({
+          title: 'Bem-vindo!',
+          description: 'Login realizado com sucesso.',
+        });
+        navigate('/dashboard');
       }
     } finally {
       setLoading(false);
@@ -158,34 +122,13 @@ const Auth = () => {
           </div>
 
           <h2 className="text-2xl font-display font-bold text-foreground mb-2">
-            {isLogin ? 'Entrar na conta' : 'Criar conta'}
+            Entrar na conta
           </h2>
           <p className="text-muted-foreground mb-8">
-            {isLogin 
-              ? 'Acesse o painel de gestão de frequência.'
-              : 'Cadastre-se para acessar o sistema.'}
+            Acesse o painel de gestão de frequência.
           </p>
 
           <form onSubmit={handleSubmit} className="space-y-5">
-            {!isLogin && (
-              <div className="space-y-2">
-                <Label htmlFor="name">Nome completo</Label>
-                <div className="relative">
-                  <User className="absolute left-4 top-1/2 -translate-y-1/2 w-5 h-5 text-muted-foreground" />
-                  <Input
-                    id="name"
-                    type="text"
-                    placeholder="Seu nome"
-                    className="input-mobile pl-12"
-                    value={form.name}
-                    onChange={(e) => setForm({ ...form, name: e.target.value })}
-                  />
-                </div>
-                {errors.name && (
-                  <p className="text-sm text-destructive">{errors.name}</p>
-                )}
-              </div>
-            )}
 
             <div className="space-y-2">
               <Label htmlFor="email">Email</Label>
@@ -230,21 +173,12 @@ const Auth = () => {
               disabled={loading}
             >
               {loading && <Loader2 className="w-5 h-5 animate-spin" />}
-              {isLogin ? 'Entrar' : 'Criar conta'}
+              Entrar
             </Button>
           </form>
 
           <p className="mt-8 text-center text-sm text-muted-foreground">
-            {isLogin ? 'Não tem uma conta?' : 'Já tem uma conta?'}
-            <button
-              onClick={() => {
-                setIsLogin(!isLogin);
-                setErrors({});
-              }}
-              className="ml-2 font-medium text-primary hover:underline"
-            >
-              {isLogin ? 'Cadastre-se' : 'Entrar'}
-            </button>
+            O cadastro de novos usuários é feito apenas por administradores.
           </p>
         </div>
       </div>
