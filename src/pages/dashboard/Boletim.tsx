@@ -348,7 +348,12 @@ const Boletim = () => {
 
     try {
       for (const id of deletedGradeIds) {
-        await supabase.from('student_grades').delete().eq('id', id);
+        const { error: delError } = await supabase.from('student_grades').delete().eq('id', id);
+        if (delError) {
+          toast({ title: 'Erro ao excluir nota', description: delError.message, variant: 'destructive' });
+          setSaving(false);
+          return;
+        }
       }
 
       for (const row of editRows) {
@@ -380,9 +385,19 @@ const Boletim = () => {
         };
 
         if (row.id) {
-          await supabase.from('student_grades').update(payload).eq('id', row.id);
+          const { error: updError } = await supabase.from('student_grades').update(payload).eq('id', row.id);
+          if (updError) {
+            toast({ title: `Erro ao atualizar "${row.grade_type}"`, description: updError.message, variant: 'destructive' });
+            setSaving(false);
+            return;
+          }
         } else {
-          await supabase.from('student_grades').insert(payload);
+          const { error: insError } = await supabase.from('student_grades').insert(payload);
+          if (insError) {
+            toast({ title: `Erro ao inserir "${row.grade_type}"`, description: insError.message, variant: 'destructive' });
+            setSaving(false);
+            return;
+          }
         }
       }
 
