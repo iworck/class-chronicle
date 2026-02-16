@@ -949,32 +949,38 @@ export type Database = {
         Row: {
           created_at: string
           enrollment_id: string
+          grade_category: string
           grade_type: string
           grade_value: number
           id: string
           observations: string | null
           professor_user_id: string
           updated_at: string
+          weight: number
         }
         Insert: {
           created_at?: string
           enrollment_id: string
+          grade_category?: string
           grade_type: string
           grade_value: number
           id?: string
           observations?: string | null
           professor_user_id: string
           updated_at?: string
+          weight?: number
         }
         Update: {
           created_at?: string
           enrollment_id?: string
+          grade_category?: string
           grade_type?: string
           grade_value?: number
           id?: string
           observations?: string | null
           professor_user_id?: string
           updated_at?: string
+          weight?: number
         }
         Relationships: [
           {
