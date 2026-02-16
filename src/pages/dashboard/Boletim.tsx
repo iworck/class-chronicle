@@ -396,8 +396,48 @@ const Boletim = () => {
 
     const existingGrades = getStudentGrades(enrollment.id);
 
-    if (existingGrades.length > 0) {
-      // Use existing grades
+    if (templateItems.length > 0) {
+      // Merge template with existing grades
+      const rows: EditGradeRow[] = templateItems.map(t => {
+        const existing = existingGrades.find(g => g.grade_type.toUpperCase() === t.name.toUpperCase());
+        if (existing) {
+          return {
+            id: existing.id,
+            grade_type: existing.grade_type,
+            grade_category: existing.grade_category || t.category,
+            grade_value: String(existing.grade_value),
+            weight: String(existing.weight || t.weight),
+            counts_in_final: existing.counts_in_final !== false,
+            observations: existing.observations || '',
+          };
+        }
+        return {
+          grade_type: t.name,
+          grade_category: t.category,
+          grade_value: '',
+          weight: String(t.weight),
+          counts_in_final: t.counts_in_final,
+          observations: '',
+        };
+      });
+
+      // Also add any extra grades not in template
+      const templateNames = new Set(templateItems.map(t => t.name.toUpperCase()));
+      const extras = existingGrades.filter(g => !templateNames.has(g.grade_type.toUpperCase()));
+      for (const g of extras) {
+        rows.push({
+          id: g.id,
+          grade_type: g.grade_type,
+          grade_category: g.grade_category || 'prova',
+          grade_value: String(g.grade_value),
+          weight: String(g.weight || 1),
+          counts_in_final: g.counts_in_final !== false,
+          observations: g.observations || '',
+        });
+      }
+
+      setEditRows(rows);
+    } else if (existingGrades.length > 0) {
       setEditRows(existingGrades.map(g => ({
         id: g.id,
         grade_type: g.grade_type,
@@ -406,16 +446,6 @@ const Boletim = () => {
         weight: String(g.weight || 1),
         counts_in_final: g.counts_in_final !== false,
         observations: g.observations || '',
-      })));
-    } else if (templateItems.length > 0) {
-      // Pre-populate from template
-      setEditRows(templateItems.map(t => ({
-        grade_type: t.name,
-        grade_category: t.category,
-        grade_value: '',
-        weight: String(t.weight),
-        counts_in_final: t.counts_in_final,
-        observations: '',
       })));
     } else {
       setEditRows([{ grade_type: 'N1', grade_category: 'prova', grade_value: '', weight: '1', counts_in_final: true, observations: '' }]);
