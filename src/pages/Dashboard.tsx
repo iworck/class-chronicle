@@ -26,6 +26,7 @@ import Campi from '@/pages/dashboard/Campi';
 import Unidades from '@/pages/dashboard/Unidades';
 import Usuarios from '@/pages/dashboard/Usuarios';
 import Configuracoes from '@/pages/dashboard/Configuracoes';
+import Cursos from '@/pages/dashboard/Cursos';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -80,10 +81,10 @@ const Dashboard = () => {
       roles: ['super_admin', 'admin', 'diretor'] 
     },
     { 
-      icon: Building2, 
+      icon: GraduationCap, 
       label: 'Cursos', 
       path: '/dashboard/cursos',
-      roles: ['admin'] 
+      roles: ['super_admin', 'admin', 'diretor', 'gerente'] 
     },
     { 
       icon: BookOpen, 
@@ -260,6 +261,7 @@ const Dashboard = () => {
               <Route path="campi" element={<Campi />} />
               <Route path="unidades" element={<Unidades />} />
               <Route path="usuarios" element={<Usuarios />} />
+              <Route path="cursos" element={<Cursos />} />
               <Route path="disciplinas" element={<Disciplinas />} />
               <Route path="configuracoes" element={<Configuracoes />} />
               <Route path="*" element={<div className="text-center py-16 text-muted-foreground">Página em construção</div>} />
