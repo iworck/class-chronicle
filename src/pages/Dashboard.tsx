@@ -28,6 +28,7 @@ import Usuarios from '@/pages/dashboard/Usuarios';
 import Configuracoes from '@/pages/dashboard/Configuracoes';
 import Cursos from '@/pages/dashboard/Cursos';
 import Matrizes from '@/pages/dashboard/Matrizes';
+import Turmas from '@/pages/dashboard/Turmas';
 import Alunos from '@/pages/dashboard/Alunos';
 
 const Dashboard = () => {
@@ -272,6 +273,7 @@ const Dashboard = () => {
               <Route path="cursos" element={<Cursos />} />
               <Route path="disciplinas" element={<Disciplinas />} />
               <Route path="matrizes" element={<Matrizes />} />
+              <Route path="turmas" element={<Turmas />} />
               <Route path="alunos" element={<Alunos />} />
               <Route path="configuracoes" element={<Configuracoes />} />
               <Route path="*" element={<div className="text-center py-16 text-muted-foreground">Página em construção</div>} />
