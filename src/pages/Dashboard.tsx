@@ -28,6 +28,7 @@ import Usuarios from '@/pages/dashboard/Usuarios';
 import Configuracoes from '@/pages/dashboard/Configuracoes';
 import Cursos from '@/pages/dashboard/Cursos';
 import Matrizes from '@/pages/dashboard/Matrizes';
+import Alunos from '@/pages/dashboard/Alunos';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -109,11 +110,11 @@ const Dashboard = () => {
       icon: UserCheck, 
       label: 'Alunos', 
       path: '/dashboard/alunos',
-      roles: ['admin', 'coordenador'] 
+      roles: ['admin', 'coordenador', 'gerente'] 
     },
     { 
       icon: Calendar, 
-      label: 'Minhas Aulas', 
+      label: 'Minhas Aulas',
       path: '/dashboard/aulas',
       roles: ['professor'] 
     },
@@ -271,6 +272,7 @@ const Dashboard = () => {
               <Route path="cursos" element={<Cursos />} />
               <Route path="disciplinas" element={<Disciplinas />} />
               <Route path="matrizes" element={<Matrizes />} />
+              <Route path="alunos" element={<Alunos />} />
               <Route path="configuracoes" element={<Configuracoes />} />
               <Route path="*" element={<div className="text-center py-16 text-muted-foreground">Página em construção</div>} />
             </Routes>
