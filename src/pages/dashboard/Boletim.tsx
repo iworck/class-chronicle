@@ -232,13 +232,50 @@ const Boletim = () => {
     return grades.filter(g => g.enrollment_id === enrollmentId);
   }
 
+  function calculateNValue(parentGradeType: string, enrollmentId: string): number | null {
+    // Find children of this parent in template
+    const parentTemplate = templateItems.find(t => t.counts_in_final && t.name === parentGradeType);
+    if (!parentTemplate) return null;
+
+    const children = templateItems.filter(t => !t.counts_in_final && t.parent_item_id && (t.parent_item_id === parentTemplate.id));
+    if (children.length === 0) {
+      // No children — use the grade value directly
+      const directGrade = grades.find(g => g.enrollment_id === enrollmentId && g.grade_type === parentGradeType);
+      return directGrade ? directGrade.grade_value : null;
+    }
+
+    // Calculate N = sum of children's (value * weight)
+    let sum = 0;
+    let allFound = true;
+    for (const child of children) {
+      const childGrade = grades.find(g => g.enrollment_id === enrollmentId && g.grade_type === child.name);
+      if (!childGrade) { allFound = false; continue; }
+      sum += childGrade.grade_value * child.weight;
+    }
+    return allFound ? sum : null;
+  }
+
   function getWeightedAverage(enrollmentId: string): number | null {
-    const studentGrades = grades.filter(g => g.enrollment_id === enrollmentId && g.counts_in_final !== false);
-    if (studentGrades.length === 0) return null;
-    const totalWeight = studentGrades.reduce((acc, g) => acc + (g.weight || 1), 0);
-    if (totalWeight === 0) return null;
-    const weightedSum = studentGrades.reduce((acc, g) => acc + g.grade_value * (g.weight || 1), 0);
-    return weightedSum / totalWeight;
+    const parentItems = templateItems.filter(t => t.counts_in_final);
+
+    if (parentItems.length === 0) {
+      // No template — fallback to old weighted average for counts_in_final grades
+      const studentGrades = grades.filter(g => g.enrollment_id === enrollmentId && g.counts_in_final !== false);
+      if (studentGrades.length === 0) return null;
+      const totalWeight = studentGrades.reduce((acc, g) => acc + (g.weight || 1), 0);
+      if (totalWeight === 0) return null;
+      const weightedSum = studentGrades.reduce((acc, g) => acc + g.grade_value * (g.weight || 1), 0);
+      return weightedSum / totalWeight;
+    }
+
+    // MEDIA = (N1 + N2 + ...) / count of N's
+    const nValues: number[] = [];
+    for (const parent of parentItems) {
+      const val = calculateNValue(parent.name, enrollmentId);
+      if (val !== null) nValues.push(val);
+    }
+    if (nValues.length === 0) return null;
+    return nValues.reduce((a, b) => a + b, 0) / nValues.length;
   }
 
   function getAttendancePct(studentId: string): number | null {
@@ -420,9 +457,20 @@ const Boletim = () => {
                     </div>
                   </div>
                 )}
-                <p className="text-xs text-muted-foreground mt-2">
-                  Apenas notas marcadas como "Compõe Média" entram no cálculo da média ponderada final.
-                </p>
+                {templateItems.length > 0 && (() => {
+                  const parentItems = templateItems.filter(t => t.counts_in_final);
+                  return parentItems.length > 0 ? (
+                    <p className="text-xs text-muted-foreground mt-2">
+                      <strong>Fórmula:</strong> MÉDIA = ({parentItems.map(p => p.name).join(' + ')}) / {parentItems.length}.
+                      {' '}Cada nota é calculada pela soma dos seus componentes (valor × peso).
+                    </p>
+                  ) : null;
+                })()}
+                {templateItems.length === 0 && (
+                  <p className="text-xs text-muted-foreground mt-2">
+                    Apenas notas marcadas como "Compõe Média" entram no cálculo da média ponderada final.
+                  </p>
+                )}
               </div>
             </div>
           </div>
@@ -640,43 +688,97 @@ const Boletim = () => {
               Adicionar Nota
             </Button>
 
-            {/* Preview weighted average — only counts_in_final rows */}
+            {/* Preview with formula */}
             {editRows.some(r => r.grade_value.trim() !== '') && (() => {
-              let ws = 0, tw = 0;
-              editRows.forEach(r => {
-                if (!r.counts_in_final) return;
-                const v = parseFloat(r.grade_value);
-                const w = parseFloat(r.weight) || 1;
-                if (!isNaN(v)) { ws += v * w; tw += w; }
-              });
-              const previewAvg = tw > 0 ? ws / tw : null;
+              const parentItems = templateItems.filter(t => t.counts_in_final);
 
-              // Also show sub-items preview
-              const subItems = editRows.filter(r => !r.counts_in_final && r.grade_value.trim() !== '');
+              // Calculate each N from its children
+              const nCalcs: { name: string; value: number | null; details: string }[] = [];
 
-              return (
-                <div className="mt-3 p-3 rounded-md border border-border bg-muted/50 space-y-2">
-                  {subItems.length > 0 && (
-                    <div>
-                      <p className="text-xs text-muted-foreground font-semibold">Critérios (não compõem a média diretamente):</p>
-                      <div className="flex flex-wrap gap-1 mt-1">
-                        {subItems.map((r, i) => (
-                          <Badge key={i} variant="secondary" className="text-xs">
-                            {r.grade_type}: {r.grade_value} (p{r.weight})
-                          </Badge>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                  <div>
+              if (parentItems.length > 0) {
+                for (const parent of parentItems) {
+                  const children = templateItems.filter(t => !t.counts_in_final && t.parent_item_id === parent.id);
+                  if (children.length > 0) {
+                    let sum = 0;
+                    let allFound = true;
+                    const parts: string[] = [];
+                    for (const child of children) {
+                      const row = editRows.find(r => r.grade_type.toUpperCase() === child.name.toUpperCase());
+                      const v = row ? parseFloat(row.grade_value) : NaN;
+                      const w = child.weight;
+                      if (!isNaN(v)) {
+                        sum += v * w;
+                        parts.push(`${child.name}(${v} × ${w} = ${(v * w).toFixed(2)})`);
+                      } else {
+                        allFound = false;
+                        parts.push(`${child.name}(? × ${w})`);
+                      }
+                    }
+                    nCalcs.push({
+                      name: parent.name,
+                      value: allFound ? sum : null,
+                      details: parts.join(' + '),
+                    });
+                  } else {
+                    const row = editRows.find(r => r.grade_type.toUpperCase() === parent.name.toUpperCase());
+                    const v = row ? parseFloat(row.grade_value) : NaN;
+                    nCalcs.push({
+                      name: parent.name,
+                      value: !isNaN(v) ? v : null,
+                      details: `${parent.name} = ${!isNaN(v) ? v.toFixed(2) : '?'}`,
+                    });
+                  }
+                }
+              }
+
+              const validNs = nCalcs.filter(n => n.value !== null);
+              const previewAvg = validNs.length > 0
+                ? validNs.reduce((a, n) => a + n.value!, 0) / validNs.length
+                : null;
+
+              // Fallback for no template
+              if (parentItems.length === 0) {
+                let ws = 0, tw = 0;
+                editRows.forEach(r => {
+                  if (!r.counts_in_final) return;
+                  const v = parseFloat(r.grade_value);
+                  const w = parseFloat(r.weight) || 1;
+                  if (!isNaN(v)) { ws += v * w; tw += w; }
+                });
+                const fallbackAvg = tw > 0 ? ws / tw : null;
+                return (
+                  <div className="mt-3 p-3 rounded-md border border-border bg-muted/50">
                     <p className="text-sm text-foreground">
-                      <strong>Prévia da Média Ponderada (itens que compõem):</strong>{' '}
-                      {previewAvg !== null ? (
-                        <span className="text-lg font-bold">{previewAvg.toFixed(2)}</span>
-                      ) : '—'}
+                      <strong>Prévia da Média Ponderada:</strong>{' '}
+                      {fallbackAvg !== null ? <span className="text-lg font-bold">{fallbackAvg.toFixed(2)}</span> : '—'}
                     </p>
                     <p className="text-xs text-muted-foreground mt-1">
                       Fórmula: Σ(nota × peso) / Σ(peso) = {tw > 0 ? `${ws.toFixed(1)} / ${tw.toFixed(1)}` : '—'}
+                    </p>
+                  </div>
+                );
+              }
+
+              return (
+                <div className="mt-3 p-4 rounded-md border border-border bg-muted/50 space-y-3">
+                  <p className="text-sm font-semibold text-foreground">📐 Cálculo das Notas:</p>
+
+                  {nCalcs.map((n, i) => (
+                    <div key={i} className="p-2 rounded bg-background border border-border">
+                      <p className="text-xs text-muted-foreground">{n.details}</p>
+                      <p className="text-sm font-bold text-foreground">
+                        {n.name} = {n.value !== null ? n.value.toFixed(2) : '—'}
+                      </p>
+                    </div>
+                  ))}
+
+                  <div className="p-3 rounded-md bg-primary/10 border border-primary/30">
+                    <p className="text-xs text-muted-foreground">
+                      MÉDIA = ({nCalcs.map(n => n.name).join(' + ')}) / {nCalcs.length}
+                      {validNs.length > 0 && ` = ${validNs.map(n => n.value!.toFixed(2)).join(' + ')} / ${validNs.length}`}
+                    </p>
+                    <p className="text-lg font-bold text-primary mt-1">
+                      MÉDIA = {previewAvg !== null ? previewAvg.toFixed(2) : '—'}
                     </p>
                   </div>
                 </div>
@@ -737,12 +839,20 @@ const Boletim = () => {
                 </Table>
               </>
             )}
-            {viewAvg !== null && (
-              <div className="p-3 rounded-md border border-border bg-muted/50 text-center">
-                <p className="text-sm text-muted-foreground">Média Ponderada (itens que compõem)</p>
-                <p className="text-2xl font-bold text-primary">{viewAvg.toFixed(2)}</p>
-              </div>
-            )}
+            {viewAvg !== null && (() => {
+              const parentItems = templateItems.filter(t => t.counts_in_final);
+              return (
+                <div className="p-3 rounded-md border border-border bg-muted/50 text-center space-y-1">
+                  {parentItems.length > 0 && (
+                    <p className="text-xs text-muted-foreground">
+                      MÉDIA = ({parentItems.map(p => p.name).join(' + ')}) / {parentItems.length}
+                    </p>
+                  )}
+                  <p className="text-sm text-muted-foreground">Média Final</p>
+                  <p className="text-2xl font-bold text-primary">{viewAvg.toFixed(2)}</p>
+                </div>
+              );
+            })()}
           </div>
         </DialogContent>
       </Dialog>
