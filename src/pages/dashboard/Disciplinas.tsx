@@ -1,9 +1,10 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect, useMemo, useRef } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -17,7 +18,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import {
-  Plus, Search, Pencil, Trash2, BookOpen, Link2, Loader2,
+  Plus, Search, Pencil, Trash2, BookOpen, Link2, Loader2, Upload, FileText, X,
 } from 'lucide-react';
 import type { Tables } from '@/integrations/supabase/types';
 
@@ -62,6 +63,10 @@ const Disciplinas = () => {
   const [formCode, setFormCode] = useState('');
   const [formWorkload, setFormWorkload] = useState('0');
   const [formStatus, setFormStatus] = useState<'ATIVO' | 'INATIVO'>('ATIVO');
+  const [formLessonPlan, setFormLessonPlan] = useState('');
+  const [formPdfUrl, setFormPdfUrl] = useState('');
+  const [uploadingPdf, setUploadingPdf] = useState(false);
+  const pdfInputRef = useRef<HTMLInputElement>(null);
   const [formCourseId, setFormCourseId] = useState('');
   const [formCampusFilter, setFormCampusFilter] = useState('');
   const [formUnitFilter, setFormUnitFilter] = useState('');
@@ -161,6 +166,8 @@ const Disciplinas = () => {
     setFormCourseId('');
     setFormCampusFilter('');
     setFormUnitFilter('');
+    setFormLessonPlan('');
+    setFormPdfUrl('');
     setDialogOpen(true);
   }
 
@@ -170,6 +177,8 @@ const Disciplinas = () => {
     setFormCode(s.code);
     setFormWorkload(String(s.workload_hours));
     setFormStatus(s.status);
+    setFormLessonPlan((s as any).lesson_plan || '');
+    setFormPdfUrl('');
     const cid = (s as any).course_id || '';
     setFormCourseId(cid);
     // Set filters based on existing course
@@ -202,6 +211,7 @@ const Disciplinas = () => {
       workload_hours: parseInt(formWorkload) || 0,
       status: formStatus,
       course_id: formCourseId || null,
+      lesson_plan: formLessonPlan.trim() || null,
     };
 
     if (editing) {
@@ -224,6 +234,31 @@ const Disciplinas = () => {
       }
     }
     setSaving(false);
+  }
+
+  async function handlePdfUpload(e: React.ChangeEvent<HTMLInputElement>) {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.type !== 'application/pdf') {
+      toast({ title: 'Apenas arquivos PDF são permitidos', variant: 'destructive' });
+      return;
+    }
+    if (file.size > 20 * 1024 * 1024) {
+      toast({ title: 'Arquivo muito grande (máx. 20MB)', variant: 'destructive' });
+      return;
+    }
+    setUploadingPdf(true);
+    const fileName = `${Date.now()}_${file.name}`;
+    const { error } = await supabase.storage.from('lesson-plans').upload(fileName, file);
+    if (error) {
+      toast({ title: 'Erro no upload', description: error.message, variant: 'destructive' });
+    } else {
+      const { data: urlData } = supabase.storage.from('lesson-plans').getPublicUrl(fileName);
+      setFormPdfUrl(urlData.publicUrl);
+      toast({ title: 'PDF enviado com sucesso' });
+    }
+    setUploadingPdf(false);
+    if (pdfInputRef.current) pdfInputRef.current.value = '';
   }
 
   async function handleDelete(id: string) {
@@ -461,7 +496,7 @@ const Disciplinas = () => {
 
       {/* ===== Dialog: Criar/Editar Disciplina ===== */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Disciplina' : 'Nova Disciplina'}</DialogTitle>
           </DialogHeader>
@@ -537,6 +572,56 @@ const Disciplinas = () => {
                 </Select>
                 <p className="text-xs text-muted-foreground mt-1">
                   Use os filtros de Campus e Unidade para localizar o curso desejado.
+                </p>
+              </div>
+            </div>
+
+            {/* Plano de Aulas */}
+            <div className="rounded-lg border border-border p-4 space-y-3 bg-muted/30">
+              <p className="text-sm font-medium text-foreground">Plano de Aplicação das Aulas</p>
+              <div>
+                <Label className="text-xs">Conteúdo proposto, metodologia e observações</Label>
+                <Textarea
+                  value={formLessonPlan}
+                  onChange={(e) => setFormLessonPlan(e.target.value)}
+                  placeholder="Descreva o conteúdo programático, metodologia de ensino, recursos didáticos, critérios de avaliação e outras informações relevantes..."
+                  rows={5}
+                />
+              </div>
+              <div>
+                <Label className="text-xs">Anexo PDF (opcional)</Label>
+                <input
+                  ref={pdfInputRef}
+                  type="file"
+                  accept="application/pdf"
+                  onChange={handlePdfUpload}
+                  className="hidden"
+                />
+                <div className="flex items-center gap-2 mt-1">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    onClick={() => pdfInputRef.current?.click()}
+                    disabled={uploadingPdf}
+                  >
+                    {uploadingPdf ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Upload className="w-4 h-4 mr-2" />}
+                    {uploadingPdf ? 'Enviando...' : 'Enviar PDF'}
+                  </Button>
+                  {formPdfUrl && (
+                    <div className="flex items-center gap-1 text-sm text-muted-foreground">
+                      <FileText className="w-4 h-4 text-primary" />
+                      <a href={formPdfUrl} target="_blank" rel="noopener noreferrer" className="underline text-primary hover:text-primary/80">
+                        Ver PDF
+                      </a>
+                      <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => setFormPdfUrl('')}>
+                        <X className="w-3 h-3 text-destructive" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Envie o plano de aulas em PDF (máx. 20MB).
                 </p>
               </div>
             </div>
