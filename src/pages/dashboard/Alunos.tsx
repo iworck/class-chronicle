@@ -20,6 +20,7 @@ import { toast } from '@/hooks/use-toast';
 import {
   Plus, Search, Pencil, Trash2, Loader2, UserCheck, Eye, Upload, FileText, ArrowRightLeft, XCircle, PauseCircle,
 } from 'lucide-react';
+import EnrollmentTab from '@/components/student/EnrollmentTab';
 
 interface Student {
   id: string;
@@ -706,8 +707,9 @@ const Alunos = () => {
             </div>
           ) : (
             <Tabs value={viewTab} onValueChange={setViewTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-4">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="dados">Dados</TabsTrigger>
+                <TabsTrigger value="matricula">Matrícula</TabsTrigger>
                 <TabsTrigger value="documentos">Documentos</TabsTrigger>
                 <TabsTrigger value="vinculo">Vínculo</TabsTrigger>
                 <TabsTrigger value="solicitacoes">Solicitações</TabsTrigger>
@@ -745,6 +747,16 @@ const Alunos = () => {
                       </div>
                     </div>
                   </>
+                )}
+              </TabsContent>
+
+              <TabsContent value="matricula" className="mt-4">
+                {viewStudent && (
+                  <EnrollmentTab
+                    studentId={viewStudent.id}
+                    studentCourseId={viewStudent.course_id}
+                    canManage={canManage}
+                  />
                 )}
               </TabsContent>
 
