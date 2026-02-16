@@ -401,9 +401,57 @@ const Boletim = () => {
         }
       }
 
-      toast({ title: 'Notas salvas com sucesso! Status atualizado automaticamente.' });
+      // Reload data and calculate the new average for feedback
+      await loadEnrollmentsAndGrades(selectedClassSubject);
+
+      // Calculate preview average from saved rows for the toast
+      const parentItems = templateItems.filter(t => t.counts_in_final);
+      let newAvg: number | null = null;
+
+      if (parentItems.length > 0) {
+        const nValues: number[] = [];
+        for (const parent of parentItems) {
+          const children = templateItems.filter(t => !t.counts_in_final && t.parent_item_id === parent.id);
+          if (children.length > 0) {
+            let sum = 0;
+            let allFound = true;
+            for (const child of children) {
+              const row = editRows.find(r => r.grade_type.trim().toUpperCase() === child.name.toUpperCase());
+              const v = row ? parseFloat(row.grade_value) : NaN;
+              if (!isNaN(v)) {
+                sum += v * child.weight;
+              } else {
+                allFound = false;
+              }
+            }
+            if (allFound) nValues.push(sum);
+          } else {
+            const row = editRows.find(r => r.grade_type.trim().toUpperCase() === parent.name.toUpperCase());
+            const v = row ? parseFloat(row.grade_value) : NaN;
+            if (!isNaN(v)) nValues.push(v);
+          }
+        }
+        if (nValues.length > 0) {
+          newAvg = nValues.reduce((a, b) => a + b, 0) / nValues.length;
+        }
+      } else {
+        let ws = 0, tw = 0;
+        editRows.forEach(r => {
+          if (!r.counts_in_final) return;
+          const v = parseFloat(r.grade_value);
+          const w = parseFloat(r.weight) || 1;
+          if (!isNaN(v)) { ws += v * w; tw += w; }
+        });
+        if (tw > 0) newAvg = ws / tw;
+      }
+
+      toast({
+        title: 'Notas salvas com sucesso!',
+        description: newAvg !== null
+          ? `Nova média calculada: ${newAvg.toFixed(2)}. Status atualizado automaticamente.`
+          : 'Status atualizado automaticamente.',
+      });
       setEditDialog(false);
-      loadEnrollmentsAndGrades(selectedClassSubject);
     } catch (err: any) {
       toast({ title: 'Erro ao salvar notas', description: err.message, variant: 'destructive' });
     }
