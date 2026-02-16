@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from 'react';
+import { useState, useEffect } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info } from 'lucide-react';
+import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2 } from 'lucide-react';
 
 interface ClassSubject {
   id: string;
@@ -43,11 +43,20 @@ interface Grade {
   enrollment_id: string;
   grade_type: string;
   grade_value: number;
+  grade_category: string;
+  weight: number;
   professor_user_id: string;
   observations: string | null;
 }
 
-const GRADE_TYPES = ['N1', 'N2', 'N3', 'N4'];
+const GRADE_CATEGORIES = [
+  { value: 'prova', label: 'Prova' },
+  { value: 'trabalho', label: 'Trabalho' },
+  { value: 'media', label: 'Média' },
+  { value: 'ponto_extra', label: 'Ponto Extra' },
+];
+
+const categoryLabel = (cat: string) => GRADE_CATEGORIES.find(c => c.value === cat)?.label || cat;
 
 const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline' }> = {
   CURSANDO: { label: 'Cursando', variant: 'default' },
@@ -55,6 +64,15 @@ const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondar
   REPROVADO: { label: 'Reprovado', variant: 'destructive' },
   TRANCADO: { label: 'Trancado', variant: 'secondary' },
 };
+
+interface EditGradeRow {
+  id?: string; // existing grade id
+  grade_type: string;
+  grade_category: string;
+  grade_value: string;
+  weight: string;
+  observations: string;
+}
 
 const Boletim = () => {
   const { user, hasRole } = useAuth();
@@ -70,7 +88,8 @@ const Boletim = () => {
   const [editDialog, setEditDialog] = useState(false);
   const [editEnrollmentId, setEditEnrollmentId] = useState('');
   const [editStudentName, setEditStudentName] = useState('');
-  const [editGrades, setEditGrades] = useState<Record<string, { value: string; observations: string }>>({});
+  const [editRows, setEditRows] = useState<EditGradeRow[]>([]);
+  const [deletedGradeIds, setDeletedGradeIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   const isProfessor = hasRole('professor');
@@ -105,7 +124,6 @@ const Boletim = () => {
     const cs = classSubjects.find(c => c.id === classSubjectId);
     if (!cs) return;
 
-    // Get students enrolled in this class
     const { data: classStudents } = await supabase
       .from('class_students')
       .select('student_id')
@@ -122,7 +140,6 @@ const Boletim = () => {
       return;
     }
 
-    // Get enrollments for this subject
     const { data: enrollData } = await supabase
       .from('student_subject_enrollments')
       .select('id, student_id, subject_id, matrix_id, semester, status, student:students(id, name, enrollment)')
@@ -133,7 +150,6 @@ const Boletim = () => {
     const enrollList = (enrollData as any[]) || [];
     setEnrollments(enrollList);
 
-    // Get grades for these enrollments
     if (enrollList.length > 0) {
       const enrollIds = enrollList.map(e => e.id);
       const { data: gradeData } = await supabase
@@ -145,10 +161,8 @@ const Boletim = () => {
       setGrades([]);
     }
 
-    // Load attendance data for each student in this subject
+    // Load attendance
     const attMap: Record<string, { total: number; present: number }> = {};
-    
-    // Get all closed sessions for this subject in this class
     const { data: sessions } = await supabase
       .from('attendance_sessions')
       .select('id')
@@ -160,7 +174,6 @@ const Boletim = () => {
     const totalSessions = sessionIds.length;
 
     if (totalSessions > 0) {
-      // Get attendance records for all students in these sessions
       const { data: records } = await supabase
         .from('attendance_records')
         .select('student_id, final_status')
@@ -187,15 +200,17 @@ const Boletim = () => {
     loadEnrollmentsAndGrades(value);
   }
 
-  function getGrade(enrollmentId: string, gradeType: string): Grade | undefined {
-    return grades.find(g => g.enrollment_id === enrollmentId && g.grade_type === gradeType);
+  function getStudentGrades(enrollmentId: string): Grade[] {
+    return grades.filter(g => g.enrollment_id === enrollmentId);
   }
 
-  function getAverage(enrollmentId: string): number | null {
+  function getWeightedAverage(enrollmentId: string): number | null {
     const studentGrades = grades.filter(g => g.enrollment_id === enrollmentId);
     if (studentGrades.length === 0) return null;
-    const sum = studentGrades.reduce((acc, g) => acc + g.grade_value, 0);
-    return sum / studentGrades.length;
+    const totalWeight = studentGrades.reduce((acc, g) => acc + (g.weight || 1), 0);
+    if (totalWeight === 0) return null;
+    const weightedSum = studentGrades.reduce((acc, g) => acc + g.grade_value * (g.weight || 1), 0);
+    return weightedSum / totalWeight;
   }
 
   function getAttendancePct(studentId: string): number | null {
@@ -204,19 +219,56 @@ const Boletim = () => {
     return (att.present / att.total) * 100;
   }
 
+  // Get unique grade types across all enrollments for column headers
+  function getAllGradeTypes(): string[] {
+    const types = new Set<string>();
+    grades.forEach(g => types.add(g.grade_type));
+    return Array.from(types).sort();
+  }
+
   function openEditDialog(enrollment: EnrollmentWithStudent) {
     setEditEnrollmentId(enrollment.id);
     setEditStudentName(enrollment.student?.name || '');
-    const gradeMap: Record<string, { value: string; observations: string }> = {};
-    for (const gt of GRADE_TYPES) {
-      const existing = getGrade(enrollment.id, gt);
-      gradeMap[gt] = {
-        value: existing ? String(existing.grade_value) : '',
-        observations: existing?.observations || '',
-      };
+    setDeletedGradeIds([]);
+
+    const existingGrades = getStudentGrades(enrollment.id);
+    if (existingGrades.length > 0) {
+      setEditRows(existingGrades.map(g => ({
+        id: g.id,
+        grade_type: g.grade_type,
+        grade_category: g.grade_category || 'prova',
+        grade_value: String(g.grade_value),
+        weight: String(g.weight || 1),
+        observations: g.observations || '',
+      })));
+    } else {
+      // Start with one empty row
+      setEditRows([{ grade_type: 'N1', grade_category: 'prova', grade_value: '', weight: '1', observations: '' }]);
     }
-    setEditGrades(gradeMap);
     setEditDialog(true);
+  }
+
+  function addGradeRow() {
+    const nextNum = editRows.length + 1;
+    setEditRows(prev => [...prev, {
+      grade_type: `N${nextNum}`,
+      grade_category: 'prova',
+      grade_value: '',
+      weight: '1',
+      observations: '',
+    }]);
+  }
+
+  function removeGradeRow(index: number) {
+    const row = editRows[index];
+    if (row.id) {
+      setDeletedGradeIds(prev => [...prev, row.id!]);
+    }
+    setEditRows(prev => prev.filter((_, i) => i !== index));
+  }
+
+  function updateGradeRow(index: number, field: keyof EditGradeRow, value: string) {
+    setEditRows(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
   }
 
   async function handleSaveGrades() {
@@ -224,45 +276,48 @@ const Boletim = () => {
     setSaving(true);
 
     try {
-      for (const gradeType of GRADE_TYPES) {
-        const entry = editGrades[gradeType];
-        const existing = getGrade(editEnrollmentId, gradeType);
-        const value = entry.value.trim();
+      // Delete removed grades
+      for (const id of deletedGradeIds) {
+        await supabase.from('student_grades').delete().eq('id', id);
+      }
 
-        if (value === '' && existing) {
-          // Delete the grade
-          await supabase.from('student_grades').delete().eq('id', existing.id);
-        } else if (value !== '') {
-          const numVal = parseFloat(value);
-          if (isNaN(numVal) || numVal < 0 || numVal > 10) {
-            toast({ title: `Nota ${gradeType} inválida (0-10)`, variant: 'destructive' });
-            setSaving(false);
-            return;
-          }
+      // Upsert each row
+      for (const row of editRows) {
+        if (row.grade_value.trim() === '') continue;
 
-          if (existing) {
-            await supabase
-              .from('student_grades')
-              .update({
-                grade_value: numVal,
-                observations: entry.observations || null,
-              })
-              .eq('id', existing.id);
-          } else {
-            await supabase.from('student_grades').insert({
-              enrollment_id: editEnrollmentId,
-              grade_type: gradeType,
-              grade_value: numVal,
-              professor_user_id: user.id,
-              observations: entry.observations || null,
-            });
-          }
+        const numVal = parseFloat(row.grade_value);
+        if (isNaN(numVal) || numVal < 0 || numVal > 10) {
+          toast({ title: `Nota "${row.grade_type}" inválida (0-10)`, variant: 'destructive' });
+          setSaving(false);
+          return;
+        }
+
+        const numWeight = parseFloat(row.weight) || 1;
+        if (numWeight <= 0) {
+          toast({ title: `Peso de "${row.grade_type}" deve ser maior que 0`, variant: 'destructive' });
+          setSaving(false);
+          return;
+        }
+
+        const payload = {
+          enrollment_id: editEnrollmentId,
+          grade_type: row.grade_type.trim().toUpperCase(),
+          grade_category: row.grade_category,
+          grade_value: numVal,
+          weight: numWeight,
+          professor_user_id: user.id,
+          observations: row.observations || null,
+        };
+
+        if (row.id) {
+          await supabase.from('student_grades').update(payload).eq('id', row.id);
+        } else {
+          await supabase.from('student_grades').insert(payload);
         }
       }
 
       toast({ title: 'Notas salvas com sucesso! Status atualizado automaticamente.' });
       setEditDialog(false);
-      // Reload grades
       loadEnrollmentsAndGrades(selectedClassSubject);
     } catch (err: any) {
       toast({ title: 'Erro ao salvar notas', description: err.message, variant: 'destructive' });
@@ -271,7 +326,6 @@ const Boletim = () => {
     setSaving(false);
   }
 
-  // Build display label for class_subjects select
   const classSubjectLabel = (cs: ClassSubject) =>
     `${(cs.class as any)?.code || '—'} — ${(cs.subject as any)?.name || '—'}`;
 
@@ -283,19 +337,21 @@ const Boletim = () => {
     );
   }
 
+  const allGradeTypes = getAllGradeTypes();
+
   return (
-    <div className="max-w-6xl mx-auto animate-fade-in">
+    <div className="max-w-7xl mx-auto animate-fade-in">
       <div className="mb-6">
         <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
           <FileText className="w-6 h-6 text-primary" />
           Boletim — Gestão de Notas
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Registre notas para os alunos. O status é atualizado automaticamente com base nos critérios de aprovação.
+          Registre notas com tipo, categoria e peso. A média ponderada e o status são calculados automaticamente.
         </p>
       </div>
 
-      {/* Approval criteria banner - shows after selecting a subject */}
+      {/* Approval criteria banner */}
       {selectedClassSubject && (() => {
         const cs = classSubjects.find(c => c.id === selectedClassSubject);
         const minGrade = (cs?.subject as any)?.min_grade ?? 7.0;
@@ -310,18 +366,18 @@ const Boletim = () => {
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-primary" />
                     <span className="text-sm text-foreground">
-                      <strong>Nota mínima:</strong> A média das avaliações deve ser ≥ <strong>{Number(minGrade).toFixed(1).replace('.', ',')}</strong>
+                      <strong>Nota mínima:</strong> Média ponderada ≥ <strong>{Number(minGrade).toFixed(1).replace('.', ',')}</strong>
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-primary" />
                     <span className="text-sm text-foreground">
-                      <strong>Frequência mínima:</strong> O aluno deve ter pelo menos <strong>{Number(minAtt).toFixed(0)}%</strong> de presença
+                      <strong>Frequência mínima:</strong> ≥ <strong>{Number(minAtt).toFixed(0)}%</strong> de presença
                     </span>
                   </div>
                 </div>
                 <p className="text-xs text-muted-foreground mt-2">
-                  O aluno será <strong>aprovado</strong> somente se ambos os critérios forem atendidos simultaneamente. Caso contrário, será considerado <strong>reprovado</strong>.
+                  A média é calculada como <strong>média ponderada</strong> (soma de nota×peso / soma dos pesos). O aluno é aprovado somente se ambos os critérios forem atendidos.
                 </p>
               </div>
             </div>
@@ -366,16 +422,14 @@ const Boletim = () => {
       )}
 
       {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && (
-        <div className="border border-border rounded-lg overflow-hidden">
+        <div className="border border-border rounded-lg overflow-x-auto">
           <Table>
             <TableHeader>
               <TableRow>
                 <TableHead>Aluno</TableHead>
                 <TableHead>Matrícula</TableHead>
-                {GRADE_TYPES.map(gt => (
-                  <TableHead key={gt} className="text-center w-20">{gt}</TableHead>
-                ))}
-                <TableHead className="text-center w-20">Média</TableHead>
+                <TableHead className="text-center">Notas Lançadas</TableHead>
+                <TableHead className="text-center w-24">Média Pond.</TableHead>
                 <TableHead className="text-center w-24">Frequência</TableHead>
                 <TableHead className="text-center w-28">Status</TableHead>
                 {canEdit && <TableHead className="text-center w-20">Ações</TableHead>}
@@ -383,35 +437,41 @@ const Boletim = () => {
             </TableHeader>
             <TableBody>
               {enrollments.map(enrollment => {
-                const avg = getAverage(enrollment.id);
+                const avg = getWeightedAverage(enrollment.id);
                 const attPct = getAttendancePct(enrollment.student_id);
                 const cs = classSubjects.find(c => c.id === selectedClassSubject);
                 const subjectMinGrade = Number((cs?.subject as any)?.min_grade ?? 7.0);
                 const subjectMinAtt = Number((cs?.subject as any)?.min_attendance_pct ?? 75.0);
                 const attOk = attPct === null || attPct >= subjectMinAtt;
                 const avgOk = avg === null || avg >= subjectMinGrade;
+                const studentGrades = getStudentGrades(enrollment.id);
+
                 return (
                   <TableRow key={enrollment.id}>
                     <TableCell className="font-medium">{enrollment.student?.name || '—'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">{enrollment.student?.enrollment || '—'}</TableCell>
-                    {GRADE_TYPES.map(gt => {
-                      const grade = getGrade(enrollment.id, gt);
-                      return (
-                        <TableCell key={gt} className="text-center">
-                          {grade ? (
-                            <span className={grade.grade_value >= subjectMinGrade ? 'text-primary font-medium' : grade.grade_value < (subjectMinGrade - 2) ? 'text-destructive font-medium' : 'text-foreground'}>
-                              {grade.grade_value.toFixed(1)}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground/40">—</span>
-                          )}
-                        </TableCell>
-                      );
-                    })}
+                    <TableCell>
+                      {studentGrades.length === 0 ? (
+                        <span className="text-muted-foreground/40 text-sm">Nenhuma nota</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {studentGrades.map(g => (
+                            <Badge
+                              key={g.id}
+                              variant="secondary"
+                              className="text-xs font-mono"
+                              title={`${categoryLabel(g.grade_category)} | Peso: ${g.weight}`}
+                            >
+                              {g.grade_type}: {g.grade_value.toFixed(1)} <span className="text-muted-foreground ml-1">(p{g.weight})</span>
+                            </Badge>
+                          ))}
+                        </div>
+                      )}
+                    </TableCell>
                     <TableCell className="text-center font-bold">
                       {avg !== null ? (
                         <span className={avgOk ? 'text-primary' : 'text-destructive'}>
-                          {avg.toFixed(1)}
+                          {avg.toFixed(2)}
                         </span>
                       ) : '—'}
                     </TableCell>
@@ -453,45 +513,101 @@ const Boletim = () => {
 
       {/* Edit grades dialog */}
       <Dialog open={editDialog} onOpenChange={setEditDialog}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>Notas — {editStudentName}</DialogTitle>
+            <DialogTitle>Lançar Notas — {editStudentName}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            {GRADE_TYPES.map(gt => (
-              <div key={gt} className="space-y-1">
-                <Label>{gt}</Label>
-                <div className="flex gap-2">
-                  <Input
-                    type="number"
-                    min="0"
-                    max="10"
-                    step="0.1"
-                    placeholder="0.0 - 10.0"
-                    value={editGrades[gt]?.value || ''}
-                    onChange={e =>
-                      setEditGrades(prev => ({
-                        ...prev,
-                        [gt]: { ...prev[gt], value: e.target.value },
-                      }))
-                    }
-                    className="w-28"
-                  />
-                  <Textarea
-                    placeholder="Observações (opcional)"
-                    value={editGrades[gt]?.observations || ''}
-                    onChange={e =>
-                      setEditGrades(prev => ({
-                        ...prev,
-                        [gt]: { ...prev[gt], observations: e.target.value },
-                      }))
-                    }
-                    className="flex-1 min-h-[38px] h-[38px]"
-                  />
-                </div>
+
+          <div className="space-y-3">
+            {/* Header row */}
+            <div className="grid grid-cols-[1fr_1fr_80px_80px_1fr_40px] gap-2 text-xs font-semibold text-muted-foreground px-1">
+              <span>Tipo (ex: N1)</span>
+              <span>Categoria</span>
+              <span>Nota</span>
+              <span>Peso</span>
+              <span>Observações</span>
+              <span></span>
+            </div>
+
+            {editRows.map((row, idx) => (
+              <div key={idx} className="grid grid-cols-[1fr_1fr_80px_80px_1fr_40px] gap-2 items-start">
+                <Input
+                  placeholder="N1, N2..."
+                  value={row.grade_type}
+                  onChange={e => updateGradeRow(idx, 'grade_type', e.target.value)}
+                  className="text-sm"
+                />
+                <Select value={row.grade_category} onValueChange={v => updateGradeRow(idx, 'grade_category', v)}>
+                  <SelectTrigger className="text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {GRADE_CATEGORIES.map(c => (
+                      <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <Input
+                  type="number"
+                  min="0"
+                  max="10"
+                  step="0.1"
+                  placeholder="0-10"
+                  value={row.grade_value}
+                  onChange={e => updateGradeRow(idx, 'grade_value', e.target.value)}
+                  className="text-sm"
+                />
+                <Input
+                  type="number"
+                  min="0.1"
+                  step="0.1"
+                  placeholder="1"
+                  value={row.weight}
+                  onChange={e => updateGradeRow(idx, 'weight', e.target.value)}
+                  className="text-sm"
+                />
+                <Input
+                  placeholder="Obs. (opcional)"
+                  value={row.observations}
+                  onChange={e => updateGradeRow(idx, 'observations', e.target.value)}
+                  className="text-sm"
+                />
+                <Button variant="ghost" size="icon" onClick={() => removeGradeRow(idx)} className="shrink-0">
+                  <Trash2 className="w-4 h-4 text-destructive" />
+                </Button>
               </div>
             ))}
+
+            <Button variant="outline" size="sm" onClick={addGradeRow} className="mt-2">
+              <Plus className="w-4 h-4 mr-2" />
+              Adicionar Nota
+            </Button>
+
+            {/* Preview weighted average */}
+            {editRows.some(r => r.grade_value.trim() !== '') && (() => {
+              let ws = 0, tw = 0;
+              editRows.forEach(r => {
+                const v = parseFloat(r.grade_value);
+                const w = parseFloat(r.weight) || 1;
+                if (!isNaN(v)) { ws += v * w; tw += w; }
+              });
+              const previewAvg = tw > 0 ? ws / tw : null;
+              return (
+                <div className="mt-3 p-3 rounded-md border border-border bg-muted/50">
+                  <p className="text-sm text-foreground">
+                    <strong>Prévia da Média Ponderada:</strong>{' '}
+                    {previewAvg !== null ? (
+                      <span className="text-lg font-bold">{previewAvg.toFixed(2)}</span>
+                    ) : '—'}
+                  </p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Fórmula: Σ(nota × peso) / Σ(peso) = {tw > 0 ? `${ws.toFixed(1)} / ${tw.toFixed(1)}` : '—'}
+                  </p>
+                </div>
+              );
+            })()}
           </div>
+
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditDialog(false)}>Cancelar</Button>
             <Button onClick={handleSaveGrades} disabled={saving}>
