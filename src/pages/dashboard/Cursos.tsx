@@ -121,6 +121,7 @@ const Cursos = () => {
   const { hasRole, user } = useAuth();
   const canManage = hasRole('super_admin') || hasRole('admin') || hasRole('diretor') || hasRole('gerente');
   const isGerente = hasRole('gerente') && !hasRole('admin') && !hasRole('super_admin');
+  const isDiretor = hasRole('diretor') && !hasRole('admin') && !hasRole('super_admin');
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [units, setUnits] = useState<UnitOption[]>([]);
@@ -128,6 +129,7 @@ const Cursos = () => {
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
   const [userCampusIds, setUserCampusIds] = useState<string[]>([]);
   const [campusDirectorMap, setCampusDirectorMap] = useState<Record<string, string | null>>({});
+  const [allUserCampuses, setAllUserCampuses] = useState<{ user_id: string; campus_id: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -146,12 +148,13 @@ const Cursos = () => {
 
   async function fetchAll() {
     setLoading(true);
-    const [courseRes, unitRes, profileRes, rolesRes, campusRes] = await Promise.all([
+    const [courseRes, unitRes, profileRes, rolesRes, campusRes, allUcRes] = await Promise.all([
       supabase.from('courses').select('*').order('name'),
       supabase.from('units').select('id, name, manager_user_id, campuses(name)').eq('status', 'ATIVO').order('name'),
       supabase.from('profiles').select('id, name, email').eq('status', 'ATIVO').order('name'),
       supabase.from('user_roles').select('user_id, role'),
       supabase.from('campuses').select('id, director_user_id').eq('status', 'ATIVO'),
+      supabase.from('user_campuses').select('user_id, campus_id'),
     ]);
 
     if (courseRes.error) {
@@ -174,11 +177,12 @@ const Cursos = () => {
     const cdMap: Record<string, string | null> = {};
     (campusRes.data || []).forEach((c: any) => { cdMap[c.id] = c.director_user_id; });
     setCampusDirectorMap(cdMap);
+    setAllUserCampuses((allUcRes.data || []) as { user_id: string; campus_id: string }[]);
 
-    // Fetch user's campuses (for gerente scope)
+    // Set current user's campuses
     if (user) {
-      const { data: ucData } = await supabase.from('user_campuses').select('campus_id').eq('user_id', user.id);
-      setUserCampusIds((ucData || []).map((uc: any) => uc.campus_id));
+      const myCampuses = (allUcRes.data || []).filter((uc: any) => uc.user_id === user.id).map((uc: any) => uc.campus_id);
+      setUserCampusIds(myCampuses);
     }
 
     setLoading(false);
@@ -201,19 +205,30 @@ const Cursos = () => {
     return filtered;
   }, [profiles, userRoles, isGerente, userCampusIds, campusDirectorMap]);
 
+  // For director/gerente: filter coordinators by their campus
   const coordinatorProfiles = useMemo(() => {
     const allowedRoles = new Set(['diretor', 'gerente', 'coordenador']);
     const allowedIds = new Set(
       userRoles.filter(r => allowedRoles.has(r.role)).map(r => r.user_id)
     );
-    return profiles.filter(p => allowedIds.has(p.id));
-  }, [profiles, userRoles]);
+    let filtered = profiles.filter(p => allowedIds.has(p.id));
+    if ((isDiretor || isGerente) && userCampusIds.length > 0) {
+      const campusUserIds = new Set(
+        allUserCampuses
+          .filter(uc => userCampusIds.includes(uc.campus_id))
+          .map(uc => uc.user_id)
+      );
+      filtered = filtered.filter(p => campusUserIds.has(p.id));
+    }
+    return filtered;
+  }, [profiles, userRoles, isDiretor, isGerente, userCampusIds, allUserCampuses]);
 
   function openCreate() {
     setEditing(null);
     setFormName('');
     setFormUnitId('');
-    setFormDirectorId('');
+    // Auto-select director if user is a director
+    setFormDirectorId(isDiretor && user ? user.id : '');
     setFormCoordinatorId('');
     setFormStatus('ATIVO');
     setDialogOpen(true);
@@ -470,16 +485,31 @@ const Cursos = () => {
             </div>
             <div>
               <Label>Diretor do Curso *</Label>
-              <SearchableUserSelect
-                value={formDirectorId}
-                onValueChange={setFormDirectorId}
-                profiles={directorProfiles}
-                placeholder="Buscar e selecionar diretor..."
-                label="diretor"
-              />
-              <p className="text-xs text-muted-foreground mt-1">
-                Apenas usuários com a função de Diretor. Obrigatório para aprovação.
-              </p>
+              {isDiretor ? (
+                <>
+                  <Input
+                    value={profiles.find(p => p.id === user?.id)?.name || 'Você'}
+                    disabled
+                    className="bg-muted"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Você será vinculado automaticamente como diretor deste curso.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <SearchableUserSelect
+                    value={formDirectorId}
+                    onValueChange={setFormDirectorId}
+                    profiles={directorProfiles}
+                    placeholder="Buscar e selecionar diretor..."
+                    label="diretor"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">
+                    Apenas usuários com a função de Diretor. Obrigatório para aprovação.
+                  </p>
+                </>
+              )}
             </div>
             <div>
               <Label>Coordenador do Curso</Label>
@@ -491,7 +521,10 @@ const Cursos = () => {
                 label="coordenador"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                Diretores, Gerentes e Coordenadores podem ser selecionados. Se informado, será o responsável pela edição.
+                {(isDiretor || isGerente) 
+                  ? 'Apenas usuários vinculados ao seu campus. Se informado, será o responsável pela edição.'
+                  : 'Diretores, Gerentes e Coordenadores podem ser selecionados. Se informado, será o responsável pela edição.'
+                }
               </p>
             </div>
 
