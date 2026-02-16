@@ -16,14 +16,18 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import {
-  Plus, Search, Pencil, Trash2, Loader2, GraduationCap,
+  Plus, Search, Pencil, Trash2, Loader2, GraduationCap, Crown,
 } from 'lucide-react';
+import {
+  Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
+} from '@/components/ui/tooltip';
 
 interface Course {
   id: string;
   name: string;
   unit_id: string | null;
   director_user_id: string | null;
+  coordinator_user_id: string | null;
   status: 'ATIVO' | 'INATIVO';
   created_at: string;
 }
@@ -32,6 +36,7 @@ interface UnitOption {
   id: string;
   name: string;
   campus_name: string | null;
+  manager_user_id: string | null;
 }
 
 interface Profile {
@@ -55,6 +60,7 @@ const Cursos = () => {
   const [formName, setFormName] = useState('');
   const [formUnitId, setFormUnitId] = useState('');
   const [formDirectorId, setFormDirectorId] = useState('');
+  const [formCoordinatorId, setFormCoordinatorId] = useState('');
   const [formStatus, setFormStatus] = useState<'ATIVO' | 'INATIVO'>('ATIVO');
   const [saving, setSaving] = useState(false);
 
@@ -66,7 +72,7 @@ const Cursos = () => {
     setLoading(true);
     const [courseRes, unitRes, profileRes] = await Promise.all([
       supabase.from('courses').select('*').order('name'),
-      supabase.from('units').select('id, name, campuses(name)').eq('status', 'ATIVO').order('name'),
+      supabase.from('units').select('id, name, manager_user_id, campuses(name)').eq('status', 'ATIVO').order('name'),
       supabase.from('profiles').select('id, name, email').eq('status', 'ATIVO').order('name'),
     ]);
 
@@ -79,6 +85,7 @@ const Cursos = () => {
     const unitData = (unitRes.data || []).map((u: any) => ({
       id: u.id,
       name: u.name,
+      manager_user_id: u.manager_user_id,
       campus_name: u.campuses?.name || null,
     }));
     setUnits(unitData);
@@ -91,6 +98,7 @@ const Cursos = () => {
     setFormName('');
     setFormUnitId('');
     setFormDirectorId('');
+    setFormCoordinatorId('');
     setFormStatus('ATIVO');
     setDialogOpen(true);
   }
@@ -100,6 +108,7 @@ const Cursos = () => {
     setFormName(course.name);
     setFormUnitId(course.unit_id || '');
     setFormDirectorId(course.director_user_id || '');
+    setFormCoordinatorId(course.coordinator_user_id || '');
     setFormStatus(course.status);
     setDialogOpen(true);
   }
@@ -109,11 +118,16 @@ const Cursos = () => {
       toast({ title: 'Preencha o nome do curso', variant: 'destructive' });
       return;
     }
+    if (!formDirectorId) {
+      toast({ title: 'O Diretor é obrigatório para aprovação do curso', variant: 'destructive' });
+      return;
+    }
 
-    const payload = {
+    const payload: any = {
       name: formName.trim(),
       unit_id: formUnitId || null,
       director_user_id: formDirectorId || null,
+      coordinator_user_id: formCoordinatorId || null,
       status: formStatus,
     };
 
@@ -153,6 +167,23 @@ const Cursos = () => {
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
   const profileMap = Object.fromEntries(profiles.map(p => [p.id, p.name]));
 
+  /** Hierarquia de responsabilidade: Coordenador > Gerente da Unidade > Diretor */
+  function getResponsavel(course: Course): { name: string; role: string } {
+    if (course.coordinator_user_id && profileMap[course.coordinator_user_id]) {
+      return { name: profileMap[course.coordinator_user_id], role: 'Coordenador' };
+    }
+    if (course.unit_id) {
+      const unit = unitMap[course.unit_id];
+      if (unit?.manager_user_id && profileMap[unit.manager_user_id]) {
+        return { name: profileMap[unit.manager_user_id], role: 'Gerente' };
+      }
+    }
+    if (course.director_user_id && profileMap[course.director_user_id]) {
+      return { name: profileMap[course.director_user_id], role: 'Diretor' };
+    }
+    return { name: '—', role: '' };
+  }
+
   const filtered = courses.filter(
     (c) =>
       c.name.toLowerCase().includes(search.toLowerCase()) ||
@@ -166,7 +197,7 @@ const Cursos = () => {
       <div className="mb-6">
         <h1 className="text-2xl font-display font-bold text-foreground">Cursos</h1>
         <p className="text-muted-foreground text-sm">
-          Gerencie os cursos vinculados às unidades.
+          Gerencie os cursos vinculados às unidades. Hierarquia de responsabilidade: Coordenador → Gerente → Diretor.
         </p>
       </div>
 
@@ -220,60 +251,82 @@ const Cursos = () => {
             )}
           </div>
         ) : (
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Nome</TableHead>
-                <TableHead>Unidade</TableHead>
-                <TableHead>Campus</TableHead>
-                <TableHead>Diretor</TableHead>
-                <TableHead>Status</TableHead>
-                {canManage && <TableHead className="text-right">Ações</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {filtered.map((course) => {
-                const unit = course.unit_id ? unitMap[course.unit_id] : null;
-                return (
-                  <TableRow key={course.id}>
-                    <TableCell className="font-medium">{course.name}</TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {unit?.name || '—'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {unit?.campus_name || '—'}
-                    </TableCell>
-                    <TableCell className="text-sm text-muted-foreground">
-                      {course.director_user_id ? (profileMap[course.director_user_id] || '—') : '—'}
-                    </TableCell>
-                    <TableCell>
-                      <Badge variant={course.status === 'ATIVO' ? 'default' : 'secondary'}>
-                        {course.status}
-                      </Badge>
-                    </TableCell>
-                    {canManage && (
-                      <TableCell className="text-right space-x-2">
-                        <Button variant="ghost" size="icon" onClick={() => openEdit(course)}>
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                        {course.status === 'ATIVO' && (
-                          <Button variant="ghost" size="icon" onClick={() => handleDeactivate(course.id)}>
-                            <Trash2 className="w-4 h-4 text-destructive" />
-                          </Button>
+          <TooltipProvider>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Nome</TableHead>
+                  <TableHead>Unidade</TableHead>
+                  <TableHead>Diretor</TableHead>
+                  <TableHead>Coordenador</TableHead>
+                  <TableHead>Responsável</TableHead>
+                  <TableHead>Status</TableHead>
+                  {canManage && <TableHead className="text-right">Ações</TableHead>}
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filtered.map((course) => {
+                  const unit = course.unit_id ? unitMap[course.unit_id] : null;
+                  const responsavel = getResponsavel(course);
+                  return (
+                    <TableRow key={course.id}>
+                      <TableCell className="font-medium">{course.name}</TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {unit ? `${unit.name}${unit.campus_name ? ` (${unit.campus_name})` : ''}` : '—'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {course.director_user_id ? (profileMap[course.director_user_id] || '—') : '—'}
+                      </TableCell>
+                      <TableCell className="text-sm text-muted-foreground">
+                        {course.coordinator_user_id ? (profileMap[course.coordinator_user_id] || '—') : '—'}
+                      </TableCell>
+                      <TableCell>
+                        {responsavel.name !== '—' ? (
+                          <Tooltip>
+                            <TooltipTrigger asChild>
+                              <div className="flex items-center gap-1.5">
+                                <Crown className="w-3.5 h-3.5 text-primary" />
+                                <span className="text-sm font-medium text-foreground">{responsavel.name}</span>
+                              </div>
+                            </TooltipTrigger>
+                            <TooltipContent>
+                              <p>Responsável como <strong>{responsavel.role}</strong></p>
+                              <p className="text-xs text-muted-foreground">Hierarquia: Coordenador → Gerente → Diretor</p>
+                            </TooltipContent>
+                          </Tooltip>
+                        ) : (
+                          <span className="text-sm text-muted-foreground">—</span>
                         )}
                       </TableCell>
-                    )}
-                  </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
+                      <TableCell>
+                        <Badge variant={course.status === 'ATIVO' ? 'default' : 'secondary'}>
+                          {course.status}
+                        </Badge>
+                      </TableCell>
+                      {canManage && (
+                        <TableCell className="text-right space-x-2">
+                          <Button variant="ghost" size="icon" onClick={() => openEdit(course)}>
+                            <Pencil className="w-4 h-4" />
+                          </Button>
+                          {course.status === 'ATIVO' && (
+                            <Button variant="ghost" size="icon" onClick={() => handleDeactivate(course.id)}>
+                              <Trash2 className="w-4 h-4 text-destructive" />
+                            </Button>
+                          )}
+                        </TableCell>
+                      )}
+                    </TableRow>
+                  );
+                })}
+              </TableBody>
+            </Table>
+          </TooltipProvider>
         )}
       </div>
 
       {/* Dialog: Create/Edit Course */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Curso' : 'Novo Curso'}</DialogTitle>
           </DialogHeader>
@@ -301,9 +354,9 @@ const Cursos = () => {
               </Select>
             </div>
             <div>
-              <Label>Diretor do Curso</Label>
+              <Label>Diretor do Curso *</Label>
               <Select value={formDirectorId || "none"} onValueChange={(v) => setFormDirectorId(v === "none" ? "" : v)}>
-                <SelectTrigger><SelectValue placeholder="Selecione o diretor (opcional)" /></SelectTrigger>
+                <SelectTrigger><SelectValue placeholder="Selecione o diretor (obrigatório)" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nenhum</SelectItem>
                   {profiles.map(p => (
@@ -313,7 +366,36 @@ const Cursos = () => {
                   ))}
                 </SelectContent>
               </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                O Diretor é obrigatório para aprovação do curso.
+              </p>
             </div>
+            <div>
+              <Label>Coordenador do Curso</Label>
+              <Select value={formCoordinatorId || "none"} onValueChange={(v) => setFormCoordinatorId(v === "none" ? "" : v)}>
+                <SelectTrigger><SelectValue placeholder="Selecione o coordenador (opcional)" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhum</SelectItem>
+                  {profiles.map(p => (
+                    <SelectItem key={p.id} value={p.id}>
+                      {p.name} {p.email ? `(${p.email})` : ''}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground mt-1">
+                Se informado, o Coordenador será o responsável pela edição do curso.
+              </p>
+            </div>
+
+            {/* Hierarchy info */}
+            <div className="rounded-lg bg-muted/50 p-3 text-xs text-muted-foreground space-y-1">
+              <p className="font-medium text-foreground text-sm">Hierarquia de responsabilidade:</p>
+              <p>1. <strong>Coordenador</strong> — se informado, é o responsável pela edição</p>
+              <p>2. <strong>Gerente</strong> — se não houver Coordenador, o Gerente da Unidade assume</p>
+              <p>3. <strong>Diretor</strong> — se não houver Gerente, o Diretor assume a responsabilidade</p>
+            </div>
+
             {editing && (
               <div>
                 <Label>Status</Label>
