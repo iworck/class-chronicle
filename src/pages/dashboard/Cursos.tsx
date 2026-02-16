@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -16,11 +16,18 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import {
-  Plus, Search, Pencil, Trash2, Loader2, GraduationCap, Crown,
+  Plus, Search, Pencil, Trash2, Loader2, GraduationCap, Crown, Check, ChevronsUpDown,
 } from 'lucide-react';
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from '@/components/ui/tooltip';
+import {
+  Popover, PopoverContent, PopoverTrigger,
+} from '@/components/ui/popover';
+import {
+  Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList,
+} from '@/components/ui/command';
+import { cn } from '@/lib/utils';
 
 interface Course {
   id: string;
@@ -45,6 +52,71 @@ interface Profile {
   email: string | null;
 }
 
+interface UserRole {
+  user_id: string;
+  role: string;
+}
+
+function SearchableUserSelect({
+  value,
+  onValueChange,
+  profiles,
+  placeholder,
+  label,
+}: {
+  value: string;
+  onValueChange: (v: string) => void;
+  profiles: Profile[];
+  placeholder: string;
+  label: string;
+}) {
+  const [open, setOpen] = useState(false);
+  const selected = profiles.find(p => p.id === value);
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
+        <Button
+          variant="outline"
+          role="combobox"
+          aria-expanded={open}
+          className="w-full justify-between font-normal"
+        >
+          {selected ? `${selected.name}${selected.email ? ` (${selected.email})` : ''}` : placeholder}
+          <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+        </Button>
+      </PopoverTrigger>
+      <PopoverContent className="w-[--radix-popover-trigger-width] p-0" align="start">
+        <Command>
+          <CommandInput placeholder={`Buscar ${label} pelo nome...`} />
+          <CommandList>
+            <CommandEmpty>Nenhum usuário encontrado.</CommandEmpty>
+            <CommandGroup>
+              <CommandItem
+                value="none"
+                onSelect={() => { onValueChange(''); setOpen(false); }}
+              >
+                <Check className={cn("mr-2 h-4 w-4", !value ? "opacity-100" : "opacity-0")} />
+                Nenhum
+              </CommandItem>
+              {profiles.map(p => (
+                <CommandItem
+                  key={p.id}
+                  value={`${p.name} ${p.email || ''}`}
+                  onSelect={() => { onValueChange(p.id); setOpen(false); }}
+                >
+                  <Check className={cn("mr-2 h-4 w-4", value === p.id ? "opacity-100" : "opacity-0")} />
+                  {p.name} {p.email ? `(${p.email})` : ''}
+                </CommandItem>
+              ))}
+            </CommandGroup>
+          </CommandList>
+        </Command>
+      </PopoverContent>
+    </Popover>
+  );
+}
+
 const Cursos = () => {
   const { hasRole } = useAuth();
   const canManage = hasRole('super_admin') || hasRole('admin') || hasRole('diretor') || hasRole('gerente');
@@ -52,6 +124,7 @@ const Cursos = () => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [units, setUnits] = useState<UnitOption[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
+  const [userRoles, setUserRoles] = useState<UserRole[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -70,10 +143,11 @@ const Cursos = () => {
 
   async function fetchAll() {
     setLoading(true);
-    const [courseRes, unitRes, profileRes] = await Promise.all([
+    const [courseRes, unitRes, profileRes, rolesRes] = await Promise.all([
       supabase.from('courses').select('*').order('name'),
       supabase.from('units').select('id, name, manager_user_id, campuses(name)').eq('status', 'ATIVO').order('name'),
       supabase.from('profiles').select('id, name, email').eq('status', 'ATIVO').order('name'),
+      supabase.from('user_roles').select('user_id, role'),
     ]);
 
     if (courseRes.error) {
@@ -90,8 +164,25 @@ const Cursos = () => {
     }));
     setUnits(unitData);
     setProfiles((profileRes.data as Profile[]) || []);
+    setUserRoles((rolesRes.data as UserRole[]) || []);
     setLoading(false);
   }
+
+  // Filter profiles by role
+  const directorProfiles = useMemo(() => {
+    const directorIds = new Set(
+      userRoles.filter(r => r.role === 'diretor').map(r => r.user_id)
+    );
+    return profiles.filter(p => directorIds.has(p.id));
+  }, [profiles, userRoles]);
+
+  const coordinatorProfiles = useMemo(() => {
+    const allowedRoles = new Set(['diretor', 'gerente', 'coordenador']);
+    const allowedIds = new Set(
+      userRoles.filter(r => allowedRoles.has(r.role)).map(r => r.user_id)
+    );
+    return profiles.filter(p => allowedIds.has(p.id));
+  }, [profiles, userRoles]);
 
   function openCreate() {
     setEditing(null);
@@ -167,7 +258,6 @@ const Cursos = () => {
   const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
   const profileMap = Object.fromEntries(profiles.map(p => [p.id, p.name]));
 
-  /** Hierarquia de responsabilidade: Coordenador > Gerente da Unidade > Diretor */
   function getResponsavel(course: Course): { name: string; role: string } {
     if (course.coordinator_user_id && profileMap[course.coordinator_user_id]) {
       return { name: profileMap[course.coordinator_user_id], role: 'Coordenador' };
@@ -355,36 +445,28 @@ const Cursos = () => {
             </div>
             <div>
               <Label>Diretor do Curso *</Label>
-              <Select value={formDirectorId || "none"} onValueChange={(v) => setFormDirectorId(v === "none" ? "" : v)}>
-                <SelectTrigger><SelectValue placeholder="Selecione o diretor (obrigatório)" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhum</SelectItem>
-                  {profiles.map(p => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} {p.email ? `(${p.email})` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableUserSelect
+                value={formDirectorId}
+                onValueChange={setFormDirectorId}
+                profiles={directorProfiles}
+                placeholder="Buscar e selecionar diretor..."
+                label="diretor"
+              />
               <p className="text-xs text-muted-foreground mt-1">
-                O Diretor é obrigatório para aprovação do curso.
+                Apenas usuários com a função de Diretor. Obrigatório para aprovação.
               </p>
             </div>
             <div>
               <Label>Coordenador do Curso</Label>
-              <Select value={formCoordinatorId || "none"} onValueChange={(v) => setFormCoordinatorId(v === "none" ? "" : v)}>
-                <SelectTrigger><SelectValue placeholder="Selecione o coordenador (opcional)" /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="none">Nenhum</SelectItem>
-                  {profiles.map(p => (
-                    <SelectItem key={p.id} value={p.id}>
-                      {p.name} {p.email ? `(${p.email})` : ''}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <SearchableUserSelect
+                value={formCoordinatorId}
+                onValueChange={setFormCoordinatorId}
+                profiles={coordinatorProfiles}
+                placeholder="Buscar e selecionar coordenador..."
+                label="coordenador"
+              />
               <p className="text-xs text-muted-foreground mt-1">
-                Se informado, o Coordenador será o responsável pela edição do curso.
+                Diretores, Gerentes e Coordenadores podem ser selecionados. Se informado, será o responsável pela edição.
               </p>
             </div>
 
