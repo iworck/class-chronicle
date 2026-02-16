@@ -23,6 +23,7 @@ import {
 interface Course {
   id: string;
   name: string;
+  unit_id: string | null;
 }
 
 interface Subject {
@@ -82,6 +83,8 @@ const Turmas = () => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [subjects, setSubjects] = useState<Subject[]>([]);
   const [professors, setProfessors] = useState<Profile[]>([]);
+  const [filteredProfessors, setFilteredProfessors] = useState<Profile[]>([]);
+  const [loadingProfessors, setLoadingProfessors] = useState(false);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
 
@@ -116,7 +119,7 @@ const Turmas = () => {
     setLoading(true);
     const [classRes, courseRes, subjectRes, profRes] = await Promise.all([
       supabase.from('classes').select('*').order('created_at', { ascending: false }),
-      supabase.from('courses').select('id, name').eq('status', 'ATIVO').order('name'),
+      supabase.from('courses').select('id, name, unit_id').eq('status', 'ATIVO').order('name'),
       supabase.from('subjects').select('id, name, code, course_id').eq('status', 'ATIVO').order('name'),
       supabase.from('profiles').select('id, name, email').eq('status', 'ATIVO').order('name'),
     ]);
@@ -135,6 +138,76 @@ const Turmas = () => {
     [subjects, formCourseId]
   );
 
+  // Fetch professors filtered by course's unit/campus
+  async function fetchProfessorsByCourse(courseId: string) {
+    setLoadingProfessors(true);
+    setFilteredProfessors([]);
+
+    const course = courses.find(c => c.id === courseId);
+    if (!course?.unit_id) {
+      // Fallback: show all professors
+      setFilteredProfessors(professors);
+      setLoadingProfessors(false);
+      return;
+    }
+
+    // Get campus_id from unit
+    const { data: unitData } = await supabase
+      .from('units')
+      .select('campus_id')
+      .eq('id', course.unit_id)
+      .single();
+
+    if (!unitData) {
+      setFilteredProfessors(professors);
+      setLoadingProfessors(false);
+      return;
+    }
+
+    // Get professor user_ids from user_roles
+    const { data: profRoles } = await supabase
+      .from('user_roles')
+      .select('user_id')
+      .eq('role', 'professor');
+
+    const profUserIds = (profRoles || []).map(r => r.user_id);
+    if (profUserIds.length === 0) {
+      setFilteredProfessors([]);
+      setLoadingProfessors(false);
+      return;
+    }
+
+    // Get professors linked to the unit or campus
+    const [unitUsers, campusUsers] = await Promise.all([
+      supabase.from('user_units').select('user_id').eq('unit_id', course.unit_id),
+      supabase.from('user_campuses').select('user_id').eq('campus_id', unitData.campus_id),
+    ]);
+
+    const linkedUserIds = new Set([
+      ...(unitUsers.data || []).map(u => u.user_id),
+      ...(campusUsers.data || []).map(u => u.user_id),
+    ]);
+
+    // Intersect: must be professor AND linked to unit/campus
+    const validIds = profUserIds.filter(id => linkedUserIds.has(id));
+
+    if (validIds.length === 0) {
+      setFilteredProfessors([]);
+      setLoadingProfessors(false);
+      return;
+    }
+
+    const { data: profs } = await supabase
+      .from('profiles')
+      .select('id, name, email')
+      .in('id', validIds)
+      .eq('status', 'ATIVO')
+      .order('name');
+
+    setFilteredProfessors((profs as Profile[]) || []);
+    setLoadingProfessors(false);
+  }
+
   function openCreate() {
     setEditing(null);
     setFormCode(''); setFormPeriod(''); setFormCourseId('');
@@ -148,6 +221,7 @@ const Turmas = () => {
     setFormPeriod(cls.period);
     setFormCourseId(cls.course_id);
     setFormStatus(cls.status);
+    fetchProfessorsByCourse(cls.course_id);
 
     // Load existing class_subject
     const { data } = await supabase.from('class_subjects')
@@ -515,7 +589,7 @@ const Turmas = () => {
 
             <div>
               <Label>Curso *</Label>
-              <Select value={formCourseId} onValueChange={v => { setFormCourseId(v); setFormSubjectId(''); }}>
+              <Select value={formCourseId} onValueChange={v => { setFormCourseId(v); setFormSubjectId(''); setFormProfessorId(''); fetchProfessorsByCourse(v); }}>
                 <SelectTrigger><SelectValue placeholder="Selecione o curso" /></SelectTrigger>
                 <SelectContent>
                   {courses.map(c => (
@@ -539,12 +613,15 @@ const Turmas = () => {
 
             <div>
               <Label>Professor *</Label>
-              <Select value={formProfessorId} onValueChange={setFormProfessorId}>
-                <SelectTrigger><SelectValue placeholder="Selecione o professor" /></SelectTrigger>
+              <Select value={formProfessorId} onValueChange={setFormProfessorId} disabled={!formCourseId || loadingProfessors}>
+                <SelectTrigger><SelectValue placeholder={loadingProfessors ? "Carregando..." : "Selecione o professor"} /></SelectTrigger>
                 <SelectContent>
-                  {professors.map(p => (
+                  {filteredProfessors.map(p => (
                     <SelectItem key={p.id} value={p.id}>{p.name}</SelectItem>
                   ))}
+                  {filteredProfessors.length === 0 && !loadingProfessors && formCourseId && (
+                    <div className="px-2 py-3 text-sm text-muted-foreground text-center">Nenhum professor vinculado a este campus/unidade</div>
+                  )}
                 </SelectContent>
               </Select>
             </div>
