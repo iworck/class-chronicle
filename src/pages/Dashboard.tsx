@@ -91,13 +91,13 @@ const Dashboard = () => {
       icon: BookOpen, 
       label: 'Disciplinas', 
       path: '/dashboard/disciplinas',
-      roles: ['admin'] 
+      roles: ['admin', 'coordenador'] 
     },
     { 
       icon: GraduationCap, 
       label: 'Matrizes', 
       path: '/dashboard/matrizes',
-      roles: ['admin', 'super_admin'] 
+      roles: ['admin', 'super_admin', 'coordenador'] 
     },
     { 
       icon: Users, 
