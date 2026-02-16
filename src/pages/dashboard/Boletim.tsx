@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2 } from 'lucide-react';
+import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye } from 'lucide-react';
 
 interface ClassSubject {
   id: string;
@@ -91,6 +91,12 @@ const Boletim = () => {
   const [editRows, setEditRows] = useState<EditGradeRow[]>([]);
   const [deletedGradeIds, setDeletedGradeIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
+
+  // View grades dialog (read-only)
+  const [viewDialog, setViewDialog] = useState(false);
+  const [viewStudentName, setViewStudentName] = useState('');
+  const [viewGrades, setViewGrades] = useState<Grade[]>([]);
+  const [viewAvg, setViewAvg] = useState<number | null>(null);
 
   const isProfessor = hasRole('professor');
   const isAdmin = hasRole('admin') || hasRole('coordenador') || hasRole('super_admin');
@@ -428,10 +434,10 @@ const Boletim = () => {
               <TableRow>
                 <TableHead>Aluno</TableHead>
                 <TableHead>Matrícula</TableHead>
-                <TableHead className="text-center">Notas Lançadas</TableHead>
                 <TableHead className="text-center w-24">Média Pond.</TableHead>
                 <TableHead className="text-center w-24">Frequência</TableHead>
                 <TableHead className="text-center w-28">Status</TableHead>
+                <TableHead className="text-center w-28">Notas</TableHead>
                 {canEdit && <TableHead className="text-center w-20">Ações</TableHead>}
               </TableRow>
             </TableHeader>
@@ -450,24 +456,6 @@ const Boletim = () => {
                   <TableRow key={enrollment.id}>
                     <TableCell className="font-medium">{enrollment.student?.name || '—'}</TableCell>
                     <TableCell className="text-muted-foreground text-sm">{enrollment.student?.enrollment || '—'}</TableCell>
-                    <TableCell>
-                      {studentGrades.length === 0 ? (
-                        <span className="text-muted-foreground/40 text-sm">Nenhuma nota</span>
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {studentGrades.map(g => (
-                            <Badge
-                              key={g.id}
-                              variant="secondary"
-                              className="text-xs font-mono"
-                              title={`${categoryLabel(g.grade_category)} | Peso: ${g.weight}`}
-                            >
-                              {g.grade_type}: {g.grade_value.toFixed(1)} <span className="text-muted-foreground ml-1">(p{g.weight})</span>
-                            </Badge>
-                          ))}
-                        </div>
-                      )}
-                    </TableCell>
                     <TableCell className="text-center font-bold">
                       {avg !== null ? (
                         <span className={avgOk ? 'text-primary' : 'text-destructive'}>
@@ -495,6 +483,22 @@ const Boletim = () => {
                       <Badge variant={STATUS_MAP[enrollment.status]?.variant || 'default'}>
                         {STATUS_MAP[enrollment.status]?.label || enrollment.status}
                       </Badge>
+                    </TableCell>
+                    <TableCell className="text-center">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => {
+                          setViewStudentName(enrollment.student?.name || '');
+                          setViewGrades(studentGrades);
+                          setViewAvg(avg);
+                          setViewDialog(true);
+                        }}
+                        disabled={studentGrades.length === 0}
+                      >
+                        <Eye className="w-4 h-4 mr-1" />
+                        Ver Notas
+                      </Button>
                     </TableCell>
                     {canEdit && (
                       <TableCell className="text-center">
@@ -616,6 +620,47 @@ const Boletim = () => {
               Salvar Notas
             </Button>
           </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* View grades dialog (read-only) */}
+      <Dialog open={viewDialog} onOpenChange={setViewDialog}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Notas — {viewStudentName}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3">
+            {viewGrades.length === 0 ? (
+              <p className="text-sm text-muted-foreground">Nenhuma nota lançada.</p>
+            ) : (
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Tipo</TableHead>
+                    <TableHead>Categoria</TableHead>
+                    <TableHead className="text-center">Nota</TableHead>
+                    <TableHead className="text-center">Peso</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {viewGrades.map(g => (
+                    <TableRow key={g.id}>
+                      <TableCell className="font-mono font-medium">{g.grade_type}</TableCell>
+                      <TableCell>{categoryLabel(g.grade_category)}</TableCell>
+                      <TableCell className="text-center font-medium">{g.grade_value.toFixed(1)}</TableCell>
+                      <TableCell className="text-center">{g.weight}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            )}
+            {viewAvg !== null && (
+              <div className="p-3 rounded-md border border-border bg-muted/50 text-center">
+                <p className="text-sm text-muted-foreground">Média Ponderada</p>
+                <p className="text-2xl font-bold text-primary">{viewAvg.toFixed(2)}</p>
+              </div>
+            )}
+          </div>
         </DialogContent>
       </Dialog>
     </div>
