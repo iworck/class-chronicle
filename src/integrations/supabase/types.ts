@@ -819,6 +819,7 @@ export type Database = {
           course_id: string | null
           created_at: string
           id: string
+          lesson_plan: string | null
           name: string
           status: Database["public"]["Enums"]["entity_status"]
           workload_hours: number
@@ -828,6 +829,7 @@ export type Database = {
           course_id?: string | null
           created_at?: string
           id?: string
+          lesson_plan?: string | null
           name: string
           status?: Database["public"]["Enums"]["entity_status"]
           workload_hours?: number
@@ -837,6 +839,7 @@ export type Database = {
           course_id?: string | null
           created_at?: string
           id?: string
+          lesson_plan?: string | null
           name?: string
           status?: Database["public"]["Enums"]["entity_status"]
           workload_hours?: number
