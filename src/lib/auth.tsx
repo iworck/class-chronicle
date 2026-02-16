@@ -10,6 +10,7 @@ interface Profile {
   email: string | null;
   phone: string | null;
   status: 'ATIVO' | 'INATIVO';
+  institution_id: string | null;
 }
 
 interface AuthContextType {
@@ -84,6 +85,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           email: profileData.email,
           phone: profileData.phone,
           status: profileData.status as 'ATIVO' | 'INATIVO',
+          institution_id: profileData.institution_id || null,
         });
       }
 
