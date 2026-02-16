@@ -14,6 +14,41 @@ export type Database = {
   }
   public: {
     Tables: {
+      academic_matrices: {
+        Row: {
+          code: string
+          course_id: string
+          created_at: string
+          id: string
+          instructions: string | null
+          status: Database["public"]["Enums"]["entity_status"]
+        }
+        Insert: {
+          code: string
+          course_id: string
+          created_at?: string
+          id?: string
+          instructions?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Update: {
+          code?: string
+          course_id?: string
+          created_at?: string
+          id?: string
+          instructions?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+        }
+        Relationships: [
+          {
+            foreignKeyName: "academic_matrices_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       attendance_adjustments: {
         Row: {
           approved_at: string | null
@@ -624,6 +659,45 @@ export type Database = {
           status?: Database["public"]["Enums"]["entity_status"]
         }
         Relationships: []
+      }
+      matrix_subjects: {
+        Row: {
+          created_at: string
+          id: string
+          matrix_id: string
+          semester: number
+          subject_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          matrix_id: string
+          semester?: number
+          subject_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          matrix_id?: string
+          semester?: number
+          subject_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "matrix_subjects_matrix_id_fkey"
+            columns: ["matrix_id"]
+            isOneToOne: false
+            referencedRelation: "academic_matrices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "matrix_subjects_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       profiles: {
         Row: {
