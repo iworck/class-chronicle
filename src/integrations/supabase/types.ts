@@ -636,6 +636,57 @@ export type Database = {
           },
         ]
       }
+      grade_template_items: {
+        Row: {
+          category: string
+          class_subject_id: string
+          counts_in_final: boolean
+          created_at: string
+          id: string
+          name: string
+          order_index: number
+          parent_item_id: string | null
+          weight: number
+        }
+        Insert: {
+          category?: string
+          class_subject_id: string
+          counts_in_final?: boolean
+          created_at?: string
+          id?: string
+          name: string
+          order_index?: number
+          parent_item_id?: string | null
+          weight?: number
+        }
+        Update: {
+          category?: string
+          class_subject_id?: string
+          counts_in_final?: boolean
+          created_at?: string
+          id?: string
+          name?: string
+          order_index?: number
+          parent_item_id?: string | null
+          weight?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grade_template_items_class_subject_id_fkey"
+            columns: ["class_subject_id"]
+            isOneToOne: false
+            referencedRelation: "class_subjects"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "grade_template_items_parent_item_id_fkey"
+            columns: ["parent_item_id"]
+            isOneToOne: false
+            referencedRelation: "grade_template_items"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       institutions: {
         Row: {
           created_at: string
@@ -947,6 +998,7 @@ export type Database = {
       }
       student_grades: {
         Row: {
+          counts_in_final: boolean
           created_at: string
           enrollment_id: string
           grade_category: string
@@ -959,6 +1011,7 @@ export type Database = {
           weight: number
         }
         Insert: {
+          counts_in_final?: boolean
           created_at?: string
           enrollment_id: string
           grade_category?: string
@@ -971,6 +1024,7 @@ export type Database = {
           weight?: number
         }
         Update: {
+          counts_in_final?: boolean
           created_at?: string
           enrollment_id?: string
           grade_category?: string

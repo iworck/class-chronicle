@@ -15,9 +15,10 @@ import {
 } from '@/components/ui/select';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
 import {
-  Plus, Search, Pencil, Loader2, Calendar, Eye, Users, Trash2, UserPlus, UserMinus,
+  Plus, Search, Pencil, Loader2, Calendar, Eye, Users, Trash2, UserPlus, UserMinus, Settings2, Save,
 } from 'lucide-react';
 
 interface Course {
@@ -75,6 +76,23 @@ interface Student {
   course_id: string;
 }
 
+interface TemplateItem {
+  id?: string;
+  name: string;
+  category: string;
+  weight: string;
+  counts_in_final: boolean;
+  parent_item_id: string | null;
+  order_index: number;
+}
+
+const GRADE_CATEGORIES = [
+  { value: 'prova', label: 'Prova' },
+  { value: 'trabalho', label: 'Trabalho' },
+  { value: 'media', label: 'Média' },
+  { value: 'ponto_extra', label: 'Ponto Extra' },
+];
+
 const Turmas = () => {
   const { hasRole } = useAuth();
   const canManage = hasRole('super_admin') || hasRole('admin') || hasRole('coordenador');
@@ -113,6 +131,15 @@ const Turmas = () => {
   const [linkSaving, setLinkSaving] = useState(false);
   const [studentSearch, setStudentSearch] = useState('');
 
+  // Grade template dialog
+  const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
+  const [templateClassSubjectId, setTemplateClassSubjectId] = useState('');
+  const [templateSubjectName, setTemplateSubjectName] = useState('');
+  const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
+  const [deletedTemplateIds, setDeletedTemplateIds] = useState<string[]>([]);
+  const [templateSaving, setTemplateSaving] = useState(false);
+  const [templateLoading, setTemplateLoading] = useState(false);
+
   useEffect(() => { fetchAll(); }, []);
 
   async function fetchAll() {
@@ -145,13 +172,11 @@ const Turmas = () => {
 
     const course = courses.find(c => c.id === courseId);
     if (!course?.unit_id) {
-      // Fallback: show all professors
       setFilteredProfessors(professors);
       setLoadingProfessors(false);
       return;
     }
 
-    // Get campus_id from unit
     const { data: unitData } = await supabase
       .from('units')
       .select('campus_id')
@@ -164,7 +189,6 @@ const Turmas = () => {
       return;
     }
 
-    // Get professor user_ids from user_roles
     const { data: profRoles } = await supabase
       .from('user_roles')
       .select('user_id')
@@ -177,7 +201,6 @@ const Turmas = () => {
       return;
     }
 
-    // Get professors linked to the unit or campus
     const [unitUsers, campusUsers] = await Promise.all([
       supabase.from('user_units').select('user_id').eq('unit_id', course.unit_id),
       supabase.from('user_campuses').select('user_id').eq('campus_id', unitData.campus_id),
@@ -188,7 +211,6 @@ const Turmas = () => {
       ...(campusUsers.data || []).map(u => u.user_id),
     ]);
 
-    // Intersect: must be professor AND linked to unit/campus
     const validIds = profUserIds.filter(id => linkedUserIds.has(id));
 
     if (validIds.length === 0) {
@@ -223,7 +245,6 @@ const Turmas = () => {
     setFormStatus(cls.status);
     fetchProfessorsByCourse(cls.course_id);
 
-    // Load existing class_subject
     const { data } = await supabase.from('class_subjects')
       .select('*')
       .eq('class_id', cls.id)
@@ -262,7 +283,6 @@ const Turmas = () => {
         setSaving(false);
         return;
       }
-      // Update or insert class_subject
       const { data: existing } = await supabase.from('class_subjects')
         .select('id')
         .eq('class_id', editing.id)
@@ -288,7 +308,6 @@ const Turmas = () => {
         return;
       }
       classId = data.id;
-      // Insert class_subject
       await supabase.from('class_subjects').insert({
         class_id: classId,
         subject_id: formSubjectId,
@@ -330,7 +349,6 @@ const Turmas = () => {
     setStudentSearch('');
     setSelectedStudentIds([]);
 
-    // Find the subject linked to this class
     const subjectId = viewSubjects.length > 0 ? viewSubjects[0].subject_id : null;
 
     if (!subjectId) {
@@ -338,7 +356,6 @@ const Turmas = () => {
       return;
     }
 
-    // Load students enrolled in the same subject via student_subject_enrollments
     const { data: enrollments } = await supabase
       .from('student_subject_enrollments')
       .select('student_id')
@@ -394,7 +411,6 @@ const Turmas = () => {
     } else {
       toast({ title: `${selectedStudentIds.length} aluno(s) vinculado(s)` });
       setLinkDialogOpen(false);
-      // Refresh view
       const { data } = await supabase.from('class_students')
         .select('*, student:students(id, name, enrollment)')
         .eq('class_id', viewClass.id)
@@ -429,6 +445,151 @@ const Turmas = () => {
     }
   }
 
+  // ---- Grade Template ----
+  async function openTemplateDialog(classSubject: ClassSubjectRow) {
+    setTemplateClassSubjectId(classSubject.id);
+    setTemplateSubjectName(classSubject.subject?.name || 'Disciplina');
+    setDeletedTemplateIds([]);
+    setTemplateDialogOpen(true);
+    setTemplateLoading(true);
+
+    const { data } = await supabase
+      .from('grade_template_items')
+      .select('*')
+      .eq('class_subject_id', classSubject.id)
+      .order('order_index');
+
+    if (data && data.length > 0) {
+      setTemplateItems(data.map((d: any) => ({
+        id: d.id,
+        name: d.name,
+        category: d.category,
+        weight: String(d.weight),
+        counts_in_final: d.counts_in_final,
+        parent_item_id: d.parent_item_id,
+        order_index: d.order_index,
+      })));
+    } else {
+      setTemplateItems([
+        { name: 'T1', category: 'trabalho', weight: '0.3', counts_in_final: false, parent_item_id: null, order_index: 0 },
+        { name: 'P1', category: 'prova', weight: '0.7', counts_in_final: false, parent_item_id: null, order_index: 1 },
+        { name: 'T2', category: 'trabalho', weight: '1', counts_in_final: false, parent_item_id: null, order_index: 2 },
+        { name: 'N1', category: 'media', weight: '1', counts_in_final: true, parent_item_id: null, order_index: 3 },
+      ]);
+    }
+    setTemplateLoading(false);
+  }
+
+  function addTemplateItem() {
+    const nextIdx = templateItems.length;
+    setTemplateItems(prev => [...prev, {
+      name: '',
+      category: 'prova',
+      weight: '1',
+      counts_in_final: true,
+      parent_item_id: null,
+      order_index: nextIdx,
+    }]);
+  }
+
+  function removeTemplateItem(index: number) {
+    const item = templateItems[index];
+    if (item.id) {
+      setDeletedTemplateIds(prev => [...prev, item.id!]);
+    }
+    // Also remove children pointing to this item
+    const removedId = item.id;
+    setTemplateItems(prev => {
+      const updated = prev.filter((_, i) => i !== index);
+      // Clear parent references to deleted item
+      if (removedId) {
+        return updated.map(t => t.parent_item_id === removedId ? { ...t, parent_item_id: null } : t);
+      }
+      return updated;
+    });
+  }
+
+  function updateTemplateItem(index: number, field: keyof TemplateItem, value: any) {
+    setTemplateItems(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
+  }
+
+  // Get items that can be parents (those with counts_in_final=true, i.e. "final" items)
+  function getParentCandidates(currentIndex: number) {
+    return templateItems.filter((t, i) => i !== currentIndex && t.counts_in_final && t.name.trim() !== '');
+  }
+
+  async function handleSaveTemplate() {
+    setTemplateSaving(true);
+
+    try {
+      // Delete removed items
+      for (const id of deletedTemplateIds) {
+        await supabase.from('grade_template_items').delete().eq('id', id);
+      }
+
+      // We need to save items in two passes for parent references
+      // First pass: save all items (without parent refs for new items)
+      const savedItems: { tempIndex: number; dbId: string }[] = [];
+
+      for (let i = 0; i < templateItems.length; i++) {
+        const item = templateItems[i];
+        if (!item.name.trim()) continue;
+
+        const numWeight = parseFloat(item.weight) || 1;
+
+        const payload: any = {
+          class_subject_id: templateClassSubjectId,
+          name: item.name.trim().toUpperCase(),
+          category: item.category,
+          weight: numWeight,
+          counts_in_final: item.counts_in_final,
+          order_index: i,
+          parent_item_id: null, // will be set in second pass
+        };
+
+        if (item.id) {
+          // For existing items with existing parent_item_id (already a UUID), keep it
+          if (item.parent_item_id && !item.parent_item_id.startsWith('temp_')) {
+            payload.parent_item_id = item.parent_item_id;
+          }
+          await supabase.from('grade_template_items').update(payload).eq('id', item.id);
+          savedItems.push({ tempIndex: i, dbId: item.id });
+        } else {
+          const { data, error } = await supabase.from('grade_template_items').insert(payload).select('id').single();
+          if (error) throw error;
+          savedItems.push({ tempIndex: i, dbId: data.id });
+        }
+      }
+
+      // Second pass: update parent references for items that reference by index
+      for (let i = 0; i < templateItems.length; i++) {
+        const item = templateItems[i];
+        if (!item.parent_item_id || item.id) continue; // skip if already has DB id (handled above)
+
+        // Find the saved item for this index
+        const saved = savedItems.find(s => s.tempIndex === i);
+        if (!saved) continue;
+
+        // Find parent by matching name
+        const parentItem = templateItems.find(t => t.counts_in_final && t.name.trim().toUpperCase() === item.parent_item_id?.toUpperCase());
+        if (parentItem) {
+          const parentSaved = savedItems.find(s => s.tempIndex === templateItems.indexOf(parentItem));
+          if (parentSaved) {
+            await supabase.from('grade_template_items')
+              .update({ parent_item_id: parentSaved.dbId })
+              .eq('id', saved.dbId);
+          }
+        }
+      }
+
+      toast({ title: 'Modelo de notas salvo com sucesso!' });
+      setTemplateDialogOpen(false);
+    } catch (err: any) {
+      toast({ title: 'Erro ao salvar modelo', description: err.message, variant: 'destructive' });
+    }
+    setTemplateSaving(false);
+  }
+
   const filtered = classes.filter(c =>
     c.code.toLowerCase().includes(search.toLowerCase()) ||
     c.period.toLowerCase().includes(search.toLowerCase()) ||
@@ -437,8 +598,6 @@ const Turmas = () => {
 
   const activeCount = classes.filter(c => c.status === 'ATIVO').length;
 
-  // Get professor name for a class (from class_subjects loaded inline)
-  // We'll load it inline in the table via a small helper
   const [classSubjectsMap, setClassSubjectsMap] = useState<Record<string, { subjectName: string; professorName: string }>>({});
 
   useEffect(() => {
@@ -455,7 +614,6 @@ const Turmas = () => {
 
     if (!data) return;
 
-    // Get unique professor IDs
     const profIds = [...new Set((data as any[]).map(d => d.professor_user_id).filter(Boolean))];
     const { data: profs } = await supabase.from('profiles').select('id, name').in('id', profIds);
     const profMap = Object.fromEntries((profs || []).map((p: any) => [p.id, p.name]));
@@ -691,6 +849,24 @@ const Turmas = () => {
                 })}
               </div>
 
+              {/* Grade Template Section */}
+              {viewSubjects.length > 0 && (canManage || hasRole('professor')) && (
+                <div>
+                  <div className="flex items-center justify-between mb-3">
+                    <div className="flex items-center gap-2">
+                      <Settings2 className="w-4 h-4 text-muted-foreground" />
+                      <span className="text-sm font-medium text-foreground">Modelo de Notas</span>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => openTemplateDialog(viewSubjects[0])}>
+                      <Settings2 className="w-4 h-4 mr-2" /> Configurar Notas
+                    </Button>
+                  </div>
+                  <p className="text-xs text-muted-foreground">
+                    Configure os critérios de avaliação (tipos, pesos, composição) para padronizar o lançamento de notas de todos os alunos desta turma.
+                  </p>
+                </div>
+              )}
+
               {/* Students section */}
               <div>
                 <div className="flex items-center justify-between mb-3">
@@ -801,6 +977,151 @@ const Turmas = () => {
             <Button onClick={handleLinkStudents} disabled={linkSaving || selectedStudentIds.length === 0}>
               {linkSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               Vincular ({selectedStudentIds.length})
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Grade Template Dialog */}
+      <Dialog open={templateDialogOpen} onOpenChange={setTemplateDialogOpen}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Settings2 className="w-5 h-5 text-primary" />
+              Modelo de Notas — {templateSubjectName}
+            </DialogTitle>
+          </DialogHeader>
+
+          {templateLoading ? (
+            <div className="flex items-center justify-center py-8">
+              <Loader2 className="w-6 h-6 animate-spin text-primary" />
+            </div>
+          ) : (
+            <div className="space-y-4">
+              <div className="p-3 rounded-lg border border-primary/20 bg-primary/5">
+                <p className="text-xs text-muted-foreground">
+                  Configure os itens de avaliação. Itens com <strong>"Compõe Média"</strong> ativado contarão diretamente no cálculo da média final.
+                  Itens com essa opção desativada servem como <strong>critérios de composição</strong> de outro item (ex: T1 e P1 compõem N1).
+                  Selecione o <strong>"Item Pai"</strong> para indicar qual nota final o critério compõe.
+                </p>
+              </div>
+
+              {/* Header */}
+              <div className="grid grid-cols-[1fr_100px_70px_90px_120px_40px] gap-2 text-xs font-semibold text-muted-foreground px-1">
+                <span>Nome</span>
+                <span>Categoria</span>
+                <span>Peso</span>
+                <span className="text-center">Compõe Média</span>
+                <span>Item Pai</span>
+                <span></span>
+              </div>
+
+              {templateItems.map((item, idx) => {
+                const parentCandidates = getParentCandidates(idx);
+                return (
+                  <div key={idx} className={`grid grid-cols-[1fr_100px_70px_90px_120px_40px] gap-2 items-center p-2 rounded-md ${item.counts_in_final ? 'bg-primary/5 border border-primary/20' : 'bg-muted/30 border border-border'}`}>
+                    <Input
+                      placeholder="Ex: T1, P1, N1"
+                      value={item.name}
+                      onChange={e => updateTemplateItem(idx, 'name', e.target.value)}
+                      className="text-sm font-mono"
+                    />
+                    <Select value={item.category} onValueChange={v => updateTemplateItem(idx, 'category', v)}>
+                      <SelectTrigger className="text-xs">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {GRADE_CATEGORIES.map(c => (
+                          <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <Input
+                      type="number"
+                      min="0.1"
+                      step="0.1"
+                      value={item.weight}
+                      onChange={e => updateTemplateItem(idx, 'weight', e.target.value)}
+                      className="text-sm"
+                    />
+                    <div className="flex justify-center">
+                      <Switch
+                        checked={item.counts_in_final}
+                        onCheckedChange={v => {
+                          updateTemplateItem(idx, 'counts_in_final', v);
+                          if (v) updateTemplateItem(idx, 'parent_item_id', null);
+                        }}
+                      />
+                    </div>
+                    <div>
+                      {!item.counts_in_final ? (
+                        <Select
+                          value={item.parent_item_id || '_none'}
+                          onValueChange={v => updateTemplateItem(idx, 'parent_item_id', v === '_none' ? null : v)}
+                        >
+                          <SelectTrigger className="text-xs">
+                            <SelectValue placeholder="Nenhum" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="_none">Nenhum</SelectItem>
+                            {parentCandidates.map((pc, pcIdx) => (
+                              <SelectItem key={pc.id || `temp_${pcIdx}`} value={pc.id || pc.name.trim().toUpperCase()}>
+                                {pc.name.trim().toUpperCase()}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                      ) : (
+                        <span className="text-xs text-muted-foreground italic px-2">—</span>
+                      )}
+                    </div>
+                    <Button variant="ghost" size="icon" onClick={() => removeTemplateItem(idx)} className="shrink-0">
+                      <Trash2 className="w-4 h-4 text-destructive" />
+                    </Button>
+                  </div>
+                );
+              })}
+
+              <Button variant="outline" size="sm" onClick={addTemplateItem}>
+                <Plus className="w-4 h-4 mr-2" /> Adicionar Item
+              </Button>
+
+              {/* Preview */}
+              {templateItems.length > 0 && (
+                <div className="p-3 rounded-md border border-border bg-muted/50">
+                  <p className="text-xs font-semibold text-foreground mb-2">Resumo do Modelo:</p>
+                  <div className="space-y-1">
+                    {templateItems.filter(t => t.counts_in_final && t.name.trim()).map((finalItem, i) => {
+                      const children = templateItems.filter(t => !t.counts_in_final && t.parent_item_id && (t.parent_item_id === finalItem.id || t.parent_item_id === finalItem.name.trim().toUpperCase()));
+                      return (
+                        <div key={i} className="text-xs text-foreground">
+                          <strong>{finalItem.name.trim().toUpperCase()}</strong>
+                          {' '}({GRADE_CATEGORIES.find(c => c.value === finalItem.category)?.label}, peso {finalItem.weight})
+                          {children.length > 0 && (
+                            <span className="text-muted-foreground">
+                              {' = '}composição de {children.map(c => `${c.name.trim().toUpperCase()}(p${c.weight})`).join(' + ')}
+                            </span>
+                          )}
+                        </div>
+                      );
+                    })}
+                    {templateItems.filter(t => !t.counts_in_final && !t.parent_item_id && t.name.trim()).length > 0 && (
+                      <p className="text-xs text-amber-600 mt-1">
+                        ⚠ Itens sem "Item Pai" definido e que não compõem a média: {templateItems.filter(t => !t.counts_in_final && !t.parent_item_id && t.name.trim()).map(t => t.name.trim().toUpperCase()).join(', ')}
+                      </p>
+                    )}
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
+
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setTemplateDialogOpen(false)}>Cancelar</Button>
+            <Button onClick={handleSaveTemplate} disabled={templateSaving}>
+              {templateSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              <Save className="w-4 h-4 mr-2" />
+              Salvar Modelo
             </Button>
           </DialogFooter>
         </DialogContent>
