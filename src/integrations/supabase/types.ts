@@ -945,6 +945,47 @@ export type Database = {
           },
         ]
       }
+      student_grades: {
+        Row: {
+          created_at: string
+          enrollment_id: string
+          grade_type: string
+          grade_value: number
+          id: string
+          observations: string | null
+          professor_user_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enrollment_id: string
+          grade_type: string
+          grade_value: number
+          id?: string
+          observations?: string | null
+          professor_user_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enrollment_id?: string
+          grade_type?: string
+          grade_value?: number
+          id?: string
+          observations?: string | null
+          professor_user_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_grades_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "student_subject_enrollments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       student_subject_enrollments: {
         Row: {
           created_at: string

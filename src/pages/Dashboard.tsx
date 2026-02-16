@@ -30,6 +30,7 @@ import Cursos from '@/pages/dashboard/Cursos';
 import Matrizes from '@/pages/dashboard/Matrizes';
 import Turmas from '@/pages/dashboard/Turmas';
 import Alunos from '@/pages/dashboard/Alunos';
+import Boletim from '@/pages/dashboard/Boletim';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -118,6 +119,12 @@ const Dashboard = () => {
       label: 'Minhas Aulas',
       path: '/dashboard/aulas',
       roles: ['professor'] 
+    },
+    { 
+      icon: FileText, 
+      label: 'Boletim',
+      path: '/dashboard/boletim',
+      roles: ['professor', 'admin', 'coordenador', 'super_admin'] 
     },
     { 
       icon: FileText, 
@@ -275,6 +282,7 @@ const Dashboard = () => {
               <Route path="matrizes" element={<Matrizes />} />
               <Route path="turmas" element={<Turmas />} />
               <Route path="alunos" element={<Alunos />} />
+              <Route path="boletim" element={<Boletim />} />
               <Route path="configuracoes" element={<Configuracoes />} />
               <Route path="*" element={<div className="text-center py-16 text-muted-foreground">Página em construção</div>} />
             </Routes>
