@@ -27,6 +27,7 @@ import Unidades from '@/pages/dashboard/Unidades';
 import Usuarios from '@/pages/dashboard/Usuarios';
 import Configuracoes from '@/pages/dashboard/Configuracoes';
 import Cursos from '@/pages/dashboard/Cursos';
+import Matrizes from '@/pages/dashboard/Matrizes';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -91,6 +92,12 @@ const Dashboard = () => {
       label: 'Disciplinas', 
       path: '/dashboard/disciplinas',
       roles: ['admin'] 
+    },
+    { 
+      icon: GraduationCap, 
+      label: 'Matrizes', 
+      path: '/dashboard/matrizes',
+      roles: ['admin', 'super_admin'] 
     },
     { 
       icon: Users, 
@@ -263,6 +270,7 @@ const Dashboard = () => {
               <Route path="usuarios" element={<Usuarios />} />
               <Route path="cursos" element={<Cursos />} />
               <Route path="disciplinas" element={<Disciplinas />} />
+              <Route path="matrizes" element={<Matrizes />} />
               <Route path="configuracoes" element={<Configuracoes />} />
               <Route path="*" element={<div className="text-center py-16 text-muted-foreground">Página em construção</div>} />
             </Routes>
