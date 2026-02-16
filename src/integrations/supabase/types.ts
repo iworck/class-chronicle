@@ -370,6 +370,7 @@ export type Database = {
       class_subjects: {
         Row: {
           class_id: string
+          grades_closed: boolean
           id: string
           professor_user_id: string
           status: Database["public"]["Enums"]["entity_status"]
@@ -377,6 +378,7 @@ export type Database = {
         }
         Insert: {
           class_id: string
+          grades_closed?: boolean
           id?: string
           professor_user_id: string
           status?: Database["public"]["Enums"]["entity_status"]
@@ -384,6 +386,7 @@ export type Database = {
         }
         Update: {
           class_id?: string
+          grades_closed?: boolean
           id?: string
           professor_user_id?: string
           status?: Database["public"]["Enums"]["entity_status"]
