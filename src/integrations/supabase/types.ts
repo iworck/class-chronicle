@@ -945,6 +945,64 @@ export type Database = {
           },
         ]
       }
+      student_subject_enrollments: {
+        Row: {
+          created_at: string
+          enrolled_at: string
+          id: string
+          matrix_id: string
+          semester: number
+          status: Database["public"]["Enums"]["enrollment_subject_status"]
+          student_id: string
+          subject_id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          enrolled_at?: string
+          id?: string
+          matrix_id: string
+          semester?: number
+          status?: Database["public"]["Enums"]["enrollment_subject_status"]
+          student_id: string
+          subject_id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          enrolled_at?: string
+          id?: string
+          matrix_id?: string
+          semester?: number
+          status?: Database["public"]["Enums"]["enrollment_subject_status"]
+          student_id?: string
+          subject_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_subject_enrollments_matrix_id_fkey"
+            columns: ["matrix_id"]
+            isOneToOne: false
+            referencedRelation: "academic_matrices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_subject_enrollments_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_subject_enrollments_subject_id_fkey"
+            columns: ["subject_id"]
+            isOneToOne: false
+            referencedRelation: "subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       students: {
         Row: {
           course_id: string
@@ -1509,6 +1567,11 @@ export type Database = {
         | "TRANCADO"
         | "CANCELADO"
         | "TRANSFERIDO"
+      enrollment_subject_status:
+        | "CURSANDO"
+        | "APROVADO"
+        | "REPROVADO"
+        | "TRANCADO"
       entity_status: "ATIVO" | "INATIVO"
       session_status:
         | "ABERTA"
@@ -1659,6 +1722,12 @@ export const Constants = {
         "TRANCADO",
         "CANCELADO",
         "TRANSFERIDO",
+      ],
+      enrollment_subject_status: [
+        "CURSANDO",
+        "APROVADO",
+        "REPROVADO",
+        "TRANCADO",
       ],
       entity_status: ["ATIVO", "INATIVO"],
       session_status: [
