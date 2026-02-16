@@ -16,12 +16,13 @@ import {
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye, Lock, History, Shield, GraduationCap, Building2, Users2 } from 'lucide-react';
+import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye, Lock, History, Shield, GraduationCap, Building2, Users2, BarChart3, Bell } from 'lucide-react';
 import { BoletimSummaryPanel } from '@/components/boletim/BoletimSummaryPanel';
 import { BoletimFilters } from '@/components/boletim/BoletimFilters';
 import { BoletimAlerts } from '@/components/boletim/BoletimAlerts';
 import { BoletimGradeHistory } from '@/components/boletim/BoletimGradeHistory';
 import { BoletimPdfExport } from '@/components/boletim/BoletimPdfExport';
+import { BoletimClassComparison } from '@/components/boletim/BoletimClassComparison';
 
 interface ClassSubject {
   id: string;
@@ -122,6 +123,12 @@ const Boletim = () => {
   const [historyDialog, setHistoryDialog] = useState(false);
   const [historyEnrollmentIds, setHistoryEnrollmentIds] = useState<string[]>([]);
   const [historyStudentName, setHistoryStudentName] = useState<string | undefined>();
+
+  // Comparison dialog
+  const [comparisonDialog, setComparisonDialog] = useState(false);
+
+  // Notification state
+  const [sendingNotification, setSendingNotification] = useState(false);
 
   // Filters
   const [searchTerm, setSearchTerm] = useState('');
@@ -827,39 +834,81 @@ const Boletim = () => {
             )}
           </div>
         </div>
-        {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && (
-          <div className="flex items-center gap-2 flex-wrap">
-            {canViewHistory && (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => {
-                  setHistoryEnrollmentIds(enrollments.map(e => e.id));
-                  setHistoryStudentName(undefined);
-                  setHistoryDialog(true);
-                }}
-              >
-                <History className="w-4 h-4 mr-2" />
-                Histórico
-              </Button>
-            )}
-            <BoletimPdfExport
-              subjectName={(currentCs?.subject as any)?.name || ''}
-              classCode={(currentCs?.class as any)?.code || ''}
-              minGrade={minGrade}
-              minAttendance={minAtt}
-              students={enrollments.map(e => ({
-                name: e.student?.name || '',
-                enrollment: e.student?.enrollment || '',
-                avg: getWeightedAverage(e.id),
-                attPct: getAttendancePct(e.student_id),
-                status: getDisplayStatus(e),
-                grades: getStudentGrades(e.id).map(g => ({ type: g.grade_type, value: g.grade_value })),
-              }))}
-              templateItems={templateItems.map(t => ({ name: t.name, counts_in_final: t.counts_in_final }))}
-            />
-          </div>
-        )}
+        {/* Action buttons row */}
+        <div className="flex items-center gap-2 flex-wrap">
+          {/* Comparison button — management roles only */}
+          {isAdmin && classSubjects.length > 1 && (
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setComparisonDialog(true)}
+            >
+              <BarChart3 className="w-4 h-4 mr-2" />
+              Comparativo
+            </Button>
+          )}
+          {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && (
+            <>
+              {/* Notify at-risk — management roles only */}
+              {isAdmin && atRiskStudents.length > 0 && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  className="border-amber-500/30 text-amber-700 dark:text-amber-400 hover:bg-amber-500/10"
+                  disabled={sendingNotification}
+                  onClick={async () => {
+                    setSendingNotification(true);
+                    try {
+                      const { data, error } = await supabase.functions.invoke('notify-at-risk', {
+                        body: { class_subject_id: selectedClassSubject, channels: ['email', 'whatsapp'] },
+                      });
+                      if (error) throw error;
+                      toast({
+                        title: `Notificação enviada`,
+                        description: `${data.at_risk_count} aluno(s) em risco. ${data.sent} notificação(ões) enviada(s).`,
+                      });
+                    } catch (err: any) {
+                      toast({ title: 'Erro ao notificar', description: err.message, variant: 'destructive' });
+                    }
+                    setSendingNotification(false);
+                  }}
+                >
+                  {sendingNotification ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Bell className="w-4 h-4 mr-2" />}
+                  Notificar Risco ({atRiskStudents.length})
+                </Button>
+              )}
+              {canViewHistory && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    setHistoryEnrollmentIds(enrollments.map(e => e.id));
+                    setHistoryStudentName(undefined);
+                    setHistoryDialog(true);
+                  }}
+                >
+                  <History className="w-4 h-4 mr-2" />
+                  Histórico
+                </Button>
+              )}
+              <BoletimPdfExport
+                subjectName={(currentCs?.subject as any)?.name || ''}
+                classCode={(currentCs?.class as any)?.code || ''}
+                minGrade={minGrade}
+                minAttendance={minAtt}
+                students={enrollments.map(e => ({
+                  name: e.student?.name || '',
+                  enrollment: e.student?.enrollment || '',
+                  avg: getWeightedAverage(e.id),
+                  attPct: getAttendancePct(e.student_id),
+                  status: getDisplayStatus(e),
+                  grades: getStudentGrades(e.id).map(g => ({ type: g.grade_type, value: g.grade_value })),
+                }))}
+                templateItems={templateItems.map(t => ({ name: t.name, counts_in_final: t.counts_in_final }))}
+              />
+            </>
+          )}
+        </div>
       </div>
 
       {/* Select class + subject */}
@@ -1510,6 +1559,12 @@ const Boletim = () => {
         onOpenChange={setHistoryDialog}
         enrollmentIds={historyEnrollmentIds}
         studentName={historyStudentName}
+      />
+
+      {/* Class Comparison Dialog */}
+      <BoletimClassComparison
+        open={comparisonDialog}
+        onOpenChange={setComparisonDialog}
       />
     </div>
   );
