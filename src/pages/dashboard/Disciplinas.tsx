@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -8,7 +8,7 @@ import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
 import {
-  Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger, DialogFooter, DialogClose,
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogClose,
 } from '@/components/ui/dialog';
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
@@ -19,7 +19,6 @@ import { toast } from '@/hooks/use-toast';
 import {
   Plus, Search, Pencil, Trash2, BookOpen, Link2, Loader2,
 } from 'lucide-react';
-import { cn } from '@/lib/utils';
 import type { Tables } from '@/integrations/supabase/types';
 
 type Subject = Tables<'subjects'>;
@@ -28,11 +27,31 @@ type ClassSubject = Tables<'class_subjects'> & {
   subjects?: { name: string; code: string } | null;
 };
 
+interface CourseOption {
+  id: string;
+  name: string;
+  unit_id: string | null;
+}
+
+interface UnitOption {
+  id: string;
+  name: string;
+  campus_id: string;
+}
+
+interface CampusOption {
+  id: string;
+  name: string;
+}
+
 const Disciplinas = () => {
   const { hasRole } = useAuth();
-  const canManage = hasRole('admin');
+  const canManage = hasRole('admin') || hasRole('diretor') || hasRole('gerente') || hasRole('coordenador');
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
+  const [courses, setCourses] = useState<CourseOption[]>([]);
+  const [units, setUnits] = useState<UnitOption[]>([]);
+  const [campuses, setCampuses] = useState<CampusOption[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -43,6 +62,9 @@ const Disciplinas = () => {
   const [formCode, setFormCode] = useState('');
   const [formWorkload, setFormWorkload] = useState('0');
   const [formStatus, setFormStatus] = useState<'ATIVO' | 'INATIVO'>('ATIVO');
+  const [formCourseId, setFormCourseId] = useState('');
+  const [formCampusFilter, setFormCampusFilter] = useState('');
+  const [formUnitFilter, setFormUnitFilter] = useState('');
   const [saving, setSaving] = useState(false);
 
   // Vínculo state
@@ -59,63 +81,75 @@ const Disciplinas = () => {
   const canManageBindings = hasRole('admin') || hasRole('coordenador');
 
   useEffect(() => {
-    fetchSubjects();
-    fetchBindings();
-    fetchClasses();
-    fetchProfessors();
+    fetchAll();
   }, []);
 
-  async function fetchSubjects() {
+  async function fetchAll() {
     setLoading(true);
-    const { data, error } = await supabase
-      .from('subjects')
-      .select('*')
-      .order('name');
-    if (error) {
-      toast({ title: 'Erro ao carregar disciplinas', description: error.message, variant: 'destructive' });
-    } else {
-      setSubjects(data || []);
-    }
-    setLoading(false);
-  }
-
-  async function fetchBindings() {
     setBindingsLoading(true);
-    const { data, error } = await supabase
-      .from('class_subjects')
-      .select('*, classes(code, period), subjects(name, code)')
-      .order('class_id');
-    if (error) {
-      toast({ title: 'Erro ao carregar vínculos', description: error.message, variant: 'destructive' });
+    const [subjectRes, courseRes, unitRes, campusRes, bindingRes, classRes] = await Promise.all([
+      supabase.from('subjects').select('*').order('name'),
+      supabase.from('courses').select('id, name, unit_id').eq('status', 'ATIVO').order('name'),
+      supabase.from('units').select('id, name, campus_id').eq('status', 'ATIVO').order('name'),
+      supabase.from('campuses').select('id, name').eq('status', 'ATIVO').order('name'),
+      supabase.from('class_subjects').select('*, classes(code, period), subjects(name, code)').order('class_id'),
+      supabase.from('classes').select('id, code, period').eq('status', 'ATIVO').order('code'),
+    ]);
+
+    if (subjectRes.error) {
+      toast({ title: 'Erro ao carregar disciplinas', description: subjectRes.error.message, variant: 'destructive' });
     } else {
-      setBindings((data as ClassSubject[]) || []);
+      setSubjects(subjectRes.data || []);
     }
+
+    setCourses((courseRes.data as CourseOption[]) || []);
+    setUnits((unitRes.data as UnitOption[]) || []);
+    setCampuses((campusRes.data as CampusOption[]) || []);
+    setBindings((bindingRes.data as ClassSubject[]) || []);
+    setClasses(classRes.data || []);
+    setLoading(false);
     setBindingsLoading(false);
-  }
 
-  async function fetchClasses() {
-    const { data } = await supabase
-      .from('classes')
-      .select('id, code, period')
-      .eq('status', 'ATIVO')
-      .order('code');
-    setClasses(data || []);
-  }
-
-  async function fetchProfessors() {
-    const { data } = await supabase
-      .from('user_roles')
-      .select('user_id')
-      .eq('role', 'professor');
-    if (data && data.length > 0) {
-      const ids = data.map((r) => r.user_id);
-      const { data: profiles } = await supabase
-        .from('profiles')
-        .select('id, name')
-        .in('id', ids)
-        .order('name');
+    // Fetch professors
+    const { data: roleData } = await supabase.from('user_roles').select('user_id').eq('role', 'professor');
+    if (roleData && roleData.length > 0) {
+      const ids = roleData.map((r) => r.user_id);
+      const { data: profiles } = await supabase.from('profiles').select('id, name').in('id', ids).order('name');
       setProfessors(profiles || []);
     }
+  }
+
+  // Cascading filter logic
+  const filteredUnits = useMemo(() => {
+    if (!formCampusFilter) return units;
+    return units.filter(u => u.campus_id === formCampusFilter);
+  }, [units, formCampusFilter]);
+
+  const filteredCourses = useMemo(() => {
+    if (!formUnitFilter) {
+      if (!formCampusFilter) return courses;
+      const unitIds = new Set(filteredUnits.map(u => u.id));
+      return courses.filter(c => c.unit_id && unitIds.has(c.unit_id));
+    }
+    return courses.filter(c => c.unit_id === formUnitFilter);
+  }, [courses, formUnitFilter, formCampusFilter, filteredUnits]);
+
+  // Maps for display
+  const courseMap = Object.fromEntries(courses.map(c => [c.id, c]));
+  const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
+  const campusMap = Object.fromEntries(campuses.map(c => [c.id, c]));
+
+  function getCourseContext(courseId: string | null) {
+    if (!courseId) return { course: '—', unit: '—', campus: '—' };
+    const course = courseMap[courseId];
+    if (!course) return { course: '—', unit: '—', campus: '—' };
+    const unit = course.unit_id ? unitMap[course.unit_id] : null;
+    const campus = unit ? campusMap[unit.campus_id] : null;
+    return {
+      course: course.name,
+      unit: unit?.name || '—',
+      campus: campus?.name || '—',
+    };
   }
 
   function openCreate() {
@@ -124,6 +158,9 @@ const Disciplinas = () => {
     setFormCode('');
     setFormWorkload('0');
     setFormStatus('ATIVO');
+    setFormCourseId('');
+    setFormCampusFilter('');
+    setFormUnitFilter('');
     setDialogOpen(true);
   }
 
@@ -133,6 +170,23 @@ const Disciplinas = () => {
     setFormCode(s.code);
     setFormWorkload(String(s.workload_hours));
     setFormStatus(s.status);
+    const cid = (s as any).course_id || '';
+    setFormCourseId(cid);
+    // Set filters based on existing course
+    if (cid && courseMap[cid]) {
+      const course = courseMap[cid];
+      if (course.unit_id && unitMap[course.unit_id]) {
+        const unit = unitMap[course.unit_id];
+        setFormCampusFilter(unit.campus_id);
+        setFormUnitFilter(course.unit_id);
+      } else {
+        setFormCampusFilter('');
+        setFormUnitFilter('');
+      }
+    } else {
+      setFormCampusFilter('');
+      setFormUnitFilter('');
+    }
     setDialogOpen(true);
   }
 
@@ -142,53 +196,43 @@ const Disciplinas = () => {
       return;
     }
     setSaving(true);
+    const payload: any = {
+      name: formName.trim(),
+      code: formCode.trim().toUpperCase(),
+      workload_hours: parseInt(formWorkload) || 0,
+      status: formStatus,
+      course_id: formCourseId || null,
+    };
+
     if (editing) {
-      const { error } = await supabase
-        .from('subjects')
-        .update({
-          name: formName.trim(),
-          code: formCode.trim().toUpperCase(),
-          workload_hours: parseInt(formWorkload) || 0,
-          status: formStatus,
-        })
-        .eq('id', editing.id);
+      const { error } = await supabase.from('subjects').update(payload).eq('id', editing.id);
       if (error) {
         toast({ title: 'Erro ao atualizar', description: error.message, variant: 'destructive' });
       } else {
         toast({ title: 'Disciplina atualizada com sucesso' });
         setDialogOpen(false);
-        fetchSubjects();
+        fetchAll();
       }
     } else {
-      const { error } = await supabase
-        .from('subjects')
-        .insert({
-          name: formName.trim(),
-          code: formCode.trim().toUpperCase(),
-          workload_hours: parseInt(formWorkload) || 0,
-          status: formStatus,
-        });
+      const { error } = await supabase.from('subjects').insert(payload);
       if (error) {
         toast({ title: 'Erro ao criar', description: error.message, variant: 'destructive' });
       } else {
         toast({ title: 'Disciplina criada com sucesso' });
         setDialogOpen(false);
-        fetchSubjects();
+        fetchAll();
       }
     }
     setSaving(false);
   }
 
   async function handleDelete(id: string) {
-    const { error } = await supabase
-      .from('subjects')
-      .update({ status: 'INATIVO' })
-      .eq('id', id);
+    const { error } = await supabase.from('subjects').update({ status: 'INATIVO' }).eq('id', id);
     if (error) {
       toast({ title: 'Erro ao inativar', description: error.message, variant: 'destructive' });
     } else {
       toast({ title: 'Disciplina inativada' });
-      fetchSubjects();
+      fetchAll();
     }
   }
 
@@ -198,13 +242,11 @@ const Disciplinas = () => {
       return;
     }
     setBindSaving(true);
-    const { error } = await supabase
-      .from('class_subjects')
-      .insert({
-        subject_id: bindSubjectId,
-        class_id: bindClassId,
-        professor_user_id: bindProfessorId,
-      });
+    const { error } = await supabase.from('class_subjects').insert({
+      subject_id: bindSubjectId,
+      class_id: bindClassId,
+      professor_user_id: bindProfessorId,
+    });
     if (error) {
       toast({ title: 'Erro ao criar vínculo', description: error.message, variant: 'destructive' });
     } else {
@@ -213,28 +255,26 @@ const Disciplinas = () => {
       setBindSubjectId('');
       setBindClassId('');
       setBindProfessorId('');
-      fetchBindings();
+      fetchAll();
     }
     setBindSaving(false);
   }
 
   async function handleRemoveBinding(id: string) {
-    const { error } = await supabase
-      .from('class_subjects')
-      .update({ status: 'INATIVO' })
-      .eq('id', id);
+    const { error } = await supabase.from('class_subjects').update({ status: 'INATIVO' }).eq('id', id);
     if (error) {
       toast({ title: 'Erro ao remover vínculo', description: error.message, variant: 'destructive' });
     } else {
       toast({ title: 'Vínculo removido' });
-      fetchBindings();
+      fetchAll();
     }
   }
 
   const filtered = subjects.filter(
     (s) =>
       s.name.toLowerCase().includes(search.toLowerCase()) ||
-      s.code.toLowerCase().includes(search.toLowerCase())
+      s.code.toLowerCase().includes(search.toLowerCase()) ||
+      getCourseContext((s as any).course_id).course.toLowerCase().includes(search.toLowerCase())
   );
 
   const activeCount = subjects.filter((s) => s.status === 'ATIVO').length;
@@ -243,7 +283,7 @@ const Disciplinas = () => {
     <div className="max-w-6xl mx-auto animate-fade-in">
       <div className="mb-6">
         <h1 className="text-2xl font-display font-bold text-foreground">Disciplinas</h1>
-        <p className="text-muted-foreground text-sm">Gerencie disciplinas e vínculos com turmas e professores.</p>
+        <p className="text-muted-foreground text-sm">Gerencie disciplinas vinculadas a cursos, com identificação de campus e unidade.</p>
       </div>
 
       {/* Stats */}
@@ -281,7 +321,7 @@ const Disciplinas = () => {
               <div className="relative w-full sm:w-72">
                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
                 <Input
-                  placeholder="Buscar disciplina..."
+                  placeholder="Buscar por nome, código ou curso..."
                   value={search}
                   onChange={(e) => setSearch(e.target.value)}
                   className="pl-9"
@@ -308,36 +348,45 @@ const Disciplinas = () => {
                   <TableRow>
                     <TableHead>Código</TableHead>
                     <TableHead>Nome</TableHead>
+                    <TableHead>Curso</TableHead>
+                    <TableHead>Unidade</TableHead>
+                    <TableHead>Campus</TableHead>
                     <TableHead>Carga Horária</TableHead>
                     <TableHead>Status</TableHead>
                     {canManage && <TableHead className="text-right">Ações</TableHead>}
                   </TableRow>
                 </TableHeader>
                 <TableBody>
-                  {filtered.map((s) => (
-                    <TableRow key={s.id}>
-                      <TableCell className="font-mono text-sm">{s.code}</TableCell>
-                      <TableCell className="font-medium">{s.name}</TableCell>
-                      <TableCell>{s.workload_hours}h</TableCell>
-                      <TableCell>
-                        <Badge variant={s.status === 'ATIVO' ? 'default' : 'secondary'}>
-                          {s.status}
-                        </Badge>
-                      </TableCell>
-                      {canManage && (
-                        <TableCell className="text-right space-x-2">
-                          <Button variant="ghost" size="icon" onClick={() => openEdit(s)}>
-                            <Pencil className="w-4 h-4" />
-                          </Button>
-                          {s.status === 'ATIVO' && (
-                            <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)}>
-                              <Trash2 className="w-4 h-4 text-destructive" />
-                            </Button>
-                          )}
+                  {filtered.map((s) => {
+                    const ctx = getCourseContext((s as any).course_id);
+                    return (
+                      <TableRow key={s.id}>
+                        <TableCell className="font-mono text-sm">{s.code}</TableCell>
+                        <TableCell className="font-medium">{s.name}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{ctx.course}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{ctx.unit}</TableCell>
+                        <TableCell className="text-sm text-muted-foreground">{ctx.campus}</TableCell>
+                        <TableCell>{s.workload_hours}h</TableCell>
+                        <TableCell>
+                          <Badge variant={s.status === 'ATIVO' ? 'default' : 'secondary'}>
+                            {s.status}
+                          </Badge>
                         </TableCell>
-                      )}
-                    </TableRow>
-                  ))}
+                        {canManage && (
+                          <TableCell className="text-right space-x-2">
+                            <Button variant="ghost" size="icon" onClick={() => openEdit(s)}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                            {s.status === 'ATIVO' && (
+                              <Button variant="ghost" size="icon" onClick={() => handleDelete(s.id)}>
+                                <Trash2 className="w-4 h-4 text-destructive" />
+                              </Button>
+                            )}
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
                 </TableBody>
               </Table>
             )}
@@ -412,23 +461,86 @@ const Disciplinas = () => {
 
       {/* ===== Dialog: Criar/Editar Disciplina ===== */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Disciplina' : 'Nova Disciplina'}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-2">
-            <div>
-              <Label>Código *</Label>
-              <Input value={formCode} onChange={(e) => setFormCode(e.target.value)} placeholder="MAT101" />
+            <div className="grid grid-cols-2 gap-4">
+              <div>
+                <Label>Código *</Label>
+                <Input value={formCode} onChange={(e) => setFormCode(e.target.value)} placeholder="MAT101" />
+              </div>
+              <div>
+                <Label>Carga Horária (h)</Label>
+                <Input type="number" value={formWorkload} onChange={(e) => setFormWorkload(e.target.value)} />
+              </div>
             </div>
             <div>
               <Label>Nome *</Label>
               <Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Cálculo I" />
             </div>
-            <div>
-              <Label>Carga Horária (h)</Label>
-              <Input type="number" value={formWorkload} onChange={(e) => setFormWorkload(e.target.value)} />
+
+            {/* Cascading: Campus → Unidade → Curso */}
+            <div className="rounded-lg border border-border p-4 space-y-3 bg-muted/30">
+              <p className="text-sm font-medium text-foreground">Vínculo ao Curso</p>
+              <div>
+                <Label className="text-xs">Campus (filtro)</Label>
+                <Select
+                  value={formCampusFilter || "all"}
+                  onValueChange={(v) => {
+                    setFormCampusFilter(v === "all" ? "" : v);
+                    setFormUnitFilter('');
+                    setFormCourseId('');
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Todos os campi" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todos os campi</SelectItem>
+                    {campuses.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Unidade (filtro)</Label>
+                <Select
+                  value={formUnitFilter || "all"}
+                  onValueChange={(v) => {
+                    setFormUnitFilter(v === "all" ? "" : v);
+                    setFormCourseId('');
+                  }}
+                >
+                  <SelectTrigger><SelectValue placeholder="Todas as unidades" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="all">Todas as unidades</SelectItem>
+                    {filteredUnits.map(u => (
+                      <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div>
+                <Label className="text-xs">Curso *</Label>
+                <Select
+                  value={formCourseId || "none"}
+                  onValueChange={(v) => setFormCourseId(v === "none" ? "" : v)}
+                >
+                  <SelectTrigger><SelectValue placeholder="Selecione o curso" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum</SelectItem>
+                    {filteredCourses.map(c => (
+                      <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use os filtros de Campus e Unidade para localizar o curso desejado.
+                </p>
+              </div>
             </div>
+
             {editing && (
               <div>
                 <Label>Status</Label>

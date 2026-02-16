@@ -742,6 +742,7 @@ export type Database = {
       subjects: {
         Row: {
           code: string
+          course_id: string | null
           created_at: string
           id: string
           name: string
@@ -750,6 +751,7 @@ export type Database = {
         }
         Insert: {
           code: string
+          course_id?: string | null
           created_at?: string
           id?: string
           name: string
@@ -758,13 +760,22 @@ export type Database = {
         }
         Update: {
           code?: string
+          course_id?: string | null
           created_at?: string
           id?: string
           name?: string
           status?: Database["public"]["Enums"]["entity_status"]
           workload_hours?: number
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "subjects_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       units: {
         Row: {
