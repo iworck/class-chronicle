@@ -118,13 +118,16 @@ function SearchableUserSelect({
 }
 
 const Cursos = () => {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
   const canManage = hasRole('super_admin') || hasRole('admin') || hasRole('diretor') || hasRole('gerente');
+  const isGerente = hasRole('gerente') && !hasRole('admin') && !hasRole('super_admin');
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [units, setUnits] = useState<UnitOption[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
+  const [userCampusIds, setUserCampusIds] = useState<string[]>([]);
+  const [campusDirectorMap, setCampusDirectorMap] = useState<Record<string, string | null>>({});
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -143,11 +146,12 @@ const Cursos = () => {
 
   async function fetchAll() {
     setLoading(true);
-    const [courseRes, unitRes, profileRes, rolesRes] = await Promise.all([
+    const [courseRes, unitRes, profileRes, rolesRes, campusRes] = await Promise.all([
       supabase.from('courses').select('*').order('name'),
       supabase.from('units').select('id, name, manager_user_id, campuses(name)').eq('status', 'ATIVO').order('name'),
       supabase.from('profiles').select('id, name, email').eq('status', 'ATIVO').order('name'),
       supabase.from('user_roles').select('user_id, role'),
+      supabase.from('campuses').select('id, director_user_id').eq('status', 'ATIVO'),
     ]);
 
     if (courseRes.error) {
@@ -165,16 +169,37 @@ const Cursos = () => {
     setUnits(unitData);
     setProfiles((profileRes.data as Profile[]) || []);
     setUserRoles((rolesRes.data as UserRole[]) || []);
+
+    // Build campus director map
+    const cdMap: Record<string, string | null> = {};
+    (campusRes.data || []).forEach((c: any) => { cdMap[c.id] = c.director_user_id; });
+    setCampusDirectorMap(cdMap);
+
+    // Fetch user's campuses (for gerente scope)
+    if (user) {
+      const { data: ucData } = await supabase.from('user_campuses').select('campus_id').eq('user_id', user.id);
+      setUserCampusIds((ucData || []).map((uc: any) => uc.campus_id));
+    }
+
     setLoading(false);
   }
 
-  // Filter profiles by role
+  // Filter profiles by role — for gerente, only show directors from their campus
   const directorProfiles = useMemo(() => {
     const directorIds = new Set(
       userRoles.filter(r => r.role === 'diretor').map(r => r.user_id)
     );
-    return profiles.filter(p => directorIds.has(p.id));
-  }, [profiles, userRoles]);
+    let filtered = profiles.filter(p => directorIds.has(p.id));
+    if (isGerente && userCampusIds.length > 0) {
+      const campusDirectorIds = new Set(
+        userCampusIds
+          .map(cid => campusDirectorMap[cid])
+          .filter((did): did is string => !!did)
+      );
+      filtered = filtered.filter(p => campusDirectorIds.has(p.id));
+    }
+    return filtered;
+  }, [profiles, userRoles, isGerente, userCampusIds, campusDirectorMap]);
 
   const coordinatorProfiles = useMemo(() => {
     const allowedRoles = new Set(['diretor', 'gerente', 'coordenador']);
