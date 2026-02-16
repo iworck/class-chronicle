@@ -16,7 +16,8 @@ import {
   ChevronRight,
   Loader2,
   Menu,
-  X
+  X,
+  MessageSquare
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -25,6 +26,7 @@ import Instituicoes from '@/pages/dashboard/Instituicoes';
 import Campi from '@/pages/dashboard/Campi';
 import Unidades from '@/pages/dashboard/Unidades';
 import Usuarios from '@/pages/dashboard/Usuarios';
+import WhatsApp from '@/pages/dashboard/WhatsApp';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -125,6 +127,12 @@ const Dashboard = () => {
       label: 'Configurações', 
       path: '/dashboard/configuracoes',
       roles: ['admin'] 
+    },
+    { 
+      icon: MessageSquare, 
+      label: 'WhatsApp', 
+      path: '/dashboard/whatsapp',
+      roles: ['super_admin', 'admin'] 
     },
   ];
 
@@ -260,6 +268,7 @@ const Dashboard = () => {
               <Route path="unidades" element={<Unidades />} />
               <Route path="usuarios" element={<Usuarios />} />
               <Route path="disciplinas" element={<Disciplinas />} />
+              <Route path="whatsapp" element={<WhatsApp />} />
               <Route path="*" element={<div className="text-center py-16 text-muted-foreground">Página em construção</div>} />
             </Routes>
           </Suspense>

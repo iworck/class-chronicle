@@ -774,6 +774,350 @@ export type Database = {
           },
         ]
       }
+      whatsapp_campaign_recipients: {
+        Row: {
+          campaign_id: string
+          contact_list_id: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          name: string | null
+          phone: string
+          sent_at: string | null
+          status: string
+          variables: Json | null
+        }
+        Insert: {
+          campaign_id: string
+          contact_list_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          name?: string | null
+          phone: string
+          sent_at?: string | null
+          status?: string
+          variables?: Json | null
+        }
+        Update: {
+          campaign_id?: string
+          contact_list_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          name?: string | null
+          phone?: string
+          sent_at?: string | null
+          status?: string
+          variables?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_campaign_recipients_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_campaign_recipients_contact_list_id_fkey"
+            columns: ["contact_list_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_contact_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_campaigns: {
+        Row: {
+          completed_at: string | null
+          created_at: string
+          created_by: string
+          delivered_count: number | null
+          failed_count: number | null
+          id: string
+          institution_id: string | null
+          name: string
+          scheduled_at: string | null
+          sent_count: number | null
+          started_at: string | null
+          status: string
+          template_id: string
+          total_contacts: number | null
+          updated_at: string
+        }
+        Insert: {
+          completed_at?: string | null
+          created_at?: string
+          created_by: string
+          delivered_count?: number | null
+          failed_count?: number | null
+          id?: string
+          institution_id?: string | null
+          name: string
+          scheduled_at?: string | null
+          sent_count?: number | null
+          started_at?: string | null
+          status?: string
+          template_id: string
+          total_contacts?: number | null
+          updated_at?: string
+        }
+        Update: {
+          completed_at?: string | null
+          created_at?: string
+          created_by?: string
+          delivered_count?: number | null
+          failed_count?: number | null
+          id?: string
+          institution_id?: string | null
+          name?: string
+          scheduled_at?: string | null
+          sent_count?: number | null
+          started_at?: string | null
+          status?: string
+          template_id?: string
+          total_contacts?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_campaigns_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_campaigns_template_id_fkey"
+            columns: ["template_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_templates"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_contact_list_members: {
+        Row: {
+          created_at: string
+          id: string
+          list_id: string
+          name: string
+          phone: string
+          variables: Json | null
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          list_id: string
+          name: string
+          phone: string
+          variables?: Json | null
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          list_id?: string
+          name?: string
+          phone?: string
+          variables?: Json | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_contact_list_members_list_id_fkey"
+            columns: ["list_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_contact_lists"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_contact_lists: {
+        Row: {
+          created_at: string
+          created_by: string
+          description: string | null
+          id: string
+          institution_id: string | null
+          name: string
+        }
+        Insert: {
+          created_at?: string
+          created_by: string
+          description?: string | null
+          id?: string
+          institution_id?: string | null
+          name: string
+        }
+        Update: {
+          created_at?: string
+          created_by?: string
+          description?: string | null
+          id?: string
+          institution_id?: string | null
+          name?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_contact_lists_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_message_logs: {
+        Row: {
+          campaign_id: string | null
+          created_at: string
+          error_message: string | null
+          external_id: string | null
+          id: string
+          institution_id: string | null
+          message_content: string
+          message_type: string
+          recipient_name: string | null
+          recipient_phone: string
+          sent_by: string | null
+          status: string
+        }
+        Insert: {
+          campaign_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          external_id?: string | null
+          id?: string
+          institution_id?: string | null
+          message_content: string
+          message_type?: string
+          recipient_name?: string | null
+          recipient_phone: string
+          sent_by?: string | null
+          status?: string
+        }
+        Update: {
+          campaign_id?: string | null
+          created_at?: string
+          error_message?: string | null
+          external_id?: string | null
+          id?: string
+          institution_id?: string | null
+          message_content?: string
+          message_type?: string
+          recipient_name?: string | null
+          recipient_phone?: string
+          sent_by?: string | null
+          status?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_message_logs_campaign_id_fkey"
+            columns: ["campaign_id"]
+            isOneToOne: false
+            referencedRelation: "whatsapp_campaigns"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "whatsapp_message_logs_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_settings: {
+        Row: {
+          api_token: string
+          api_url: string
+          created_at: string
+          default_connection_id: string | null
+          id: string
+          institution_id: string
+          is_active: boolean
+          provider: string
+          updated_at: string
+        }
+        Insert: {
+          api_token: string
+          api_url: string
+          created_at?: string
+          default_connection_id?: string | null
+          id?: string
+          institution_id: string
+          is_active?: boolean
+          provider?: string
+          updated_at?: string
+        }
+        Update: {
+          api_token?: string
+          api_url?: string
+          created_at?: string
+          default_connection_id?: string | null
+          id?: string
+          institution_id?: string
+          is_active?: boolean
+          provider?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_settings_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: true
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      whatsapp_templates: {
+        Row: {
+          category: string
+          content: string
+          created_at: string
+          created_by: string
+          id: string
+          institution_id: string | null
+          name: string
+          status: string
+          updated_at: string
+          variables: string[] | null
+        }
+        Insert: {
+          category?: string
+          content: string
+          created_at?: string
+          created_by: string
+          id?: string
+          institution_id?: string | null
+          name: string
+          status?: string
+          updated_at?: string
+          variables?: string[] | null
+        }
+        Update: {
+          category?: string
+          content?: string
+          created_at?: string
+          created_by?: string
+          id?: string
+          institution_id?: string | null
+          name?: string
+          status?: string
+          updated_at?: string
+          variables?: string[] | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "whatsapp_templates_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
     }
     Views: {
       [_ in never]: never

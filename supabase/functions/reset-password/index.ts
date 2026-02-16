@@ -111,16 +111,64 @@ serve(async (req) => {
     }
 
     if (method === "whatsapp") {
-      // WhatsApp integration placeholder - return success with new password for now
+      // Get WhatsApp settings for the user's institution
+      const { data: userProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("institution_id")
+        .eq("id", user_id)
+        .single();
+
+      if (userProfile?.institution_id) {
+        const { data: whatsappSettings } = await supabaseAdmin
+          .from("whatsapp_settings")
+          .select("*")
+          .eq("institution_id", userProfile.institution_id)
+          .eq("is_active", true)
+          .single();
+
+        if (whatsappSettings && profile?.phone) {
+          // Send via Whaticket
+          const apiUrl = `${whatsappSettings.api_url.replace(/\/$/, '')}/api/messages/send`;
+          try {
+            const whatsappRes = await fetch(apiUrl, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": `Bearer ${whatsappSettings.api_token}`,
+              },
+              body: JSON.stringify({
+                number: profile.phone.replace(/\D/g, ""),
+                body: `Olá ${profile.name}, sua nova senha é: ${newPassword}\n\nPor segurança, altere sua senha após o primeiro acesso.`,
+              }),
+            });
+
+            // Log the message
+            await supabaseAdmin.from("whatsapp_message_logs").insert({
+              institution_id: userProfile.institution_id,
+              recipient_phone: profile.phone,
+              recipient_name: profile.name,
+              message_type: "RESET_SENHA",
+              message_content: `Reset de senha enviado para ${profile.name}`,
+              status: whatsappRes.ok ? "ENVIADO" : "ERRO",
+              sent_by: caller.id,
+            });
+
+            if (whatsappRes.ok) {
+              return new Response(JSON.stringify({ 
+                success: true, method: "whatsapp",
+                message: `Senha enviada via WhatsApp para ${profile.phone}.`,
+              }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+          } catch (e) {
+            // fall through to default message
+          }
+        }
+      }
+
       return new Response(JSON.stringify({ 
-        success: true, 
-        method: "whatsapp",
-        message: `Senha resetada. Uma mensagem será enviada via WhatsApp para ${profile?.phone || 'o usuário'}.`,
-        // WhatsApp API integration will be implemented
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+        success: true, method: "whatsapp",
+        message: `Senha resetada. Não foi possível enviar via WhatsApp. Verifique as configurações e o telefone do usuário.`,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     if (method === "screen") {
