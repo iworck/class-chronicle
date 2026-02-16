@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, FileText, Save, Pencil } from 'lucide-react';
+import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info } from 'lucide-react';
 
 interface ClassSubject {
   id: string;
@@ -63,6 +63,7 @@ const Boletim = () => {
   const [selectedClassSubject, setSelectedClassSubject] = useState('');
   const [enrollments, setEnrollments] = useState<EnrollmentWithStudent[]>([]);
   const [grades, setGrades] = useState<Grade[]>([]);
+  const [attendanceData, setAttendanceData] = useState<Record<string, { total: number; present: number }>>({});
   const [loadingEnrollments, setLoadingEnrollments] = useState(false);
 
   // Grade edit dialog
@@ -116,6 +117,7 @@ const Boletim = () => {
     if (studentIds.length === 0) {
       setEnrollments([]);
       setGrades([]);
+      setAttendanceData({});
       setLoadingEnrollments(false);
       return;
     }
@@ -143,6 +145,40 @@ const Boletim = () => {
       setGrades([]);
     }
 
+    // Load attendance data for each student in this subject
+    const attMap: Record<string, { total: number; present: number }> = {};
+    
+    // Get all closed sessions for this subject in this class
+    const { data: sessions } = await supabase
+      .from('attendance_sessions')
+      .select('id')
+      .eq('class_id', cs.class_id)
+      .eq('subject_id', cs.subject_id)
+      .in('status', ['ENCERRADA', 'AUDITORIA_FINALIZADA']);
+
+    const sessionIds = (sessions || []).map(s => s.id);
+    const totalSessions = sessionIds.length;
+
+    if (totalSessions > 0) {
+      // Get attendance records for all students in these sessions
+      const { data: records } = await supabase
+        .from('attendance_records')
+        .select('student_id, final_status')
+        .in('session_id', sessionIds)
+        .in('student_id', studentIds);
+
+      for (const sid of studentIds) {
+        const studentRecords = (records || []).filter(r => r.student_id === sid);
+        const presentCount = studentRecords.filter(r => r.final_status === 'PRESENTE').length;
+        attMap[sid] = { total: totalSessions, present: presentCount };
+      }
+    } else {
+      for (const sid of studentIds) {
+        attMap[sid] = { total: 0, present: 0 };
+      }
+    }
+
+    setAttendanceData(attMap);
     setLoadingEnrollments(false);
   }
 
@@ -160,6 +196,12 @@ const Boletim = () => {
     if (studentGrades.length === 0) return null;
     const sum = studentGrades.reduce((acc, g) => acc + g.grade_value, 0);
     return sum / studentGrades.length;
+  }
+
+  function getAttendancePct(studentId: string): number | null {
+    const att = attendanceData[studentId];
+    if (!att || att.total === 0) return null;
+    return (att.present / att.total) * 100;
   }
 
   function openEditDialog(enrollment: EnrollmentWithStudent) {
@@ -249,8 +291,35 @@ const Boletim = () => {
           Boletim — Gestão de Notas
         </h1>
         <p className="text-sm text-muted-foreground mt-1">
-          Registre notas para os alunos. O status da disciplina é atualizado automaticamente com base na média (≥ 7.0 = Aprovado).
+          Registre notas para os alunos. O status é atualizado automaticamente com base nos critérios de aprovação.
         </p>
+      </div>
+
+      {/* Approval criteria banner */}
+      <div className="mb-6 p-4 rounded-lg border border-primary/20 bg-primary/5">
+        <div className="flex items-start gap-3">
+          <Info className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+          <div>
+            <p className="text-sm font-semibold text-foreground mb-2">Critérios de Aprovação</p>
+            <div className="grid sm:grid-cols-2 gap-3">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-primary" />
+                <span className="text-sm text-foreground">
+                  <strong>Nota mínima:</strong> A média das avaliações deve ser ≥ <strong>7,0</strong>
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-primary" />
+                <span className="text-sm text-foreground">
+                  <strong>Frequência mínima:</strong> O aluno deve ter pelo menos <strong>75%</strong> de presença
+                </span>
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground mt-2">
+              O aluno será <strong>aprovado</strong> somente se ambos os critérios forem atendidos simultaneamente. Caso contrário, será considerado <strong>reprovado</strong>.
+            </p>
+          </div>
+        </div>
       </div>
 
       {/* Select class + subject */}
@@ -300,6 +369,7 @@ const Boletim = () => {
                   <TableHead key={gt} className="text-center w-20">{gt}</TableHead>
                 ))}
                 <TableHead className="text-center w-20">Média</TableHead>
+                <TableHead className="text-center w-24">Frequência</TableHead>
                 <TableHead className="text-center w-28">Status</TableHead>
                 {canEdit && <TableHead className="text-center w-20">Ações</TableHead>}
               </TableRow>
@@ -307,6 +377,9 @@ const Boletim = () => {
             <TableBody>
               {enrollments.map(enrollment => {
                 const avg = getAverage(enrollment.id);
+                const attPct = getAttendancePct(enrollment.student_id);
+                const attOk = attPct === null || attPct >= 75;
+                const avgOk = avg === null || avg >= 7;
                 return (
                   <TableRow key={enrollment.id}>
                     <TableCell className="font-medium">{enrollment.student?.name || '—'}</TableCell>
@@ -327,10 +400,26 @@ const Boletim = () => {
                     })}
                     <TableCell className="text-center font-bold">
                       {avg !== null ? (
-                        <span className={avg >= 7 ? 'text-primary' : 'text-destructive'}>
+                        <span className={avgOk ? 'text-primary' : 'text-destructive'}>
                           {avg.toFixed(1)}
                         </span>
                       ) : '—'}
+                    </TableCell>
+                    <TableCell className="text-center">
+                      {attPct !== null ? (
+                        <div className="flex items-center justify-center gap-1">
+                          {attOk ? (
+                            <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
+                          ) : (
+                            <XCircle className="w-3.5 h-3.5 text-destructive" />
+                          )}
+                          <span className={`text-sm font-medium ${attOk ? 'text-primary' : 'text-destructive'}`}>
+                            {attPct.toFixed(0)}%
+                          </span>
+                        </div>
+                      ) : (
+                        <span className="text-muted-foreground/40 text-sm">S/A</span>
+                      )}
                     </TableCell>
                     <TableCell className="text-center">
                       <Badge variant={STATUS_MAP[enrollment.status]?.variant || 'default'}>
