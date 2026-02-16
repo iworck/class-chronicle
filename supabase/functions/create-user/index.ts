@@ -48,7 +48,7 @@ serve(async (req) => {
       });
     }
 
-    const { name, email, password, phone, institution_id, role } = await req.json();
+    const { name, email, password, phone, institution_id, campus_id, unit_id, role } = await req.json();
 
     if (!name || !email || !password) {
       return new Response(JSON.stringify({ error: "Nome, email e senha são obrigatórios" }), {
@@ -100,6 +100,16 @@ serve(async (req) => {
         });
       }
       await supabaseAdmin.from("user_roles").insert({ user_id: userId, role });
+    }
+
+    // Assign campus if provided
+    if (campus_id) {
+      await supabaseAdmin.from("user_campuses").insert({ user_id: userId, campus_id });
+    }
+
+    // Assign unit if provided
+    if (unit_id) {
+      await supabaseAdmin.from("user_units").insert({ user_id: userId, unit_id });
     }
 
     return new Response(JSON.stringify({ id: userId, email }), {
