@@ -232,11 +232,12 @@ const Matrizes = () => {
 
   const subjectMap = Object.fromEntries(subjects.map(s => [s.id, s]));
 
-  // Available subjects = those not already linked
+  // Available subjects = those belonging to the matrix's course and not already linked
   const availableSubjects = useMemo(() => {
     const linked = new Set(matrixSubjects.map(ms => ms.subject_id));
-    return subjects.filter(s => !linked.has(s.id));
-  }, [subjects, matrixSubjects]);
+    const courseId = selectedMatrix?.course_id;
+    return subjects.filter(s => !linked.has(s.id) && s.course_id === courseId);
+  }, [subjects, matrixSubjects, selectedMatrix]);
 
   // Group linked subjects by semester
   const groupedBySemester = useMemo(() => {
