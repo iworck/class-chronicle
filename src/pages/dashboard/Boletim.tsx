@@ -15,6 +15,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
 import { Textarea } from '@/components/ui/textarea';
+import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
 import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye } from 'lucide-react';
 
@@ -45,8 +46,19 @@ interface Grade {
   grade_value: number;
   grade_category: string;
   weight: number;
+  counts_in_final: boolean;
   professor_user_id: string;
   observations: string | null;
+}
+
+interface TemplateItem {
+  id: string;
+  name: string;
+  category: string;
+  weight: number;
+  counts_in_final: boolean;
+  parent_item_id: string | null;
+  order_index: number;
 }
 
 const GRADE_CATEGORIES = [
@@ -66,11 +78,12 @@ const STATUS_MAP: Record<string, { label: string; variant: 'default' | 'secondar
 };
 
 interface EditGradeRow {
-  id?: string; // existing grade id
+  id?: string;
   grade_type: string;
   grade_category: string;
   grade_value: string;
   weight: string;
+  counts_in_final: boolean;
   observations: string;
 }
 
@@ -83,6 +96,7 @@ const Boletim = () => {
   const [grades, setGrades] = useState<Grade[]>([]);
   const [attendanceData, setAttendanceData] = useState<Record<string, { total: number; present: number }>>({});
   const [loadingEnrollments, setLoadingEnrollments] = useState(false);
+  const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
 
   // Grade edit dialog
   const [editDialog, setEditDialog] = useState(false);
@@ -129,6 +143,14 @@ const Boletim = () => {
     setLoadingEnrollments(true);
     const cs = classSubjects.find(c => c.id === classSubjectId);
     if (!cs) return;
+
+    // Load template items for this class_subject
+    const { data: tplData } = await supabase
+      .from('grade_template_items')
+      .select('*')
+      .eq('class_subject_id', classSubjectId)
+      .order('order_index');
+    setTemplateItems((tplData as TemplateItem[]) || []);
 
     const { data: classStudents } = await supabase
       .from('class_students')
@@ -211,7 +233,7 @@ const Boletim = () => {
   }
 
   function getWeightedAverage(enrollmentId: string): number | null {
-    const studentGrades = grades.filter(g => g.enrollment_id === enrollmentId);
+    const studentGrades = grades.filter(g => g.enrollment_id === enrollmentId && g.counts_in_final !== false);
     if (studentGrades.length === 0) return null;
     const totalWeight = studentGrades.reduce((acc, g) => acc + (g.weight || 1), 0);
     if (totalWeight === 0) return null;
@@ -225,31 +247,36 @@ const Boletim = () => {
     return (att.present / att.total) * 100;
   }
 
-  // Get unique grade types across all enrollments for column headers
-  function getAllGradeTypes(): string[] {
-    const types = new Set<string>();
-    grades.forEach(g => types.add(g.grade_type));
-    return Array.from(types).sort();
-  }
-
   function openEditDialog(enrollment: EnrollmentWithStudent) {
     setEditEnrollmentId(enrollment.id);
     setEditStudentName(enrollment.student?.name || '');
     setDeletedGradeIds([]);
 
     const existingGrades = getStudentGrades(enrollment.id);
+
     if (existingGrades.length > 0) {
+      // Use existing grades
       setEditRows(existingGrades.map(g => ({
         id: g.id,
         grade_type: g.grade_type,
         grade_category: g.grade_category || 'prova',
         grade_value: String(g.grade_value),
         weight: String(g.weight || 1),
+        counts_in_final: g.counts_in_final !== false,
         observations: g.observations || '',
       })));
+    } else if (templateItems.length > 0) {
+      // Pre-populate from template
+      setEditRows(templateItems.map(t => ({
+        grade_type: t.name,
+        grade_category: t.category,
+        grade_value: '',
+        weight: String(t.weight),
+        counts_in_final: t.counts_in_final,
+        observations: '',
+      })));
     } else {
-      // Start with one empty row
-      setEditRows([{ grade_type: 'N1', grade_category: 'prova', grade_value: '', weight: '1', observations: '' }]);
+      setEditRows([{ grade_type: 'N1', grade_category: 'prova', grade_value: '', weight: '1', counts_in_final: true, observations: '' }]);
     }
     setEditDialog(true);
   }
@@ -261,6 +288,7 @@ const Boletim = () => {
       grade_category: 'prova',
       grade_value: '',
       weight: '1',
+      counts_in_final: true,
       observations: '',
     }]);
   }
@@ -273,7 +301,7 @@ const Boletim = () => {
     setEditRows(prev => prev.filter((_, i) => i !== index));
   }
 
-  function updateGradeRow(index: number, field: keyof EditGradeRow, value: string) {
+  function updateGradeRow(index: number, field: keyof EditGradeRow, value: any) {
     setEditRows(prev => prev.map((r, i) => i === index ? { ...r, [field]: value } : r));
   }
 
@@ -282,12 +310,10 @@ const Boletim = () => {
     setSaving(true);
 
     try {
-      // Delete removed grades
       for (const id of deletedGradeIds) {
         await supabase.from('student_grades').delete().eq('id', id);
       }
 
-      // Upsert each row
       for (const row of editRows) {
         if (row.grade_value.trim() === '') continue;
 
@@ -311,6 +337,7 @@ const Boletim = () => {
           grade_category: row.grade_category,
           grade_value: numVal,
           weight: numWeight,
+          counts_in_final: row.counts_in_final,
           professor_user_id: user.id,
           observations: row.observations || null,
         };
@@ -342,8 +369,6 @@ const Boletim = () => {
       </div>
     );
   }
-
-  const allGradeTypes = getAllGradeTypes();
 
   return (
     <div className="max-w-7xl mx-auto animate-fade-in">
@@ -382,8 +407,21 @@ const Boletim = () => {
                     </span>
                   </div>
                 </div>
+                {templateItems.length > 0 && (
+                  <div className="mt-2 p-2 rounded bg-muted/50 border border-border">
+                    <p className="text-xs font-semibold text-foreground mb-1">Modelo de notas configurado:</p>
+                    <div className="flex flex-wrap gap-1">
+                      {templateItems.map(t => (
+                        <Badge key={t.id} variant={t.counts_in_final ? 'default' : 'secondary'} className="text-xs">
+                          {t.name} ({categoryLabel(t.category)}, p{t.weight})
+                          {!t.counts_in_final && ' — critério'}
+                        </Badge>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <p className="text-xs text-muted-foreground mt-2">
-                  A média é calculada como <strong>média ponderada</strong> (soma de nota×peso / soma dos pesos). O aluno é aprovado somente se ambos os critérios forem atendidos.
+                  Apenas notas marcadas como "Compõe Média" entram no cálculo da média ponderada final.
                 </p>
               </div>
             </div>
@@ -517,32 +555,41 @@ const Boletim = () => {
 
       {/* Edit grades dialog */}
       <Dialog open={editDialog} onOpenChange={setEditDialog}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Lançar Notas — {editStudentName}</DialogTitle>
           </DialogHeader>
 
           <div className="space-y-3">
+            {templateItems.length > 0 && (
+              <div className="p-2 rounded border border-primary/20 bg-primary/5">
+                <p className="text-xs text-muted-foreground">
+                  Notas pré-configuradas pelo modelo da turma. Itens com <strong>"Compõe Média"</strong> desativado são critérios de composição.
+                </p>
+              </div>
+            )}
+
             {/* Header row */}
-            <div className="grid grid-cols-[1fr_1fr_80px_80px_1fr_40px] gap-2 text-xs font-semibold text-muted-foreground px-1">
-              <span>Tipo (ex: N1)</span>
+            <div className="grid grid-cols-[1fr_100px_70px_70px_80px_1fr_40px] gap-2 text-xs font-semibold text-muted-foreground px-1">
+              <span>Tipo</span>
               <span>Categoria</span>
               <span>Nota</span>
               <span>Peso</span>
-              <span>Observações</span>
+              <span className="text-center">Média</span>
+              <span>Obs.</span>
               <span></span>
             </div>
 
             {editRows.map((row, idx) => (
-              <div key={idx} className="grid grid-cols-[1fr_1fr_80px_80px_1fr_40px] gap-2 items-start">
+              <div key={idx} className={`grid grid-cols-[1fr_100px_70px_70px_80px_1fr_40px] gap-2 items-center p-1.5 rounded-md ${row.counts_in_final ? 'bg-primary/5 border border-primary/20' : 'bg-muted/30 border border-border'}`}>
                 <Input
-                  placeholder="N1, N2..."
+                  placeholder="N1, T1..."
                   value={row.grade_type}
                   onChange={e => updateGradeRow(idx, 'grade_type', e.target.value)}
-                  className="text-sm"
+                  className="text-sm font-mono"
                 />
                 <Select value={row.grade_category} onValueChange={v => updateGradeRow(idx, 'grade_category', v)}>
-                  <SelectTrigger className="text-sm">
+                  <SelectTrigger className="text-xs">
                     <SelectValue />
                   </SelectTrigger>
                   <SelectContent>
@@ -570,8 +617,14 @@ const Boletim = () => {
                   onChange={e => updateGradeRow(idx, 'weight', e.target.value)}
                   className="text-sm"
                 />
+                <div className="flex justify-center">
+                  <Switch
+                    checked={row.counts_in_final}
+                    onCheckedChange={v => updateGradeRow(idx, 'counts_in_final', v)}
+                  />
+                </div>
                 <Input
-                  placeholder="Obs. (opcional)"
+                  placeholder="Obs."
                   value={row.observations}
                   onChange={e => updateGradeRow(idx, 'observations', e.target.value)}
                   className="text-sm"
@@ -587,26 +640,45 @@ const Boletim = () => {
               Adicionar Nota
             </Button>
 
-            {/* Preview weighted average */}
+            {/* Preview weighted average — only counts_in_final rows */}
             {editRows.some(r => r.grade_value.trim() !== '') && (() => {
               let ws = 0, tw = 0;
               editRows.forEach(r => {
+                if (!r.counts_in_final) return;
                 const v = parseFloat(r.grade_value);
                 const w = parseFloat(r.weight) || 1;
                 if (!isNaN(v)) { ws += v * w; tw += w; }
               });
               const previewAvg = tw > 0 ? ws / tw : null;
+
+              // Also show sub-items preview
+              const subItems = editRows.filter(r => !r.counts_in_final && r.grade_value.trim() !== '');
+
               return (
-                <div className="mt-3 p-3 rounded-md border border-border bg-muted/50">
-                  <p className="text-sm text-foreground">
-                    <strong>Prévia da Média Ponderada:</strong>{' '}
-                    {previewAvg !== null ? (
-                      <span className="text-lg font-bold">{previewAvg.toFixed(2)}</span>
-                    ) : '—'}
-                  </p>
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Fórmula: Σ(nota × peso) / Σ(peso) = {tw > 0 ? `${ws.toFixed(1)} / ${tw.toFixed(1)}` : '—'}
-                  </p>
+                <div className="mt-3 p-3 rounded-md border border-border bg-muted/50 space-y-2">
+                  {subItems.length > 0 && (
+                    <div>
+                      <p className="text-xs text-muted-foreground font-semibold">Critérios (não compõem a média diretamente):</p>
+                      <div className="flex flex-wrap gap-1 mt-1">
+                        {subItems.map((r, i) => (
+                          <Badge key={i} variant="secondary" className="text-xs">
+                            {r.grade_type}: {r.grade_value} (p{r.weight})
+                          </Badge>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  <div>
+                    <p className="text-sm text-foreground">
+                      <strong>Prévia da Média Ponderada (itens que compõem):</strong>{' '}
+                      {previewAvg !== null ? (
+                        <span className="text-lg font-bold">{previewAvg.toFixed(2)}</span>
+                      ) : '—'}
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Fórmula: Σ(nota × peso) / Σ(peso) = {tw > 0 ? `${ws.toFixed(1)} / ${tw.toFixed(1)}` : '—'}
+                    </p>
+                  </div>
                 </div>
               );
             })()}
@@ -633,30 +705,41 @@ const Boletim = () => {
             {viewGrades.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma nota lançada.</p>
             ) : (
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Tipo</TableHead>
-                    <TableHead>Categoria</TableHead>
-                    <TableHead className="text-center">Nota</TableHead>
-                    <TableHead className="text-center">Peso</TableHead>
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {viewGrades.map(g => (
-                    <TableRow key={g.id}>
-                      <TableCell className="font-mono font-medium">{g.grade_type}</TableCell>
-                      <TableCell>{categoryLabel(g.grade_category)}</TableCell>
-                      <TableCell className="text-center font-medium">{g.grade_value.toFixed(1)}</TableCell>
-                      <TableCell className="text-center">{g.weight}</TableCell>
+              <>
+                {/* Final grades (counts_in_final) */}
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Tipo</TableHead>
+                      <TableHead>Categoria</TableHead>
+                      <TableHead className="text-center">Nota</TableHead>
+                      <TableHead className="text-center">Peso</TableHead>
+                      <TableHead className="text-center">Média</TableHead>
                     </TableRow>
-                  ))}
-                </TableBody>
-              </Table>
+                  </TableHeader>
+                  <TableBody>
+                    {viewGrades.map(g => (
+                      <TableRow key={g.id} className={g.counts_in_final !== false ? '' : 'opacity-60'}>
+                        <TableCell className="font-mono font-medium">{g.grade_type}</TableCell>
+                        <TableCell>{categoryLabel(g.grade_category)}</TableCell>
+                        <TableCell className="text-center font-medium">{g.grade_value.toFixed(1)}</TableCell>
+                        <TableCell className="text-center">{g.weight}</TableCell>
+                        <TableCell className="text-center">
+                          {g.counts_in_final !== false ? (
+                            <Badge variant="default" className="text-xs">Sim</Badge>
+                          ) : (
+                            <Badge variant="secondary" className="text-xs">Critério</Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))}
+                  </TableBody>
+                </Table>
+              </>
             )}
             {viewAvg !== null && (
               <div className="p-3 rounded-md border border-border bg-muted/50 text-center">
-                <p className="text-sm text-muted-foreground">Média Ponderada</p>
+                <p className="text-sm text-muted-foreground">Média Ponderada (itens que compõem)</p>
                 <p className="text-2xl font-bold text-primary">{viewAvg.toFixed(2)}</p>
               </div>
             )}
