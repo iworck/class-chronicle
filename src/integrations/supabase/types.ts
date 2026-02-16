@@ -1086,6 +1086,8 @@ export type Database = {
           created_at: string
           id: string
           lesson_plan: string | null
+          min_attendance_pct: number
+          min_grade: number
           name: string
           status: Database["public"]["Enums"]["entity_status"]
           workload_hours: number
@@ -1096,6 +1098,8 @@ export type Database = {
           created_at?: string
           id?: string
           lesson_plan?: string | null
+          min_attendance_pct?: number
+          min_grade?: number
           name: string
           status?: Database["public"]["Enums"]["entity_status"]
           workload_hours?: number
@@ -1106,6 +1110,8 @@ export type Database = {
           created_at?: string
           id?: string
           lesson_plan?: string | null
+          min_attendance_pct?: number
+          min_grade?: number
           name?: string
           status?: Database["public"]["Enums"]["entity_status"]
           workload_hours?: number

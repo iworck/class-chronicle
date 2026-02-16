@@ -25,7 +25,7 @@ interface ClassSubject {
   professor_user_id: string;
   status: string;
   class: { id: string; code: string; course_id: string };
-  subject: { id: string; name: string; code: string };
+  subject: { id: string; name: string; code: string; min_grade: number; min_attendance_pct: number };
 }
 
 interface EnrollmentWithStudent {
@@ -85,7 +85,7 @@ const Boletim = () => {
     setLoading(true);
     let query = supabase
       .from('class_subjects')
-      .select('id, class_id, subject_id, professor_user_id, status, class:classes(id, code, course_id), subject:subjects(id, name, code)')
+      .select('id, class_id, subject_id, professor_user_id, status, class:classes(id, code, course_id), subject:subjects(id, name, code, min_grade, min_attendance_pct)')
       .eq('status', 'ATIVO');
 
     if (isProfessor && !isAdmin) {
@@ -295,32 +295,39 @@ const Boletim = () => {
         </p>
       </div>
 
-      {/* Approval criteria banner */}
-      <div className="mb-6 p-4 rounded-lg border border-primary/20 bg-primary/5">
-        <div className="flex items-start gap-3">
-          <Info className="w-5 h-5 text-primary mt-0.5 shrink-0" />
-          <div>
-            <p className="text-sm font-semibold text-foreground mb-2">Critérios de Aprovação</p>
-            <div className="grid sm:grid-cols-2 gap-3">
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-primary" />
-                <span className="text-sm text-foreground">
-                  <strong>Nota mínima:</strong> A média das avaliações deve ser ≥ <strong>7,0</strong>
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <CheckCircle2 className="w-4 h-4 text-primary" />
-                <span className="text-sm text-foreground">
-                  <strong>Frequência mínima:</strong> O aluno deve ter pelo menos <strong>75%</strong> de presença
-                </span>
+      {/* Approval criteria banner - shows after selecting a subject */}
+      {selectedClassSubject && (() => {
+        const cs = classSubjects.find(c => c.id === selectedClassSubject);
+        const minGrade = (cs?.subject as any)?.min_grade ?? 7.0;
+        const minAtt = (cs?.subject as any)?.min_attendance_pct ?? 75.0;
+        return (
+          <div className="mb-6 p-4 rounded-lg border border-primary/20 bg-primary/5">
+            <div className="flex items-start gap-3">
+              <Info className="w-5 h-5 text-primary mt-0.5 shrink-0" />
+              <div>
+                <p className="text-sm font-semibold text-foreground mb-2">Critérios de Aprovação — {(cs?.subject as any)?.name}</p>
+                <div className="grid sm:grid-cols-2 gap-3">
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-primary" />
+                    <span className="text-sm text-foreground">
+                      <strong>Nota mínima:</strong> A média das avaliações deve ser ≥ <strong>{Number(minGrade).toFixed(1).replace('.', ',')}</strong>
+                    </span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <CheckCircle2 className="w-4 h-4 text-primary" />
+                    <span className="text-sm text-foreground">
+                      <strong>Frequência mínima:</strong> O aluno deve ter pelo menos <strong>{Number(minAtt).toFixed(0)}%</strong> de presença
+                    </span>
+                  </div>
+                </div>
+                <p className="text-xs text-muted-foreground mt-2">
+                  O aluno será <strong>aprovado</strong> somente se ambos os critérios forem atendidos simultaneamente. Caso contrário, será considerado <strong>reprovado</strong>.
+                </p>
               </div>
             </div>
-            <p className="text-xs text-muted-foreground mt-2">
-              O aluno será <strong>aprovado</strong> somente se ambos os critérios forem atendidos simultaneamente. Caso contrário, será considerado <strong>reprovado</strong>.
-            </p>
           </div>
-        </div>
-      </div>
+        );
+      })()}
 
       {/* Select class + subject */}
       <div className="mb-6 max-w-md">
@@ -378,8 +385,11 @@ const Boletim = () => {
               {enrollments.map(enrollment => {
                 const avg = getAverage(enrollment.id);
                 const attPct = getAttendancePct(enrollment.student_id);
-                const attOk = attPct === null || attPct >= 75;
-                const avgOk = avg === null || avg >= 7;
+                const cs = classSubjects.find(c => c.id === selectedClassSubject);
+                const subjectMinGrade = Number((cs?.subject as any)?.min_grade ?? 7.0);
+                const subjectMinAtt = Number((cs?.subject as any)?.min_attendance_pct ?? 75.0);
+                const attOk = attPct === null || attPct >= subjectMinAtt;
+                const avgOk = avg === null || avg >= subjectMinGrade;
                 return (
                   <TableRow key={enrollment.id}>
                     <TableCell className="font-medium">{enrollment.student?.name || '—'}</TableCell>
@@ -389,7 +399,7 @@ const Boletim = () => {
                       return (
                         <TableCell key={gt} className="text-center">
                           {grade ? (
-                            <span className={grade.grade_value >= 7 ? 'text-primary font-medium' : grade.grade_value < 5 ? 'text-destructive font-medium' : 'text-foreground'}>
+                            <span className={grade.grade_value >= subjectMinGrade ? 'text-primary font-medium' : grade.grade_value < (subjectMinGrade - 2) ? 'text-destructive font-medium' : 'text-foreground'}>
                               {grade.grade_value.toFixed(1)}
                             </span>
                           ) : (
