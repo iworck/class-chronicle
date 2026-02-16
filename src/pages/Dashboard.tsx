@@ -100,12 +100,6 @@ const Dashboard = () => {
       roles: ['admin', 'super_admin', 'coordenador'] 
     },
     { 
-      icon: Users, 
-      label: 'Usuários', 
-      path: '/dashboard/usuarios',
-      roles: ['super_admin', 'admin'] 
-    },
-    { 
       icon: Calendar, 
       label: 'Turmas', 
       path: '/dashboard/turmas',
@@ -133,6 +127,12 @@ const Dashboard = () => {
       icon: Settings, 
       label: 'Configurações', 
       path: '/dashboard/configuracoes',
+      roles: ['super_admin', 'admin'] 
+    },
+    { 
+      icon: Users, 
+      label: 'Usuários', 
+      path: '/dashboard/usuarios',
       roles: ['super_admin', 'admin'] 
     },
   ];
