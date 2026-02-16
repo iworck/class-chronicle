@@ -137,6 +137,8 @@ const Usuarios = () => {
   const [newPassword, setNewPassword] = useState('');
   const [newPhone, setNewPhone] = useState('');
   const [newInstitutionId, setNewInstitutionId] = useState('');
+  const [newCampusId, setNewCampusId] = useState('');
+  const [newUnitId, setNewUnitId] = useState('');
   const [newRole, setNewRole] = useState('');
   const [creatingUser, setCreatingUser] = useState(false);
 
@@ -351,9 +353,14 @@ const Usuarios = () => {
     setNewPassword('');
     setNewPhone('');
     setNewInstitutionId('');
+    setNewCampusId('');
+    setNewUnitId('');
     setNewRole(activeTab !== 'todos' && currentTabConfig?.role ? currentTabConfig.role : '');
     setCreateDialogOpen(true);
   }
+
+  const newCampusesFiltered = newInstitutionId ? campuses.filter(c => c.institution_id === newInstitutionId) : [];
+  const newUnitsFiltered = newCampusId ? units.filter(u => u.campus_id === newCampusId) : [];
 
   async function handleCreateUser() {
     if (!newName.trim() || !newEmail.trim() || !newPassword) {
@@ -374,12 +381,14 @@ const Usuarios = () => {
           'Authorization': `Bearer ${session?.access_token}`,
           'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
         },
-        body: JSON.stringify({
+         body: JSON.stringify({
           name: newName.trim(),
           email: newEmail.trim(),
           password: newPassword,
           phone: newPhone.trim() || undefined,
           institution_id: newInstitutionId || undefined,
+          campus_id: newCampusId || undefined,
+          unit_id: newUnitId || undefined,
           role: newRole || undefined,
         }),
       });
@@ -759,7 +768,7 @@ const Usuarios = () => {
             </div>
             <div>
               <Label>Instituição</Label>
-              <Select value={newInstitutionId || "none"} onValueChange={(v) => setNewInstitutionId(v === "none" ? "" : v)}>
+              <Select value={newInstitutionId || "none"} onValueChange={(v) => { setNewInstitutionId(v === "none" ? "" : v); setNewCampusId(''); setNewUnitId(''); }}>
                 <SelectTrigger><SelectValue placeholder="Selecione a instituição" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nenhuma</SelectItem>
@@ -767,6 +776,30 @@ const Usuarios = () => {
                 </SelectContent>
               </Select>
             </div>
+            {newInstitutionId && newCampusesFiltered.length > 0 && (
+              <div>
+                <Label>Campus</Label>
+                <Select value={newCampusId || "none"} onValueChange={(v) => { setNewCampusId(v === "none" ? "" : v); setNewUnitId(''); }}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o campus (opcional)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum</SelectItem>
+                    {newCampusesFiltered.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {newCampusId && newUnitsFiltered.length > 0 && (
+              <div>
+                <Label>Unidade</Label>
+                <Select value={newUnitId || "none"} onValueChange={(v) => setNewUnitId(v === "none" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a unidade (opcional)" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhuma</SelectItem>
+                    {newUnitsFiltered.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label>Papel inicial</Label>
               <Select value={newRole || "none"} onValueChange={(v) => setNewRole(v === "none" ? "" : v)}>
