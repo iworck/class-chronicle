@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye, Lock, History } from 'lucide-react';
+import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye, Lock, History, Shield, GraduationCap, Building2, Users2 } from 'lucide-react';
 import { BoletimSummaryPanel } from '@/components/boletim/BoletimSummaryPanel';
 import { BoletimFilters } from '@/components/boletim/BoletimFilters';
 import { BoletimAlerts } from '@/components/boletim/BoletimAlerts';
@@ -130,9 +130,19 @@ const Boletim = () => {
 
   const isProfessor = hasRole('professor');
   const isDiretor = hasRole('diretor');
+  const isGerente = hasRole('gerente');
   const isCoordenador = hasRole('coordenador');
-  const isAdmin = hasRole('admin') || isCoordenador || hasRole('super_admin') || isDiretor;
+  const isSuperAdmin = hasRole('super_admin');
+  const isAdminRole = hasRole('admin');
+  const isAdmin = isAdminRole || isCoordenador || isSuperAdmin || isDiretor || isGerente;
   const canEditRole = isProfessor || isAdmin;
+  const canCloseBoletim = isAdmin && !isProfessor; // Only management can close
+  const canViewHistory = isAdmin; // Management roles can view audit logs
+  const canViewAlerts = isAdmin || isProfessor; // All roles see alerts for their scope
+
+  // Determine display role for UI
+  const displayRole = isSuperAdmin ? 'Super Admin' : isAdminRole ? 'Administrador' : isDiretor ? 'Diretor' : isGerente ? 'Gerente' : isCoordenador ? 'Coordenador' : isProfessor ? 'Professor' : 'Usuário';
+  const roleIcon = isSuperAdmin || isAdminRole ? <Shield className="w-4 h-4" /> : isDiretor ? <Building2 className="w-4 h-4" /> : isGerente ? <Users2 className="w-4 h-4" /> : isCoordenador ? <GraduationCap className="w-4 h-4" /> : <GraduationCap className="w-4 h-4" />;
 
   useEffect(() => {
     loadClassSubjects();
@@ -146,8 +156,118 @@ const Boletim = () => {
       .eq('status', 'ATIVO');
 
     if (isProfessor && !isAdmin) {
+      // Professor: only their own class_subjects
       query = query.eq('professor_user_id', user!.id);
+    } else if (isCoordenador && !isAdminRole && !isSuperAdmin) {
+      // Coordenador: class_subjects for courses they coordinate
+      const { data: coordCourses } = await supabase
+        .from('courses')
+        .select('id')
+        .eq('coordinator_user_id', user!.id);
+      const courseIds = (coordCourses || []).map(c => c.id);
+      if (courseIds.length > 0) {
+        const { data: classes } = await supabase
+          .from('classes')
+          .select('id')
+          .in('course_id', courseIds);
+        const classIds = (classes || []).map(c => c.id);
+        if (classIds.length > 0) {
+          query = query.in('class_id', classIds);
+        } else {
+          setClassSubjects([]);
+          setLoading(false);
+          return;
+        }
+      } else {
+        setClassSubjects([]);
+        setLoading(false);
+        return;
+      }
+    } else if (isGerente && !isAdminRole && !isSuperAdmin) {
+      // Gerente: class_subjects for courses in their units
+      const { data: userUnits } = await supabase
+        .from('user_units')
+        .select('unit_id')
+        .eq('user_id', user!.id);
+      const unitIds = (userUnits || []).map(u => u.unit_id);
+      if (unitIds.length > 0) {
+        const { data: unitCourses } = await supabase
+          .from('courses')
+          .select('id')
+          .in('unit_id', unitIds);
+        const courseIds = (unitCourses || []).map(c => c.id);
+        if (courseIds.length > 0) {
+          const { data: classes } = await supabase
+            .from('classes')
+            .select('id')
+            .in('course_id', courseIds);
+          const classIds = (classes || []).map(c => c.id);
+          if (classIds.length > 0) {
+            query = query.in('class_id', classIds);
+          } else {
+            setClassSubjects([]);
+            setLoading(false);
+            return;
+          }
+        } else {
+          setClassSubjects([]);
+          setLoading(false);
+          return;
+        }
+      } else {
+        setClassSubjects([]);
+        setLoading(false);
+        return;
+      }
+    } else if (isDiretor && !isAdminRole && !isSuperAdmin) {
+      // Diretor: class_subjects for courses in their campus
+      const { data: userCampuses } = await supabase
+        .from('user_campuses')
+        .select('campus_id')
+        .eq('user_id', user!.id);
+      const campusIds = (userCampuses || []).map(c => c.campus_id);
+      if (campusIds.length > 0) {
+        const { data: units } = await supabase
+          .from('units')
+          .select('id')
+          .in('campus_id', campusIds);
+        const unitIds = (units || []).map(u => u.id);
+        if (unitIds.length > 0) {
+          const { data: campusCourses } = await supabase
+            .from('courses')
+            .select('id')
+            .in('unit_id', unitIds);
+          const courseIds = (campusCourses || []).map(c => c.id);
+          if (courseIds.length > 0) {
+            const { data: classes } = await supabase
+              .from('classes')
+              .select('id')
+              .in('course_id', courseIds);
+            const classIds = (classes || []).map(c => c.id);
+            if (classIds.length > 0) {
+              query = query.in('class_id', classIds);
+            } else {
+              setClassSubjects([]);
+              setLoading(false);
+              return;
+            }
+          } else {
+            setClassSubjects([]);
+            setLoading(false);
+            return;
+          }
+        } else {
+          setClassSubjects([]);
+          setLoading(false);
+          return;
+        }
+      } else {
+        setClassSubjects([]);
+        setLoading(false);
+        return;
+      }
     }
+    // Admin/Super Admin: no filter, see everything
 
     const { data, error } = await query.order('class_id');
     if (error) {
@@ -673,19 +793,43 @@ const Boletim = () => {
 
   return (
     <div className="max-w-7xl mx-auto animate-fade-in">
-      <div className="mb-6 flex items-start justify-between">
+      <div className="mb-6 flex items-start justify-between flex-wrap gap-4">
         <div>
           <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
             <FileText className="w-6 h-6 text-primary" />
             Boletim — Gestão de Notas
           </h1>
           <p className="text-sm text-muted-foreground mt-1">
-            Registre notas com tipo, categoria e peso. A média ponderada e o status são calculados automaticamente.
+            {isProfessor && !isAdmin
+              ? 'Registre e acompanhe as notas dos seus alunos.'
+              : 'Gerencie notas, acompanhe desempenho e audite alterações.'}
           </p>
+          {/* Role indicator */}
+          <div className="mt-2 flex items-center gap-2">
+            <Badge variant="outline" className="text-xs gap-1">
+              {roleIcon}
+              {displayRole}
+            </Badge>
+            {isProfessor && !isAdmin && (
+              <span className="text-xs text-muted-foreground">Visualização: suas disciplinas</span>
+            )}
+            {isCoordenador && !isAdminRole && !isSuperAdmin && (
+              <span className="text-xs text-muted-foreground">Visualização: cursos coordenados</span>
+            )}
+            {isGerente && !isAdminRole && !isSuperAdmin && (
+              <span className="text-xs text-muted-foreground">Visualização: unidades gerenciadas</span>
+            )}
+            {isDiretor && !isAdminRole && !isSuperAdmin && !isGerente && !isCoordenador && (
+              <span className="text-xs text-muted-foreground">Visualização: campus vinculado</span>
+            )}
+            {(isAdminRole || isSuperAdmin) && (
+              <span className="text-xs text-muted-foreground">Visualização: todas as disciplinas</span>
+            )}
+          </div>
         </div>
         {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && (
-          <div className="flex items-center gap-2">
-            {isAdmin && (
+          <div className="flex items-center gap-2 flex-wrap">
+            {canViewHistory && (
               <Button
                 variant="outline"
                 size="sm"
@@ -791,7 +935,7 @@ const Boletim = () => {
       })()}
 
       {/* Fechar Boletim toggle */}
-      {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && isAdmin && (() => {
+      {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && canCloseBoletim && (() => {
         const isClassOpen = (currentCs?.class as any)?.status === 'ATIVO';
         if (!isClassOpen) return null;
         return (
@@ -995,7 +1139,7 @@ const Boletim = () => {
                                 <Button variant="ghost" size="icon" onClick={() => openEditDialog(enrollment)}>
                                   <Pencil className="w-4 h-4" />
                                 </Button>
-                                {isAdmin && (
+                                {canViewHistory && (
                                   <Button
                                     variant="ghost"
                                     size="icon"
