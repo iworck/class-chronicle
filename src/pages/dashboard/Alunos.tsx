@@ -210,18 +210,20 @@ const Alunos = () => {
   }
 
   async function handleSave() {
-    if (!formName.trim() || !formEnrollment.trim() || !formCourseId) {
-      toast({ title: 'Preencha nome, matrícula e curso', variant: 'destructive' });
+    if (!formName.trim() || !formEnrollment.trim()) {
+      toast({ title: 'Preencha nome e matrícula', variant: 'destructive' });
       return;
     }
 
     setSaving(true);
-    const studentPayload = {
+    const studentPayload: any = {
       name: formName.trim(),
       enrollment: formEnrollment.trim(),
-      course_id: formCourseId,
       status: formStatus,
     };
+    if (editing && editing.course_id) {
+      studentPayload.course_id = editing.course_id;
+    }
 
     let studentId = editing?.id;
 
@@ -592,17 +594,6 @@ const Alunos = () => {
                       </SelectContent>
                     </Select>
                   </div>
-                </div>
-                <div>
-                  <Label>Curso *</Label>
-                  <Select value={formCourseId} onValueChange={setFormCourseId}>
-                    <SelectTrigger><SelectValue placeholder="Selecione o curso" /></SelectTrigger>
-                    <SelectContent>
-                      {courses.map(c => (
-                        <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
                 </div>
               </div>
             </TabsContent>
