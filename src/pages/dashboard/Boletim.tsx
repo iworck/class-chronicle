@@ -799,58 +799,160 @@ const Boletim = () => {
 
       {/* View grades dialog (read-only) */}
       <Dialog open={viewDialog} onOpenChange={setViewDialog}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>Notas — {viewStudentName}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-3">
+          <div className="space-y-4">
             {viewGrades.length === 0 ? (
               <p className="text-sm text-muted-foreground">Nenhuma nota lançada.</p>
-            ) : (
-              <>
-                {/* Final grades (counts_in_final) */}
-                <Table>
-                  <TableHeader>
-                    <TableRow>
-                      <TableHead>Tipo</TableHead>
-                      <TableHead>Categoria</TableHead>
-                      <TableHead className="text-center">Nota</TableHead>
-                      <TableHead className="text-center">Peso</TableHead>
-                      <TableHead className="text-center">Média</TableHead>
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {viewGrades.map(g => (
-                      <TableRow key={g.id} className={g.counts_in_final !== false ? '' : 'opacity-60'}>
-                        <TableCell className="font-mono font-medium">{g.grade_type}</TableCell>
-                        <TableCell>{categoryLabel(g.grade_category)}</TableCell>
-                        <TableCell className="text-center font-medium">{g.grade_value.toFixed(1)}</TableCell>
-                        <TableCell className="text-center">{g.weight}</TableCell>
-                        <TableCell className="text-center">
-                          {g.counts_in_final !== false ? (
-                            <Badge variant="default" className="text-xs">Sim</Badge>
-                          ) : (
-                            <Badge variant="secondary" className="text-xs">Critério</Badge>
-                          )}
-                        </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </>
-            )}
-            {viewAvg !== null && (() => {
+            ) : (() => {
               const parentItems = templateItems.filter(t => t.counts_in_final);
+              const hasTemplate = parentItems.length > 0;
+
+              if (hasTemplate) {
+                // Build full formula breakdown per parent N
+                const nCalcs: { name: string; value: number | null; children: { name: string; category: string; grade: number | null; weight: number; result: number | null }[] }[] = [];
+
+                for (const parent of parentItems) {
+                  const childTemplates = templateItems.filter(t => !t.counts_in_final && t.parent_item_id === parent.id);
+                  if (childTemplates.length > 0) {
+                    const children = childTemplates.map(child => {
+                      const g = viewGrades.find(vg => vg.grade_type.toUpperCase() === child.name.toUpperCase());
+                      const grade = g ? g.grade_value : null;
+                      return {
+                        name: child.name,
+                        category: child.category,
+                        grade,
+                        weight: child.weight,
+                        result: grade !== null ? grade * child.weight : null,
+                      };
+                    });
+                    const allFound = children.every(c => c.result !== null);
+                    const sum = allFound ? children.reduce((a, c) => a + c.result!, 0) : null;
+                    nCalcs.push({ name: parent.name, value: sum, children });
+                  } else {
+                    const g = viewGrades.find(vg => vg.grade_type.toUpperCase() === parent.name.toUpperCase());
+                    const grade = g ? g.grade_value : null;
+                    nCalcs.push({ name: parent.name, value: grade, children: [{ name: parent.name, category: parent.category, grade, weight: 1, result: grade }] });
+                  }
+                }
+
+                const validNs = nCalcs.filter(n => n.value !== null);
+                const avg = validNs.length > 0 ? validNs.reduce((a, n) => a + n.value!, 0) / validNs.length : null;
+
+                return (
+                  <div className="space-y-3">
+                    {nCalcs.map((n, i) => (
+                      <div key={i} className="rounded-lg border border-border overflow-hidden">
+                        <div className="px-3 py-2 bg-muted/50 border-b border-border flex items-center justify-between">
+                          <span className="text-sm font-bold text-foreground">{n.name} (Nota de Cálculo de Média)</span>
+                          <span className="text-sm font-bold text-primary">{n.value !== null ? n.value.toFixed(2) : '—'}</span>
+                        </div>
+                        <div className="p-3 space-y-1.5">
+                          {n.children.map((child, ci) => (
+                            <div key={ci} className="flex items-center justify-between text-sm">
+                              <div className="flex items-center gap-2">
+                                <span className="font-mono font-medium text-foreground">{child.name}</span>
+                                <Badge variant="secondary" className="text-xs">{categoryLabel(child.category)}</Badge>
+                              </div>
+                              <div className="text-muted-foreground text-xs font-mono">
+                                {child.grade !== null ? (
+                                  <span>
+                                    {child.grade.toFixed(1)} × {child.weight} = <strong className="text-foreground">{child.result!.toFixed(2)}</strong>
+                                  </span>
+                                ) : (
+                                  <span className="text-destructive">Não lançada</span>
+                                )}
+                              </div>
+                            </div>
+                          ))}
+                          <div className="pt-1.5 border-t border-border text-xs text-muted-foreground">
+                            <strong>{n.name}</strong> = {n.children.map(c => c.name).join(' + ')} = {n.children.map(c => c.result !== null ? c.result.toFixed(2) : '?').join(' + ')} = <strong className="text-foreground">{n.value !== null ? n.value.toFixed(2) : '—'}</strong>
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+
+                    {/* Other grades not in template */}
+                    {(() => {
+                      const templateNames = new Set(templateItems.map(t => t.name.toUpperCase()));
+                      const extras = viewGrades.filter(g => !templateNames.has(g.grade_type.toUpperCase()));
+                      if (extras.length === 0) return null;
+                      return (
+                        <div className="rounded-lg border border-border overflow-hidden">
+                          <div className="px-3 py-2 bg-muted/50 border-b border-border">
+                            <span className="text-sm font-bold text-foreground">Outras Notas</span>
+                          </div>
+                          <div className="p-3 space-y-1.5">
+                            {extras.map(g => (
+                              <div key={g.id} className="flex items-center justify-between text-sm">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-mono font-medium">{g.grade_type}</span>
+                                  <Badge variant="secondary" className="text-xs">{categoryLabel(g.grade_category)}</Badge>
+                                </div>
+                                <span className="font-medium">{g.grade_value.toFixed(1)}</span>
+                              </div>
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })()}
+
+                    {/* Final average */}
+                    <div className="p-4 rounded-lg border border-primary/30 bg-primary/5 space-y-2">
+                      <p className="text-xs font-mono text-muted-foreground text-center">
+                        MÉDIA = ({nCalcs.map(n => n.name).join(' + ')}) / {nCalcs.length}
+                      </p>
+                      {validNs.length > 0 && (
+                        <p className="text-xs font-mono text-muted-foreground text-center">
+                          MÉDIA = ({validNs.map(n => n.value!.toFixed(2)).join(' + ')}) / {validNs.length} = {avg!.toFixed(2)}
+                        </p>
+                      )}
+                      <p className="text-2xl font-bold text-primary text-center">{avg !== null ? avg.toFixed(2) : '—'}</p>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Fallback: no template
               return (
-                <div className="p-3 rounded-md border border-border bg-muted/50 text-center space-y-1">
-                  {parentItems.length > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      MÉDIA = ({parentItems.map(p => p.name).join(' + ')}) / {parentItems.length}
-                    </p>
+                <>
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Tipo</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead className="text-center">Nota</TableHead>
+                        <TableHead className="text-center">Peso</TableHead>
+                        <TableHead className="text-center">Média</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {viewGrades.map(g => (
+                        <TableRow key={g.id} className={g.counts_in_final !== false ? '' : 'opacity-60'}>
+                          <TableCell className="font-mono font-medium">{g.grade_type}</TableCell>
+                          <TableCell>{categoryLabel(g.grade_category)}</TableCell>
+                          <TableCell className="text-center font-medium">{g.grade_value.toFixed(1)}</TableCell>
+                          <TableCell className="text-center">{g.weight}</TableCell>
+                          <TableCell className="text-center">
+                            {g.counts_in_final !== false ? (
+                              <Badge variant="default" className="text-xs">Sim</Badge>
+                            ) : (
+                              <Badge variant="secondary" className="text-xs">Critério</Badge>
+                            )}
+                          </TableCell>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                  {viewAvg !== null && (
+                    <div className="p-3 rounded-md border border-border bg-muted/50 text-center">
+                      <p className="text-sm text-muted-foreground">Média Final</p>
+                      <p className="text-2xl font-bold text-primary">{viewAvg.toFixed(2)}</p>
+                    </div>
                   )}
-                  <p className="text-sm text-muted-foreground">Média Final</p>
-                  <p className="text-2xl font-bold text-primary">{viewAvg.toFixed(2)}</p>
-                </div>
+                </>
               );
             })()}
           </div>
