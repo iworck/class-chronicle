@@ -139,11 +139,11 @@ const EnrollmentTab = ({ studentId, studentCourseId, canManage }: EnrollmentTabP
     return matrixSubjects.filter(ms => ms.semester === Number(formSemester));
   }, [matrixSubjects, formSemester]);
 
-  // Already enrolled subject IDs for this matrix
-  const enrolledSubjectIds = useMemo(() => {
+  // Subject IDs currently with status CURSANDO for this matrix (cannot re-enroll)
+  const cursandoSubjectIds = useMemo(() => {
     return new Set(
       enrollments
-        .filter(e => e.matrix_id === formMatrixId)
+        .filter(e => e.matrix_id === formMatrixId && e.status === 'CURSANDO')
         .map(e => e.subject_id)
     );
   }, [enrollments, formMatrixId]);
@@ -339,13 +339,13 @@ const EnrollmentTab = ({ studentId, studentCourseId, canManage }: EnrollmentTabP
               <Label className="mb-2 block">Disciplinas *</Label>
               <div className="space-y-2 max-h-48 overflow-y-auto">
                 {filteredSubjects.map(ms => {
-                  const alreadyEnrolled = enrolledSubjectIds.has(ms.subject.id);
+                  const isCursando = cursandoSubjectIds.has(ms.subject.id);
                   const isSelected = selectedSubjects.includes(ms.subject.id);
                   return (
                     <label
                       key={ms.id}
                       className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${
-                        alreadyEnrolled
+                        isCursando
                           ? 'border-muted bg-muted/30 opacity-60 cursor-not-allowed'
                           : isSelected
                           ? 'border-primary bg-primary/5'
@@ -353,16 +353,16 @@ const EnrollmentTab = ({ studentId, studentCourseId, canManage }: EnrollmentTabP
                       }`}
                     >
                       <Checkbox
-                        checked={isSelected || alreadyEnrolled}
-                        disabled={alreadyEnrolled}
-                        onCheckedChange={() => !alreadyEnrolled && toggleSubject(ms.subject.id)}
+                        checked={isSelected || isCursando}
+                        disabled={isCursando}
+                        onCheckedChange={() => !isCursando && toggleSubject(ms.subject.id)}
                       />
                       <div className="flex-1">
                         <p className="text-sm font-medium text-foreground">{ms.subject.name}</p>
                         <p className="text-xs text-muted-foreground">{ms.subject.code} · {ms.subject.workload_hours}h</p>
                       </div>
-                      {alreadyEnrolled && (
-                        <Badge variant="secondary" className="text-xs">Já matriculado</Badge>
+                      {isCursando && (
+                        <Badge variant="secondary" className="text-xs">Cursando</Badge>
                       )}
                     </label>
                   );
@@ -417,25 +417,9 @@ const EnrollmentTab = ({ studentId, studentCourseId, canManage }: EnrollmentTabP
                     </div>
                   </div>
                   <div className="flex items-center gap-2">
-                    {canManage ? (
-                      <Select
-                        value={enrollment.status}
-                        onValueChange={v => handleStatusChange(enrollment.id, v)}
-                      >
-                        <SelectTrigger className="w-32 h-8 text-xs">
-                          <SelectValue />
-                        </SelectTrigger>
-                        <SelectContent>
-                          {Object.entries(ENROLLMENT_STATUS_MAP).map(([key, val]) => (
-                            <SelectItem key={key} value={key}>{val.label}</SelectItem>
-                          ))}
-                        </SelectContent>
-                      </Select>
-                    ) : (
-                      <Badge variant={ENROLLMENT_STATUS_MAP[enrollment.status]?.variant || 'default'}>
-                        {ENROLLMENT_STATUS_MAP[enrollment.status]?.label || enrollment.status}
-                      </Badge>
-                    )}
+                    <Badge variant={ENROLLMENT_STATUS_MAP[enrollment.status]?.variant || 'default'}>
+                      {ENROLLMENT_STATUS_MAP[enrollment.status]?.label || enrollment.status}
+                    </Badge>
                     {canManage && (
                       <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDelete(enrollment.id)}>
                         <Trash2 className="w-3.5 h-3.5 text-destructive" />
