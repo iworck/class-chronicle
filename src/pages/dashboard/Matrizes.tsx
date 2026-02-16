@@ -42,8 +42,9 @@ interface CampusOption { id: string; name: string; }
 interface SubjectOption { id: string; name: string; code: string; course_id: string | null; }
 
 const Matrizes = () => {
-  const { hasRole } = useAuth();
-  const canManage = hasRole('admin') || hasRole('super_admin');
+  const { hasRole, user } = useAuth();
+  const canManage = hasRole('admin') || hasRole('super_admin') || hasRole('coordenador');
+  const isCoordinator = hasRole('coordenador') && !hasRole('admin') && !hasRole('super_admin');
 
   const [matrices, setMatrices] = useState<Matrix[]>([]);
   const [courses, setCourses] = useState<CourseOption[]>([]);
