@@ -97,6 +97,8 @@ const Boletim = () => {
   const [attendanceData, setAttendanceData] = useState<Record<string, { total: number; present: number }>>({});
   const [loadingEnrollments, setLoadingEnrollments] = useState(false);
   const [templateItems, setTemplateItems] = useState<TemplateItem[]>([]);
+  const [gradesClosed, setGradesClosed] = useState(false);
+  const [togglingClosed, setTogglingClosed] = useState(false);
 
   // Grade edit dialog
   const [editDialog, setEditDialog] = useState(false);
@@ -145,6 +147,14 @@ const Boletim = () => {
     setLoadingEnrollments(true);
     const cs = classSubjects.find(c => c.id === classSubjectId);
     if (!cs) return;
+
+    // Load grades_closed flag
+    const { data: csData } = await supabase
+      .from('class_subjects')
+      .select('grades_closed')
+      .eq('id', classSubjectId)
+      .single();
+    setGradesClosed(csData?.grades_closed ?? false);
 
     // Load template items for this class_subject
     const { data: tplData } = await supabase
@@ -230,6 +240,58 @@ const Boletim = () => {
     loadEnrollmentsAndGrades(value);
   }
 
+  async function handleToggleGradesClosed(closed: boolean) {
+    if (!selectedClassSubject) return;
+    setTogglingClosed(true);
+    
+    const { error } = await supabase
+      .from('class_subjects')
+      .update({ grades_closed: closed } as any)
+      .eq('id', selectedClassSubject);
+
+    if (error) {
+      toast({ title: 'Erro ao atualizar', description: error.message, variant: 'destructive' });
+      setTogglingClosed(false);
+      return;
+    }
+
+    setGradesClosed(closed);
+
+    if (closed) {
+      // Recalculate statuses: touch each enrollment's grades to trigger the DB function
+      const enrollIds = enrollments.map(e => e.id);
+      for (const eid of enrollIds) {
+        const studentGrades = grades.filter(g => g.enrollment_id === eid);
+        if (studentGrades.length > 0) {
+          // Touch a grade to fire trigger
+          await supabase
+            .from('student_grades')
+            .update({ updated_at: new Date().toISOString() } as any)
+            .eq('id', studentGrades[0].id);
+        }
+      }
+    } else {
+      // Reset all to CURSANDO
+      const enrollIds = enrollments.filter(e => e.status !== 'TRANCADO').map(e => e.id);
+      if (enrollIds.length > 0) {
+        await supabase
+          .from('student_subject_enrollments')
+          .update({ status: 'CURSANDO', updated_at: new Date().toISOString() })
+          .in('id', enrollIds);
+      }
+    }
+
+    // Reload data
+    await loadEnrollmentsAndGrades(selectedClassSubject);
+    toast({
+      title: closed ? 'Boletim fechado' : 'Boletim reaberto',
+      description: closed
+        ? 'Os status dos alunos foram calculados com base nas notas e frequência.'
+        : 'Todos os alunos voltaram ao status CURSANDO.',
+    });
+    setTogglingClosed(false);
+  }
+
   function getStudentGrades(enrollmentId: string): Grade[] {
     return grades.filter(g => g.enrollment_id === enrollmentId);
   }
@@ -309,6 +371,8 @@ const Boletim = () => {
 
   function getDisplayStatus(enrollment: EnrollmentWithStudent): string {
     if (enrollment.status === 'TRANCADO') return 'TRANCADO';
+    // If grades are not closed, always show CURSANDO
+    if (!gradesClosed) return 'CURSANDO';
     const studentGrades = getStudentGrades(enrollment.id);
     // If there are any grades but not all entered → CURSANDO
     if (studentGrades.length > 0 && templateItems.length > 0 && !areAllGradesEntered(enrollment.id)) {
@@ -567,6 +631,36 @@ const Boletim = () => {
                   </p>
                 )}
               </div>
+            </div>
+          </div>
+        );
+      })()}
+
+      {/* Fechar Boletim toggle */}
+      {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && isAdmin && (() => {
+        const cs = classSubjects.find(c => c.id === selectedClassSubject);
+        const isClassOpen = (cs?.class as any)?.status === 'ATIVO';
+        if (!isClassOpen) return null;
+        return (
+          <div className="mb-4 p-4 rounded-lg border border-border bg-muted/30 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Lock className="w-5 h-5 text-muted-foreground" />
+              <div>
+                <p className="text-sm font-semibold text-foreground">Fechar Boletim</p>
+                <p className="text-xs text-muted-foreground">
+                  {gradesClosed
+                    ? 'Boletim fechado — status dos alunos calculado automaticamente.'
+                    : 'Enquanto aberto, todos os alunos permanecem como CURSANDO.'}
+                </p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
+              {togglingClosed && <Loader2 className="w-4 h-4 animate-spin text-muted-foreground" />}
+              <Switch
+                checked={gradesClosed}
+                onCheckedChange={handleToggleGradesClosed}
+                disabled={togglingClosed}
+              />
             </div>
           </div>
         );
