@@ -256,10 +256,31 @@ const Turmas = () => {
     setStudentSearch('');
     setSelectedStudentIds([]);
 
-    // Load students for the same course
-    const { data } = await supabase.from('students')
+    // Find the subject linked to this class
+    const subjectId = viewSubjects.length > 0 ? viewSubjects[0].subject_id : null;
+
+    if (!subjectId) {
+      setAllStudents([]);
+      return;
+    }
+
+    // Load students enrolled in the same subject via student_subject_enrollments
+    const { data: enrollments } = await supabase
+      .from('student_subject_enrollments')
+      .select('student_id')
+      .eq('subject_id', subjectId)
+      .eq('status', 'CURSANDO');
+
+    if (!enrollments || enrollments.length === 0) {
+      setAllStudents([]);
+      return;
+    }
+
+    const studentIds = [...new Set(enrollments.map(e => e.student_id))];
+    const { data } = await supabase
+      .from('students')
       .select('id, name, enrollment, course_id')
-      .eq('course_id', viewClass.course_id)
+      .in('id', studentIds)
       .eq('status', 'ATIVO')
       .order('name');
     setAllStudents((data as Student[]) || []);
@@ -656,7 +677,7 @@ const Turmas = () => {
             </div>
 
             <p className="text-xs text-muted-foreground">
-              Exibindo alunos do curso: {viewClass ? courseMap[viewClass.course_id] || '—' : '—'}
+              Exibindo alunos matriculados na disciplina desta turma (status: CURSANDO)
             </p>
 
             {filteredLinkStudents.length === 0 ? (
