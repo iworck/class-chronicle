@@ -454,6 +454,106 @@ export type Database = {
           },
         ]
       }
+      email_message_logs: {
+        Row: {
+          created_at: string
+          error_message: string | null
+          id: string
+          institution_id: string | null
+          message_type: string
+          recipient_email: string
+          recipient_name: string | null
+          sent_by: string | null
+          status: string
+          subject: string
+        }
+        Insert: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          institution_id?: string | null
+          message_type?: string
+          recipient_email: string
+          recipient_name?: string | null
+          sent_by?: string | null
+          status?: string
+          subject: string
+        }
+        Update: {
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          institution_id?: string | null
+          message_type?: string
+          recipient_email?: string
+          recipient_name?: string | null
+          sent_by?: string | null
+          status?: string
+          subject?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_message_logs_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      email_settings: {
+        Row: {
+          created_at: string
+          from_email: string
+          from_name: string
+          id: string
+          institution_id: string
+          is_active: boolean
+          smtp_host: string
+          smtp_password: string
+          smtp_port: number
+          smtp_user: string
+          updated_at: string
+          use_tls: boolean
+        }
+        Insert: {
+          created_at?: string
+          from_email: string
+          from_name?: string
+          id?: string
+          institution_id: string
+          is_active?: boolean
+          smtp_host: string
+          smtp_password: string
+          smtp_port?: number
+          smtp_user: string
+          updated_at?: string
+          use_tls?: boolean
+        }
+        Update: {
+          created_at?: string
+          from_email?: string
+          from_name?: string
+          id?: string
+          institution_id?: string
+          is_active?: boolean
+          smtp_host?: string
+          smtp_password?: string
+          smtp_port?: number
+          smtp_user?: string
+          updated_at?: string
+          use_tls?: boolean
+        }
+        Relationships: [
+          {
+            foreignKeyName: "email_settings_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: true
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       enrollment_suggestions: {
         Row: {
           class_id: string

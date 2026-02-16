@@ -98,16 +98,71 @@ serve(async (req) => {
       .single();
 
     if (method === "email") {
-      // For now, return success. Email integration can be added later.
+      // Get email settings for the user's institution
+      const { data: userProfile } = await supabaseAdmin
+        .from("profiles")
+        .select("institution_id")
+        .eq("id", user_id)
+        .single();
+
+      if (userProfile?.institution_id && profile?.email) {
+        const { data: emailSettings } = await supabaseAdmin
+          .from("email_settings")
+          .select("*")
+          .eq("institution_id", userProfile.institution_id)
+          .eq("is_active", true)
+          .single();
+
+        if (emailSettings) {
+          const htmlBody = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto;">
+              <h2 style="color: #333;">Redefinição de Senha</h2>
+              <p>Olá <strong>${profile.name}</strong>,</p>
+              <p>Sua senha foi redefinida pelo administrador do sistema.</p>
+              <p>Sua nova senha é:</p>
+              <div style="background: #f4f4f4; padding: 16px; border-radius: 8px; text-align: center; font-size: 24px; font-weight: bold; letter-spacing: 2px; margin: 16px 0;">
+                ${newPassword}
+              </div>
+              <p style="color: #666;">Por segurança, altere sua senha após o primeiro acesso.</p>
+              <hr style="border: none; border-top: 1px solid #eee; margin: 24px 0;" />
+              <p style="color: #999; font-size: 12px;">FrequênciaEDU - Sistema de Controle de Frequência</p>
+            </div>
+          `;
+
+          // Call send-email edge function
+          try {
+            const sendRes = await fetch(`${supabaseUrl}/functions/v1/send-email`, {
+              method: "POST",
+              headers: {
+                "Content-Type": "application/json",
+                "Authorization": authHeader,
+                "apikey": Deno.env.get("SUPABASE_ANON_KEY") || "",
+              },
+              body: JSON.stringify({
+                to: profile.email,
+                to_name: profile.name,
+                subject: "Redefinição de Senha - FrequênciaEDU",
+                html: htmlBody,
+                message_type: "RESET_SENHA",
+              }),
+            });
+
+            if (sendRes.ok) {
+              return new Response(JSON.stringify({ 
+                success: true, method: "email",
+                message: `Senha enviada por email para ${profile.email}.`,
+              }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
+            }
+          } catch (e) {
+            // fall through
+          }
+        }
+      }
+
       return new Response(JSON.stringify({ 
-        success: true, 
-        method: "email",
-        message: `Senha resetada. Um email será enviado para ${profile?.email || 'o usuário'}.`,
-        // In production, integrate with email service here
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, "Content-Type": "application/json" },
-      });
+        success: true, method: "email",
+        message: `Senha resetada. Não foi possível enviar por email. Verifique as configurações SMTP e o email do usuário.`,
+      }), { status: 200, headers: { ...corsHeaders, "Content-Type": "application/json" } });
     }
 
     if (method === "whatsapp") {

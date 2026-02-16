@@ -409,17 +409,7 @@ const WhatsApp = () => {
   }
 
   return (
-    <div className="max-w-7xl mx-auto animate-fade-in">
-      <div className="mb-6">
-        <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
-          <MessageSquare className="w-6 h-6 text-primary" />
-          WhatsApp
-        </h1>
-        <p className="text-muted-foreground text-sm">
-          Gerencie integrações, templates, listas de contatos e campanhas de WhatsApp.
-        </p>
-      </div>
-
+    <div className="max-w-7xl mx-auto">
       <Tabs value={activeTab} onValueChange={setActiveTab}>
         <TabsList className="mb-6">
           <TabsTrigger value="settings" className="gap-1.5"><Settings className="w-4 h-4" />Configurações</TabsTrigger>
