@@ -18,8 +18,9 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import {
-  Search, Pencil, Shield, Loader2, Users, MapPin, Plus, UserPlus,
+  Search, Pencil, Shield, Loader2, Users, MapPin, Plus, UserPlus, KeyRound, Mail, MessageSquare, Eye, Copy,
 } from 'lucide-react';
+import { Textarea } from '@/components/ui/textarea';
 
 type AppRole = 'super_admin' | 'admin' | 'diretor' | 'gerente' | 'coordenador' | 'professor' | 'aluno';
 
@@ -106,8 +107,19 @@ const Usuarios = () => {
   const [formEmail, setFormEmail] = useState('');
   const [formPhone, setFormPhone] = useState('');
   const [formInstitutionId, setFormInstitutionId] = useState('');
+  const [formCampusId, setFormCampusId] = useState('');
+  const [formUnitId, setFormUnitId] = useState('');
   const [formStatus, setFormStatus] = useState<'ATIVO' | 'INATIVO'>('ATIVO');
   const [saving, setSaving] = useState(false);
+
+  // Password reset dialog
+  const [resetDialogOpen, setResetDialogOpen] = useState(false);
+  const [resetUserId, setResetUserId] = useState<string | null>(null);
+  const [resetUserName, setResetUserName] = useState('');
+  const [resetMethod, setResetMethod] = useState<'email' | 'whatsapp' | 'screen'>('email');
+  const [resetJustification, setResetJustification] = useState('');
+  const [resettingPassword, setResettingPassword] = useState(false);
+  const [generatedPassword, setGeneratedPassword] = useState<string | null>(null);
 
   // Roles dialog
   const [rolesDialogOpen, setRolesDialogOpen] = useState(false);
@@ -210,21 +222,111 @@ const Usuarios = () => {
     setFormEmail(profile.email || '');
     setFormPhone(profile.phone || '');
     setFormInstitutionId(profile.institution_id || '');
+    // Load existing campus/unit for this user
+    const userCampus = allUserCampuses.find(uc => uc.user_id === profile.id);
+    setFormCampusId(userCampus?.campus_id || '');
+    const userUnit = allUserUnits.find(uu => uu.user_id === profile.id);
+    setFormUnitId(userUnit?.unit_id || '');
     setFormStatus(profile.status);
     setEditDialogOpen(true);
   }
+
+  const editCampusesFiltered = formInstitutionId ? campuses.filter(c => c.institution_id === formInstitutionId) : [];
+  const editUnitsFiltered = formCampusId ? units.filter(u => u.campus_id === formCampusId) : [];
 
   async function handleSaveProfile() {
     if (!formName.trim()) { toast({ title: 'Preencha o nome', variant: 'destructive' }); return; }
     if (!editingProfile) return;
     setSaving(true);
+
+    // Update profile
     const { error } = await supabase.from('profiles').update({
       name: formName.trim(), email: formEmail.trim() || null, phone: formPhone.trim() || null,
       institution_id: formInstitutionId || null, status: formStatus,
     }).eq('id', editingProfile.id);
-    if (error) { toast({ title: 'Erro ao atualizar', description: error.message, variant: 'destructive' }); }
-    else { toast({ title: 'Usuário atualizado com sucesso' }); setEditDialogOpen(false); fetchAll(); }
+    if (error) { toast({ title: 'Erro ao atualizar', description: error.message, variant: 'destructive' }); setSaving(false); return; }
+
+    // Update campus assignment
+    const currentCampus = allUserCampuses.find(uc => uc.user_id === editingProfile.id);
+    if (formCampusId && !currentCampus) {
+      await supabase.from('user_campuses').insert({ user_id: editingProfile.id, campus_id: formCampusId });
+    } else if (formCampusId && currentCampus && currentCampus.campus_id !== formCampusId) {
+      await supabase.from('user_campuses').delete().eq('id', currentCampus.id);
+      await supabase.from('user_campuses').insert({ user_id: editingProfile.id, campus_id: formCampusId });
+    } else if (!formCampusId && currentCampus) {
+      await supabase.from('user_campuses').delete().eq('id', currentCampus.id);
+    }
+
+    // Update unit assignment
+    const currentUnit = allUserUnits.find(uu => uu.user_id === editingProfile.id);
+    if (formUnitId && !currentUnit) {
+      await supabase.from('user_units').insert({ user_id: editingProfile.id, unit_id: formUnitId });
+    } else if (formUnitId && currentUnit && currentUnit.unit_id !== formUnitId) {
+      await supabase.from('user_units').delete().eq('id', currentUnit.id);
+      await supabase.from('user_units').insert({ user_id: editingProfile.id, unit_id: formUnitId });
+    } else if (!formUnitId && currentUnit) {
+      await supabase.from('user_units').delete().eq('id', currentUnit.id);
+    }
+
+    toast({ title: 'Usuário atualizado com sucesso' }); setEditDialogOpen(false); fetchAll();
     setSaving(false);
+  }
+
+  // --- Password Reset ---
+  function openResetDialog(profile: UserProfile) {
+    setResetUserId(profile.id);
+    setResetUserName(profile.name);
+    setResetMethod('email');
+    setResetJustification('');
+    setGeneratedPassword(null);
+    setResetDialogOpen(true);
+  }
+
+  async function handleResetPassword() {
+    if (!resetUserId) return;
+    if (resetMethod === 'screen' && !resetJustification.trim()) {
+      toast({ title: 'Informe a justificativa', variant: 'destructive' });
+      return;
+    }
+    setResettingPassword(true);
+    try {
+      const { data: { session } } = await supabase.auth.getSession();
+      const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/reset-password`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'Authorization': `Bearer ${session?.access_token}`,
+          'apikey': import.meta.env.VITE_SUPABASE_PUBLISHABLE_KEY,
+        },
+        body: JSON.stringify({
+          user_id: resetUserId,
+          method: resetMethod,
+          justification: resetJustification.trim() || undefined,
+        }),
+      });
+      const result = await res.json();
+      if (!res.ok) {
+        toast({ title: 'Erro ao resetar senha', description: result.error, variant: 'destructive' });
+      } else {
+        if (resetMethod === 'screen' && result.password) {
+          setGeneratedPassword(result.password);
+          toast({ title: 'Senha resetada com sucesso' });
+        } else {
+          toast({ title: result.message || 'Senha resetada com sucesso' });
+          setResetDialogOpen(false);
+        }
+      }
+    } catch (err: any) {
+      toast({ title: 'Erro ao resetar senha', description: err.message, variant: 'destructive' });
+    }
+    setResettingPassword(false);
+  }
+
+  function copyPassword() {
+    if (generatedPassword) {
+      navigator.clipboard.writeText(generatedPassword);
+      toast({ title: 'Senha copiada para a área de transferência' });
+    }
   }
 
   // --- Roles ---
@@ -571,6 +673,9 @@ const Usuarios = () => {
                             <Button variant="ghost" size="icon" onClick={() => openEditProfile(profile)} title="Editar perfil">
                               <Pencil className="w-4 h-4" />
                             </Button>
+                            <Button variant="ghost" size="icon" onClick={() => openResetDialog(profile)} title="Resetar senha">
+                              <KeyRound className="w-4 h-4" />
+                            </Button>
                             <Button variant="ghost" size="icon" onClick={() => openRolesDialog(profile)} title="Gerenciar papéis">
                               <Shield className="w-4 h-4" />
                             </Button>
@@ -604,7 +709,7 @@ const Usuarios = () => {
 
       {/* Dialog: Edit Profile */}
       <Dialog open={editDialogOpen} onOpenChange={setEditDialogOpen}>
-        <DialogContent>
+        <DialogContent className="max-w-lg max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Editar Usuário</DialogTitle></DialogHeader>
           <div className="space-y-4 py-2">
             <div><Label>Nome *</Label><Input value={formName} onChange={(e) => setFormName(e.target.value)} placeholder="Nome completo" /></div>
@@ -612,7 +717,7 @@ const Usuarios = () => {
             <div><Label>Telefone</Label><Input value={formPhone} onChange={(e) => setFormPhone(e.target.value)} placeholder="(11) 99999-9999" /></div>
             <div>
               <Label>Instituição</Label>
-              <Select value={formInstitutionId || "none"} onValueChange={(v) => setFormInstitutionId(v === "none" ? "" : v)}>
+              <Select value={formInstitutionId || "none"} onValueChange={(v) => { setFormInstitutionId(v === "none" ? "" : v); setFormCampusId(''); setFormUnitId(''); }}>
                 <SelectTrigger><SelectValue placeholder="Selecione a instituição" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nenhuma</SelectItem>
@@ -620,6 +725,30 @@ const Usuarios = () => {
                 </SelectContent>
               </Select>
             </div>
+            {formInstitutionId && editCampusesFiltered.length > 0 && (
+              <div>
+                <Label>Campus</Label>
+                <Select value={formCampusId || "none"} onValueChange={(v) => { setFormCampusId(v === "none" ? "" : v); setFormUnitId(''); }}>
+                  <SelectTrigger><SelectValue placeholder="Selecione o campus" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhum</SelectItem>
+                    {editCampusesFiltered.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
+            {formCampusId && editUnitsFiltered.length > 0 && (
+              <div>
+                <Label>Unidade</Label>
+                <Select value={formUnitId || "none"} onValueChange={(v) => setFormUnitId(v === "none" ? "" : v)}>
+                  <SelectTrigger><SelectValue placeholder="Selecione a unidade" /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="none">Nenhuma</SelectItem>
+                    {editUnitsFiltered.map(u => <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
+            )}
             <div>
               <Label>Status</Label>
               <Select value={formStatus} onValueChange={(v) => setFormStatus(v as 'ATIVO' | 'INATIVO')}>
@@ -636,6 +765,77 @@ const Usuarios = () => {
             <Button onClick={handleSaveProfile} disabled={saving}>
               {saving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Salvar
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Dialog: Reset Password */}
+      <Dialog open={resetDialogOpen} onOpenChange={(open) => { setResetDialogOpen(open); if (!open) setGeneratedPassword(null); }}>
+        <DialogContent>
+          <DialogHeader><DialogTitle>Resetar Senha — {resetUserName}</DialogTitle></DialogHeader>
+          {generatedPassword ? (
+            <div className="space-y-4 py-2">
+              <div className="bg-muted rounded-lg p-4 text-center">
+                <p className="text-xs text-muted-foreground mb-2">Nova senha gerada:</p>
+                <p className="text-xl font-mono font-bold text-foreground tracking-widest">{generatedPassword}</p>
+              </div>
+              <Button variant="outline" className="w-full" onClick={copyPassword}>
+                <Copy className="w-4 h-4 mr-2" />
+                Copiar Senha
+              </Button>
+              <p className="text-xs text-muted-foreground text-center">
+                Anote esta senha. Ela não será exibida novamente.
+              </p>
+            </div>
+          ) : (
+            <div className="space-y-4 py-2">
+              <p className="text-sm text-muted-foreground">Escolha como deseja enviar a nova senha ao usuário.</p>
+              <div className="space-y-2">
+                <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${resetMethod === 'email' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
+                  <input type="radio" name="resetMethod" checked={resetMethod === 'email'} onChange={() => setResetMethod('email')} className="sr-only" />
+                  <Mail className={`w-5 h-5 ${resetMethod === 'email' ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <div>
+                    <p className="font-medium text-sm">Enviar por E-mail</p>
+                    <p className="text-xs text-muted-foreground">A nova senha será enviada ao email do usuário</p>
+                  </div>
+                </label>
+                <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${resetMethod === 'whatsapp' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
+                  <input type="radio" name="resetMethod" checked={resetMethod === 'whatsapp'} onChange={() => setResetMethod('whatsapp')} className="sr-only" />
+                  <MessageSquare className={`w-5 h-5 ${resetMethod === 'whatsapp' ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <div>
+                    <p className="font-medium text-sm">Enviar por WhatsApp</p>
+                    <p className="text-xs text-muted-foreground">A nova senha será enviada via WhatsApp</p>
+                  </div>
+                </label>
+                <label className={`flex items-center gap-3 p-3 rounded-lg border cursor-pointer transition-colors ${resetMethod === 'screen' ? 'border-primary bg-primary/5' : 'border-border hover:bg-muted/50'}`}>
+                  <input type="radio" name="resetMethod" checked={resetMethod === 'screen'} onChange={() => setResetMethod('screen')} className="sr-only" />
+                  <Eye className={`w-5 h-5 ${resetMethod === 'screen' ? 'text-primary' : 'text-muted-foreground'}`} />
+                  <div>
+                    <p className="font-medium text-sm">Exibir em Tela</p>
+                    <p className="text-xs text-muted-foreground">A nova senha será exibida na tela (requer justificativa)</p>
+                  </div>
+                </label>
+              </div>
+              {resetMethod === 'screen' && (
+                <div>
+                  <Label>Justificativa *</Label>
+                  <Textarea
+                    value={resetJustification}
+                    onChange={(e) => setResetJustification(e.target.value)}
+                    placeholder="Informe o motivo para exibir a senha em tela..."
+                    rows={3}
+                  />
+                </div>
+              )}
+            </div>
+          )}
+          <DialogFooter>
+            <DialogClose asChild><Button variant="outline">{generatedPassword ? 'Fechar' : 'Cancelar'}</Button></DialogClose>
+            {!generatedPassword && (
+              <Button onClick={handleResetPassword} disabled={resettingPassword} variant="destructive">
+                {resettingPassword && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}Resetar Senha
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>
