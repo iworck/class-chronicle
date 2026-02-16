@@ -65,6 +65,8 @@ const Disciplinas = () => {
   const [formStatus, setFormStatus] = useState<'ATIVO' | 'INATIVO'>('ATIVO');
   const [formLessonPlan, setFormLessonPlan] = useState('');
   const [formPdfUrl, setFormPdfUrl] = useState('');
+  const [formMinGrade, setFormMinGrade] = useState('7.0');
+  const [formMinAttendance, setFormMinAttendance] = useState('75.0');
   const [uploadingPdf, setUploadingPdf] = useState(false);
   const pdfInputRef = useRef<HTMLInputElement>(null);
   const [formCourseId, setFormCourseId] = useState('');
@@ -168,6 +170,8 @@ const Disciplinas = () => {
     setFormUnitFilter('');
     setFormLessonPlan('');
     setFormPdfUrl('');
+    setFormMinGrade('7.0');
+    setFormMinAttendance('75.0');
     setDialogOpen(true);
   }
 
@@ -179,9 +183,10 @@ const Disciplinas = () => {
     setFormStatus(s.status);
     setFormLessonPlan((s as any).lesson_plan || '');
     setFormPdfUrl('');
+    setFormMinGrade(String((s as any).min_grade ?? 7.0));
+    setFormMinAttendance(String((s as any).min_attendance_pct ?? 75.0));
     const cid = (s as any).course_id || '';
     setFormCourseId(cid);
-    // Set filters based on existing course
     if (cid && courseMap[cid]) {
       const course = courseMap[cid];
       if (course.unit_id && unitMap[course.unit_id]) {
@@ -212,6 +217,8 @@ const Disciplinas = () => {
       status: formStatus,
       course_id: formCourseId || null,
       lesson_plan: formLessonPlan.trim() || null,
+      min_grade: parseFloat(formMinGrade) || 7.0,
+      min_attendance_pct: parseFloat(formMinAttendance) || 75.0,
     };
 
     if (editing) {
@@ -623,6 +630,42 @@ const Disciplinas = () => {
                 <p className="text-xs text-muted-foreground mt-1">
                   Envie o plano de aulas em PDF (máx. 20MB).
                 </p>
+              </div>
+            </div>
+
+            {/* Critérios de Aprovação */}
+            <div className="rounded-lg border border-border p-4 space-y-3 bg-muted/30">
+              <p className="text-sm font-medium text-foreground">Critérios de Aprovação</p>
+              <p className="text-xs text-muted-foreground">
+                Defina os critérios mínimos para aprovação dos alunos nesta disciplina.
+              </p>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label className="text-xs">Nota Mínima de Aprovação</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="10"
+                    step="0.1"
+                    value={formMinGrade}
+                    onChange={(e) => setFormMinGrade(e.target.value)}
+                    placeholder="7.0"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Média mínima (0 a 10)</p>
+                </div>
+                <div>
+                  <Label className="text-xs">Frequência Mínima (%)</Label>
+                  <Input
+                    type="number"
+                    min="0"
+                    max="100"
+                    step="1"
+                    value={formMinAttendance}
+                    onChange={(e) => setFormMinAttendance(e.target.value)}
+                    placeholder="75"
+                  />
+                  <p className="text-xs text-muted-foreground mt-1">Percentual mínimo de presença</p>
+                </div>
               </div>
             </div>
 
