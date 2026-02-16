@@ -421,6 +421,7 @@ export type Database = {
       }
       courses: {
         Row: {
+          coordinator_user_id: string | null
           created_at: string
           director_user_id: string | null
           id: string
@@ -429,6 +430,7 @@ export type Database = {
           unit_id: string | null
         }
         Insert: {
+          coordinator_user_id?: string | null
           created_at?: string
           director_user_id?: string | null
           id?: string
@@ -437,6 +439,7 @@ export type Database = {
           unit_id?: string | null
         }
         Update: {
+          coordinator_user_id?: string | null
           created_at?: string
           director_user_id?: string | null
           id?: string
