@@ -347,6 +347,7 @@ const Boletim = () => {
     setSaving(true);
 
     try {
+      // 1. Delete removed grades
       for (const id of deletedGradeIds) {
         const { error: delError } = await supabase.from('student_grades').delete().eq('id', id);
         if (delError) {
@@ -356,9 +357,10 @@ const Boletim = () => {
         }
       }
 
-      for (const row of editRows) {
-        if (row.grade_value.trim() === '') continue;
+      // 2. Upsert grades — use upsert-like logic: update existing, insert new
+      const rowsToSave = editRows.filter(r => r.grade_value.trim() !== '');
 
+      for (const row of rowsToSave) {
         const numVal = parseFloat(row.grade_value);
         if (isNaN(numVal) || numVal < 0 || numVal > 10) {
           toast({ title: `Nota "${row.grade_type}" inválida (0-10)`, variant: 'destructive' });
@@ -385,71 +387,60 @@ const Boletim = () => {
         };
 
         if (row.id) {
-          const { error: updError } = await supabase.from('student_grades').update(payload).eq('id', row.id);
+          // Update existing grade
+          const { data: updData, error: updError } = await supabase
+            .from('student_grades')
+            .update(payload)
+            .eq('id', row.id)
+            .select();
+          
           if (updError) {
             toast({ title: `Erro ao atualizar "${row.grade_type}"`, description: updError.message, variant: 'destructive' });
             setSaving(false);
             return;
           }
+
+          // If no rows were updated (RLS blocked), show specific error
+          if (!updData || updData.length === 0) {
+            toast({ 
+              title: `Não foi possível atualizar "${row.grade_type}"`, 
+              description: 'Verifique se você tem permissão para editar esta nota.', 
+              variant: 'destructive' 
+            });
+            setSaving(false);
+            return;
+          }
         } else {
-          const { error: insError } = await supabase.from('student_grades').insert(payload);
+          // Insert new grade
+          const { data: insData, error: insError } = await supabase
+            .from('student_grades')
+            .insert(payload)
+            .select();
+          
           if (insError) {
             toast({ title: `Erro ao inserir "${row.grade_type}"`, description: insError.message, variant: 'destructive' });
+            setSaving(false);
+            return;
+          }
+
+          if (!insData || insData.length === 0) {
+            toast({ 
+              title: `Não foi possível inserir "${row.grade_type}"`, 
+              description: 'Verifique se você tem permissão para lançar notas.', 
+              variant: 'destructive' 
+            });
             setSaving(false);
             return;
           }
         }
       }
 
-      // Reload data and calculate the new average for feedback
+      // 3. Reload all data fresh from the database
       await loadEnrollmentsAndGrades(selectedClassSubject);
-
-      // Calculate preview average from saved rows for the toast
-      const parentItems = templateItems.filter(t => t.counts_in_final);
-      let newAvg: number | null = null;
-
-      if (parentItems.length > 0) {
-        const nValues: number[] = [];
-        for (const parent of parentItems) {
-          const children = templateItems.filter(t => !t.counts_in_final && t.parent_item_id === parent.id);
-          if (children.length > 0) {
-            let sum = 0;
-            let allFound = true;
-            for (const child of children) {
-              const row = editRows.find(r => r.grade_type.trim().toUpperCase() === child.name.toUpperCase());
-              const v = row ? parseFloat(row.grade_value) : NaN;
-              if (!isNaN(v)) {
-                sum += v * child.weight;
-              } else {
-                allFound = false;
-              }
-            }
-            if (allFound) nValues.push(sum);
-          } else {
-            const row = editRows.find(r => r.grade_type.trim().toUpperCase() === parent.name.toUpperCase());
-            const v = row ? parseFloat(row.grade_value) : NaN;
-            if (!isNaN(v)) nValues.push(v);
-          }
-        }
-        if (nValues.length > 0) {
-          newAvg = nValues.reduce((a, b) => a + b, 0) / nValues.length;
-        }
-      } else {
-        let ws = 0, tw = 0;
-        editRows.forEach(r => {
-          if (!r.counts_in_final) return;
-          const v = parseFloat(r.grade_value);
-          const w = parseFloat(r.weight) || 1;
-          if (!isNaN(v)) { ws += v * w; tw += w; }
-        });
-        if (tw > 0) newAvg = ws / tw;
-      }
 
       toast({
         title: 'Notas salvas com sucesso!',
-        description: newAvg !== null
-          ? `Nova média calculada: ${newAvg.toFixed(2)}. Status atualizado automaticamente.`
-          : 'Status atualizado automaticamente.',
+        description: 'A média e o status foram recalculados automaticamente.',
       });
       setEditDialog(false);
     } catch (err: any) {
