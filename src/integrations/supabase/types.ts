@@ -1005,7 +1005,7 @@ export type Database = {
       }
       students: {
         Row: {
-          course_id: string
+          course_id: string | null
           created_at: string
           enrollment: string
           id: string
@@ -1013,7 +1013,7 @@ export type Database = {
           status: Database["public"]["Enums"]["entity_status"]
         }
         Insert: {
-          course_id: string
+          course_id?: string | null
           created_at?: string
           enrollment: string
           id?: string
@@ -1021,7 +1021,7 @@ export type Database = {
           status?: Database["public"]["Enums"]["entity_status"]
         }
         Update: {
-          course_id?: string
+          course_id?: string | null
           created_at?: string
           enrollment?: string
           id?: string
