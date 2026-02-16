@@ -778,6 +778,173 @@ export type Database = {
           },
         ]
       }
+      student_course_requests: {
+        Row: {
+          created_at: string
+          current_course_id: string
+          decided_at: string | null
+          decided_by_user_id: string | null
+          decision_note: string | null
+          id: string
+          justification: string
+          request_type: string
+          status: Database["public"]["Enums"]["change_request_status"]
+          student_id: string
+          target_course_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          current_course_id: string
+          decided_at?: string | null
+          decided_by_user_id?: string | null
+          decision_note?: string | null
+          id?: string
+          justification: string
+          request_type: string
+          status?: Database["public"]["Enums"]["change_request_status"]
+          student_id: string
+          target_course_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          current_course_id?: string
+          decided_at?: string | null
+          decided_by_user_id?: string | null
+          decision_note?: string | null
+          id?: string
+          justification?: string
+          request_type?: string
+          status?: Database["public"]["Enums"]["change_request_status"]
+          student_id?: string
+          target_course_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_course_requests_current_course_id_fkey"
+            columns: ["current_course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_course_requests_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_course_requests_target_course_id_fkey"
+            columns: ["target_course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      student_details: {
+        Row: {
+          address_city: string | null
+          address_complement: string | null
+          address_neighborhood: string | null
+          address_number: string | null
+          address_state: string | null
+          address_street: string | null
+          address_zip: string | null
+          birth_date: string | null
+          cpf: string | null
+          created_at: string
+          email: string | null
+          enrollment_status: Database["public"]["Enums"]["enrollment_status"]
+          id: string
+          phone: string | null
+          student_id: string
+          updated_at: string
+        }
+        Insert: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_number?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
+          birth_date?: string | null
+          cpf?: string | null
+          created_at?: string
+          email?: string | null
+          enrollment_status?: Database["public"]["Enums"]["enrollment_status"]
+          id?: string
+          phone?: string | null
+          student_id: string
+          updated_at?: string
+        }
+        Update: {
+          address_city?: string | null
+          address_complement?: string | null
+          address_neighborhood?: string | null
+          address_number?: string | null
+          address_state?: string | null
+          address_street?: string | null
+          address_zip?: string | null
+          birth_date?: string | null
+          cpf?: string | null
+          created_at?: string
+          email?: string | null
+          enrollment_status?: Database["public"]["Enums"]["enrollment_status"]
+          id?: string
+          phone?: string | null
+          student_id?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_details_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: true
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      student_documents: {
+        Row: {
+          created_at: string
+          document_type: string
+          file_name: string
+          file_path: string
+          id: string
+          student_id: string
+          uploaded_by: string | null
+        }
+        Insert: {
+          created_at?: string
+          document_type: string
+          file_name: string
+          file_path: string
+          id?: string
+          student_id: string
+          uploaded_by?: string | null
+        }
+        Update: {
+          created_at?: string
+          document_type?: string
+          file_name?: string
+          file_path?: string
+          id?: string
+          student_id?: string
+          uploaded_by?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_documents_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       students: {
         Row: {
           course_id: string
@@ -1337,6 +1504,11 @@ export type Database = {
       attendance_source: "AUTO_ALUNO" | "MANUAL_PROF" | "MANUAL_COORD"
       attendance_status: "PRESENTE" | "FALTA" | "JUSTIFICADO"
       change_request_status: "PENDENTE" | "APROVADO" | "REPROVADO"
+      enrollment_status:
+        | "MATRICULADO"
+        | "TRANCADO"
+        | "CANCELADO"
+        | "TRANSFERIDO"
       entity_status: "ATIVO" | "INATIVO"
       session_status:
         | "ABERTA"
@@ -1482,6 +1654,12 @@ export const Constants = {
       attendance_source: ["AUTO_ALUNO", "MANUAL_PROF", "MANUAL_COORD"],
       attendance_status: ["PRESENTE", "FALTA", "JUSTIFICADO"],
       change_request_status: ["PENDENTE", "APROVADO", "REPROVADO"],
+      enrollment_status: [
+        "MATRICULADO",
+        "TRANCADO",
+        "CANCELADO",
+        "TRANSFERIDO",
+      ],
       entity_status: ["ATIVO", "INATIVO"],
       session_status: [
         "ABERTA",
