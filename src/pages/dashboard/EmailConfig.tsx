@@ -55,6 +55,8 @@ const EmailConfig = () => {
   const [saving, setSaving] = useState(false);
   const [testing, setTesting] = useState(false);
   const [testEmail, setTestEmail] = useState('');
+  const [testType, setTestType] = useState<'simple' | 'reset'>('simple');
+  const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
   const [logs, setLogs] = useState<EmailLog[]>([]);
 
@@ -133,8 +135,18 @@ const EmailConfig = () => {
       return;
     }
     setTesting(true);
+    setTestResult(null);
     try {
       const { data: { session } } = await supabase.auth.getSession();
+
+      const isResetTest = testType === 'reset';
+      const subject = isResetTest
+        ? 'Teste - Redefinição de Senha - FrequênciaEDU'
+        : 'Teste de Email - FrequênciaEDU';
+      const body = isResetTest
+        ? '<div style="font-family:Arial,sans-serif;max-width:500px;margin:0 auto;padding:24px;border:1px solid #e2e8f0;border-radius:12px"><h2 style="color:#0f766e">🔒 Redefinição de Senha (TESTE)</h2><p>Olá,</p><p>Sua nova senha temporária é:</p><div style="background:#f0fdfa;padding:16px;border-radius:8px;text-align:center;font-size:24px;font-weight:bold;letter-spacing:4px;color:#0f766e">T3stE@2026</div><p style="margin-top:16px;color:#64748b;font-size:13px">⚠️ Este é apenas um email de teste. Nenhuma senha foi alterada.</p><p style="color:#64748b;font-size:13px">— Equipe FrequênciaEDU</p></div>'
+        : 'Este é um email de teste enviado pelo sistema FrequênciaEDU. Se você recebeu este email, a configuração SMTP está funcionando corretamente!';
+
       const res = await fetch(`${import.meta.env.VITE_SUPABASE_URL}/functions/v1/send-email`, {
         method: 'POST',
         headers: {
@@ -144,19 +156,22 @@ const EmailConfig = () => {
         },
         body: JSON.stringify({
           to: testEmail,
-          subject: 'Teste de Email - FrequênciaEDU',
-          body: 'Este é um email de teste enviado pelo sistema FrequênciaEDU. Se você recebeu este email, a configuração SMTP está funcionando corretamente!',
-          message_type: 'TESTE',
+          subject,
+          body,
+          message_type: isResetTest ? 'RESET_SENHA_TESTE' : 'TESTE',
         }),
       });
       const result = await res.json();
       if (!res.ok) {
+        setTestResult({ success: false, message: result.error || 'Erro desconhecido ao enviar email.' });
         toast({ title: 'Erro no envio', description: result.error, variant: 'destructive' });
       } else {
+        setTestResult({ success: true, message: `Email de ${isResetTest ? 'redefinição de senha (teste)' : 'teste'} enviado com sucesso para ${testEmail}!` });
         toast({ title: 'Email de teste enviado com sucesso!' });
         fetchAll();
       }
     } catch (err: any) {
+      setTestResult({ success: false, message: err.message });
       toast({ title: 'Erro', description: err.message, variant: 'destructive' });
     }
     setTesting(false);
@@ -259,21 +274,47 @@ const EmailConfig = () => {
             </div>
 
             {settings && (
-              <div className="mt-8 pt-6 border-t border-border">
-                <h3 className="text-base font-semibold text-foreground mb-3">Enviar Email de Teste</h3>
-                <div className="flex gap-2">
-                  <Input
-                    value={testEmail}
-                    onChange={e => setTestEmail(e.target.value)}
-                    placeholder="email-de-teste@exemplo.com"
-                    type="email"
-                    className="flex-1"
-                  />
-                  <Button onClick={handleTestEmail} disabled={testing} variant="outline">
-                    {testing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
-                    Testar
-                  </Button>
+              <div className="mt-8 pt-6 border-t border-border space-y-6">
+                <div>
+                  <h3 className="text-base font-semibold text-foreground mb-1">Testar Envio de Email</h3>
+                  <p className="text-sm text-muted-foreground mb-4">
+                    Envie um email de teste para verificar se a configuração SMTP está funcionando corretamente.
+                  </p>
+                  <div className="space-y-3">
+                    <div>
+                      <Label>Email destinatário *</Label>
+                      <Input
+                        value={testEmail}
+                        onChange={e => setTestEmail(e.target.value)}
+                        placeholder="email-de-teste@exemplo.com"
+                        type="email"
+                      />
+                    </div>
+                    <div>
+                      <Label>Tipo de teste</Label>
+                      <select
+                        value={testType}
+                        onChange={e => setTestType(e.target.value as 'simple' | 'reset')}
+                        className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+                      >
+                        <option value="simple">Email simples de teste</option>
+                        <option value="reset">Simulação de email de redefinição de senha</option>
+                      </select>
+                    </div>
+                    <div className="flex gap-2">
+                      <Button onClick={handleTestEmail} disabled={testing} variant="outline" className="flex-1">
+                        {testing ? <Loader2 className="w-4 h-4 mr-2 animate-spin" /> : <Send className="w-4 h-4 mr-2" />}
+                        {testType === 'reset' ? 'Enviar Teste de Reset de Senha' : 'Enviar Email de Teste'}
+                      </Button>
+                    </div>
+                  </div>
                 </div>
+                {testResult && (
+                  <div className={`p-4 rounded-lg border text-sm ${testResult.success ? 'bg-green-50 border-green-200 text-green-800 dark:bg-green-950 dark:border-green-800 dark:text-green-200' : 'bg-red-50 border-red-200 text-red-800 dark:bg-red-950 dark:border-red-800 dark:text-red-200'}`}>
+                    <p className="font-semibold mb-1">{testResult.success ? '✅ Sucesso!' : '❌ Erro no envio'}</p>
+                    <p>{testResult.message}</p>
+                  </div>
+                )}
               </div>
             )}
           </div>
