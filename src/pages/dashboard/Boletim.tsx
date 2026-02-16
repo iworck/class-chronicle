@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useMemo } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
@@ -14,10 +14,14 @@ import {
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from '@/components/ui/dialog';
-import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye, Lock } from 'lucide-react';
+import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye, Lock, History } from 'lucide-react';
+import { BoletimSummaryPanel } from '@/components/boletim/BoletimSummaryPanel';
+import { BoletimFilters } from '@/components/boletim/BoletimFilters';
+import { BoletimAlerts } from '@/components/boletim/BoletimAlerts';
+import { BoletimGradeHistory } from '@/components/boletim/BoletimGradeHistory';
+import { BoletimPdfExport } from '@/components/boletim/BoletimPdfExport';
 
 interface ClassSubject {
   id: string;
@@ -114,6 +118,16 @@ const Boletim = () => {
   const [viewGrades, setViewGrades] = useState<Grade[]>([]);
   const [viewAvg, setViewAvg] = useState<number | null>(null);
 
+  // History dialog
+  const [historyDialog, setHistoryDialog] = useState(false);
+  const [historyEnrollmentIds, setHistoryEnrollmentIds] = useState<string[]>([]);
+  const [historyStudentName, setHistoryStudentName] = useState<string | undefined>();
+
+  // Filters
+  const [searchTerm, setSearchTerm] = useState('');
+  const [statusFilter, setStatusFilter] = useState('TODOS');
+  const [sortBy, setSortBy] = useState('name_asc');
+
   const isProfessor = hasRole('professor');
   const isDiretor = hasRole('diretor');
   const isCoordenador = hasRole('coordenador');
@@ -148,7 +162,6 @@ const Boletim = () => {
     const cs = classSubjects.find(c => c.id === classSubjectId);
     if (!cs) return;
 
-    // Load grades_closed flag
     const { data: csData } = await supabase
       .from('class_subjects')
       .select('grades_closed')
@@ -156,7 +169,6 @@ const Boletim = () => {
       .single();
     setGradesClosed(csData?.grades_closed ?? false);
 
-    // Load template items for this class_subject
     const { data: tplData } = await supabase
       .from('grade_template_items')
       .select('*')
@@ -201,7 +213,6 @@ const Boletim = () => {
       setGrades([]);
     }
 
-    // Load attendance
     const attMap: Record<string, { total: number; present: number }> = {};
     const { data: sessions } = await supabase
       .from('attendance_sessions')
@@ -237,6 +248,9 @@ const Boletim = () => {
 
   function handleClassSubjectChange(value: string) {
     setSelectedClassSubject(value);
+    setSearchTerm('');
+    setStatusFilter('TODOS');
+    setSortBy('name_asc');
     loadEnrollmentsAndGrades(value);
   }
 
@@ -258,12 +272,10 @@ const Boletim = () => {
     setGradesClosed(closed);
 
     if (closed) {
-      // Recalculate statuses: touch each enrollment's grades to trigger the DB function
       const enrollIds = enrollments.map(e => e.id);
       for (const eid of enrollIds) {
         const studentGrades = grades.filter(g => g.enrollment_id === eid);
         if (studentGrades.length > 0) {
-          // Touch a grade to fire trigger
           await supabase
             .from('student_grades')
             .update({ updated_at: new Date().toISOString() } as any)
@@ -271,7 +283,6 @@ const Boletim = () => {
         }
       }
     } else {
-      // Reset all to CURSANDO
       const enrollIds = enrollments.filter(e => e.status !== 'TRANCADO').map(e => e.id);
       if (enrollIds.length > 0) {
         await supabase
@@ -281,7 +292,6 @@ const Boletim = () => {
       }
     }
 
-    // Reload data
     await loadEnrollmentsAndGrades(selectedClassSubject);
     toast({
       title: closed ? 'Boletim fechado' : 'Boletim reaberto',
@@ -297,18 +307,15 @@ const Boletim = () => {
   }
 
   function calculateNValue(parentGradeType: string, enrollmentId: string): number | null {
-    // Find children of this parent in template
     const parentTemplate = templateItems.find(t => t.counts_in_final && t.name === parentGradeType);
     if (!parentTemplate) return null;
 
     const children = templateItems.filter(t => !t.counts_in_final && t.parent_item_id && (t.parent_item_id === parentTemplate.id));
     if (children.length === 0) {
-      // No children — use the grade value directly
       const directGrade = grades.find(g => g.enrollment_id === enrollmentId && g.grade_type === parentGradeType);
       return directGrade ? directGrade.grade_value : null;
     }
 
-    // Calculate N = sum of children's (value * weight)
     let sum = 0;
     let allFound = true;
     for (const child of children) {
@@ -322,10 +329,8 @@ const Boletim = () => {
   function areAllGradesEntered(enrollmentId: string): boolean {
     if (templateItems.length === 0) return false;
 
-    // Leaf items = children (parent_item_id not null) + standalone parents (no children)
     const leafItems = templateItems.filter(t => {
-      if (t.parent_item_id) return true; // child item
-      // Parent with no children
+      if (t.parent_item_id) return true;
       if (t.counts_in_final) {
         const hasChildren = templateItems.some(c => c.parent_item_id === t.id);
         return !hasChildren;
@@ -347,7 +352,6 @@ const Boletim = () => {
     const parentItems = templateItems.filter(t => t.counts_in_final);
 
     if (parentItems.length === 0) {
-      // No template — fallback to old weighted average for counts_in_final grades
       const studentGrades = grades.filter(g => g.enrollment_id === enrollmentId && g.counts_in_final !== false);
       if (studentGrades.length === 0) return null;
       const totalWeight = studentGrades.reduce((acc, g) => acc + (g.weight || 1), 0);
@@ -356,10 +360,8 @@ const Boletim = () => {
       return weightedSum / totalWeight;
     }
 
-    // Only show final average if ALL grades are entered
     if (!areAllGradesEntered(enrollmentId)) return null;
 
-    // MEDIA = (N1 + N2 + ...) / count of N's
     const nValues: number[] = [];
     for (const parent of parentItems) {
       const val = calculateNValue(parent.name, enrollmentId);
@@ -371,14 +373,11 @@ const Boletim = () => {
 
   function getDisplayStatus(enrollment: EnrollmentWithStudent): string {
     if (enrollment.status === 'TRANCADO') return 'TRANCADO';
-    // If grades are not closed, always show CURSANDO
     if (!gradesClosed) return 'CURSANDO';
     const studentGrades = getStudentGrades(enrollment.id);
-    // If there are any grades but not all entered → CURSANDO
     if (studentGrades.length > 0 && templateItems.length > 0 && !areAllGradesEntered(enrollment.id)) {
       return 'CURSANDO';
     }
-    // If no grades at all → CURSANDO
     if (studentGrades.length === 0) return 'CURSANDO';
     return enrollment.status;
   }
@@ -389,6 +388,90 @@ const Boletim = () => {
     return (att.present / att.total) * 100;
   }
 
+  // Compute at-risk students
+  const currentCs = classSubjects.find(c => c.id === selectedClassSubject);
+  const minGrade = Number((currentCs?.subject as any)?.min_grade ?? 7.0);
+  const minAtt = Number((currentCs?.subject as any)?.min_attendance_pct ?? 75.0);
+
+  const atRiskStudents = useMemo(() => {
+    if (!selectedClassSubject || enrollments.length === 0) return [];
+    return enrollments
+      .map(e => {
+        const avg = getWeightedAverage(e.id);
+        const attPct = getAttendancePct(e.student_id);
+        const avgRisk = avg !== null && avg < minGrade;
+        const attRisk = attPct !== null && attPct < minAtt;
+        if (!avgRisk && !attRisk) return null;
+        return {
+          name: e.student?.name || '—',
+          enrollment: e.student?.enrollment || '—',
+          avgRisk,
+          attRisk,
+          avg,
+          attPct,
+        };
+      })
+      .filter(Boolean) as any[];
+  }, [enrollments, grades, attendanceData, selectedClassSubject, templateItems]);
+
+  // Filtered and sorted enrollments
+  const filteredEnrollments = useMemo(() => {
+    let result = [...enrollments];
+
+    // Search
+    if (searchTerm.trim()) {
+      const term = searchTerm.toLowerCase();
+      result = result.filter(e =>
+        (e.student?.name || '').toLowerCase().includes(term) ||
+        (e.student?.enrollment || '').toLowerCase().includes(term)
+      );
+    }
+
+    // Status filter
+    if (statusFilter !== 'TODOS') {
+      if (statusFilter === 'EM_RISCO') {
+        const riskNames = new Set(atRiskStudents.map(s => s.name));
+        result = result.filter(e => riskNames.has(e.student?.name || ''));
+      } else {
+        result = result.filter(e => getDisplayStatus(e) === statusFilter);
+      }
+    }
+
+    // Sort
+    result.sort((a, b) => {
+      switch (sortBy) {
+        case 'name_asc':
+          return (a.student?.name || '').localeCompare(b.student?.name || '');
+        case 'name_desc':
+          return (b.student?.name || '').localeCompare(a.student?.name || '');
+        case 'avg_desc': {
+          const aa = getWeightedAverage(a.id) ?? -1;
+          const bb = getWeightedAverage(b.id) ?? -1;
+          return bb - aa;
+        }
+        case 'avg_asc': {
+          const aa = getWeightedAverage(a.id) ?? 999;
+          const bb = getWeightedAverage(b.id) ?? 999;
+          return aa - bb;
+        }
+        case 'att_desc': {
+          const aa = getAttendancePct(a.student_id) ?? -1;
+          const bb = getAttendancePct(b.student_id) ?? -1;
+          return bb - aa;
+        }
+        case 'att_asc': {
+          const aa = getAttendancePct(a.student_id) ?? 999;
+          const bb = getAttendancePct(b.student_id) ?? 999;
+          return aa - bb;
+        }
+        default:
+          return 0;
+      }
+    });
+
+    return result;
+  }, [enrollments, searchTerm, statusFilter, sortBy, grades, attendanceData, templateItems, gradesClosed]);
+
   function openEditDialog(enrollment: EnrollmentWithStudent) {
     setEditEnrollmentId(enrollment.id);
     setEditStudentName(enrollment.student?.name || '');
@@ -397,7 +480,6 @@ const Boletim = () => {
     const existingGrades = getStudentGrades(enrollment.id);
 
     if (templateItems.length > 0) {
-      // Merge template with existing grades
       const rows: EditGradeRow[] = templateItems.map(t => {
         const existing = existingGrades.find(g => g.grade_type.toUpperCase() === t.name.toUpperCase());
         if (existing) {
@@ -421,7 +503,6 @@ const Boletim = () => {
         };
       });
 
-      // Also add any extra grades not in template
       const templateNames = new Set(templateItems.map(t => t.name.toUpperCase()));
       const extras = existingGrades.filter(g => !templateNames.has(g.grade_type.toUpperCase()));
       for (const g of extras) {
@@ -482,7 +563,6 @@ const Boletim = () => {
     setSaving(true);
 
     try {
-      // 1. Delete removed grades
       for (const id of deletedGradeIds) {
         const { error: delError } = await supabase.from('student_grades').delete().eq('id', id);
         if (delError) {
@@ -492,7 +572,6 @@ const Boletim = () => {
         }
       }
 
-      // 2. Upsert grades — use upsert-like logic: update existing, insert new
       const rowsToSave = editRows.filter(r => r.grade_value.trim() !== '');
 
       for (const row of rowsToSave) {
@@ -522,7 +601,6 @@ const Boletim = () => {
         };
 
         if (row.id) {
-          // Update existing grade
           const { data: updData, error: updError } = await supabase
             .from('student_grades')
             .update(payload)
@@ -535,7 +613,6 @@ const Boletim = () => {
             return;
           }
 
-          // If no rows were updated (RLS blocked), show specific error
           if (!updData || updData.length === 0) {
             toast({ 
               title: `Não foi possível atualizar "${row.grade_type}"`, 
@@ -546,7 +623,6 @@ const Boletim = () => {
             return;
           }
         } else {
-          // Insert new grade
           const { data: insData, error: insError } = await supabase
             .from('student_grades')
             .insert(payload)
@@ -570,7 +646,6 @@ const Boletim = () => {
         }
       }
 
-      // 3. Reload all data fresh from the database
       await loadEnrollmentsAndGrades(selectedClassSubject);
 
       toast({
@@ -598,38 +673,87 @@ const Boletim = () => {
 
   return (
     <div className="max-w-7xl mx-auto animate-fade-in">
-      <div className="mb-6">
-        <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
-          <FileText className="w-6 h-6 text-primary" />
-          Boletim — Gestão de Notas
-        </h1>
-        <p className="text-sm text-muted-foreground mt-1">
-          Registre notas com tipo, categoria e peso. A média ponderada e o status são calculados automaticamente.
-        </p>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-display font-bold text-foreground flex items-center gap-2">
+            <FileText className="w-6 h-6 text-primary" />
+            Boletim — Gestão de Notas
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1">
+            Registre notas com tipo, categoria e peso. A média ponderada e o status são calculados automaticamente.
+          </p>
+        </div>
+        {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && (
+          <div className="flex items-center gap-2">
+            {isAdmin && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setHistoryEnrollmentIds(enrollments.map(e => e.id));
+                  setHistoryStudentName(undefined);
+                  setHistoryDialog(true);
+                }}
+              >
+                <History className="w-4 h-4 mr-2" />
+                Histórico
+              </Button>
+            )}
+            <BoletimPdfExport
+              subjectName={(currentCs?.subject as any)?.name || ''}
+              classCode={(currentCs?.class as any)?.code || ''}
+              minGrade={minGrade}
+              minAttendance={minAtt}
+              students={enrollments.map(e => ({
+                name: e.student?.name || '',
+                enrollment: e.student?.enrollment || '',
+                avg: getWeightedAverage(e.id),
+                attPct: getAttendancePct(e.student_id),
+                status: getDisplayStatus(e),
+                grades: getStudentGrades(e.id).map(g => ({ type: g.grade_type, value: g.grade_value })),
+              }))}
+              templateItems={templateItems.map(t => ({ name: t.name, counts_in_final: t.counts_in_final }))}
+            />
+          </div>
+        )}
+      </div>
+
+      {/* Select class + subject */}
+      <div className="mb-6 max-w-md">
+        <Label>Turma / Disciplina</Label>
+        <Select value={selectedClassSubject} onValueChange={handleClassSubjectChange}>
+          <SelectTrigger>
+            <SelectValue placeholder="Selecione a turma e disciplina" />
+          </SelectTrigger>
+          <SelectContent>
+            {classSubjects.map(cs => (
+              <SelectItem key={cs.id} value={cs.id}>
+                {classSubjectLabel(cs)}
+              </SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
       </div>
 
       {/* Approval criteria banner */}
       {selectedClassSubject && (() => {
-        const cs = classSubjects.find(c => c.id === selectedClassSubject);
-        const minGrade = (cs?.subject as any)?.min_grade ?? 7.0;
-        const minAtt = (cs?.subject as any)?.min_attendance_pct ?? 75.0;
         return (
           <div className="mb-6 p-4 rounded-lg border border-primary/20 bg-primary/5">
             <div className="flex items-start gap-3">
               <Info className="w-5 h-5 text-primary mt-0.5 shrink-0" />
               <div>
-                <p className="text-sm font-semibold text-foreground mb-2">Critérios de Aprovação — {(cs?.subject as any)?.name}</p>
+                <p className="text-sm font-semibold text-foreground mb-2">Critérios de Aprovação — {(currentCs?.subject as any)?.name}</p>
                 <div className="grid sm:grid-cols-2 gap-3">
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-primary" />
                     <span className="text-sm text-foreground">
-                      <strong>Nota mínima:</strong> Média ponderada ≥ <strong>{Number(minGrade).toFixed(1).replace('.', ',')}</strong>
+                      <strong>Nota mínima:</strong> Média ponderada ≥ <strong>{minGrade.toFixed(1).replace('.', ',')}</strong>
                     </span>
                   </div>
                   <div className="flex items-center gap-2">
                     <CheckCircle2 className="w-4 h-4 text-primary" />
                     <span className="text-sm text-foreground">
-                      <strong>Frequência mínima:</strong> ≥ <strong>{Number(minAtt).toFixed(0)}%</strong> de presença
+                      <strong>Frequência mínima:</strong> ≥ <strong>{minAtt.toFixed(0)}%</strong> de presença
                     </span>
                   </div>
                 </div>
@@ -668,8 +792,7 @@ const Boletim = () => {
 
       {/* Fechar Boletim toggle */}
       {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && isAdmin && (() => {
-        const cs = classSubjects.find(c => c.id === selectedClassSubject);
-        const isClassOpen = (cs?.class as any)?.status === 'ATIVO';
+        const isClassOpen = (currentCs?.class as any)?.status === 'ATIVO';
         if (!isClassOpen) return null;
         return (
           <div className="mb-4 p-4 rounded-lg border border-border bg-muted/30 flex items-center justify-between">
@@ -696,23 +819,6 @@ const Boletim = () => {
         );
       })()}
 
-      {/* Select class + subject */}
-      <div className="mb-6 max-w-md">
-        <Label>Turma / Disciplina</Label>
-        <Select value={selectedClassSubject} onValueChange={handleClassSubjectChange}>
-          <SelectTrigger>
-            <SelectValue placeholder="Selecione a turma e disciplina" />
-          </SelectTrigger>
-          <SelectContent>
-            {classSubjects.map(cs => (
-              <SelectItem key={cs.id} value={cs.id}>
-                {classSubjectLabel(cs)}
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
-
       {classSubjects.length === 0 && (
         <div className="text-center py-12">
           <FileText className="w-10 h-10 mx-auto mb-3 text-muted-foreground/30" />
@@ -733,13 +839,40 @@ const Boletim = () => {
       )}
 
       {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && (() => {
-        const cs = classSubjects.find(c => c.id === selectedClassSubject);
-        const classStatus = (cs?.class as any)?.status;
+        const classStatus = (currentCs?.class as any)?.status;
         const isClassOpen = classStatus === 'ATIVO';
         const canEdit = canEditRole && isClassOpen;
 
         return (
           <>
+            {/* Summary Panel */}
+            <BoletimSummaryPanel
+              enrollments={enrollments}
+              getWeightedAverage={getWeightedAverage}
+              getAttendancePct={getAttendancePct}
+              minGrade={minGrade}
+              minAttendance={minAtt}
+              gradesClosed={gradesClosed}
+              getDisplayStatus={getDisplayStatus}
+            />
+
+            {/* Alerts */}
+            <BoletimAlerts
+              atRiskStudents={atRiskStudents}
+              minGrade={minGrade}
+              minAttendance={minAtt}
+            />
+
+            {/* Filters */}
+            <BoletimFilters
+              searchTerm={searchTerm}
+              onSearchChange={setSearchTerm}
+              statusFilter={statusFilter}
+              onStatusFilterChange={setStatusFilter}
+              sortBy={sortBy}
+              onSortByChange={setSortBy}
+            />
+
             {!isClassOpen && (
               <div className="mb-4 p-3 rounded-lg border border-destructive/30 bg-destructive/5 flex items-center gap-2">
                 <Lock className="w-4 h-4 text-destructive shrink-0" />
@@ -748,115 +881,147 @@ const Boletim = () => {
                 </p>
               </div>
             )}
-            <div className="border border-border rounded-lg overflow-x-auto">
-              <Table>
-                <TableHeader>
-                  <TableRow>
-                    <TableHead>Aluno</TableHead>
-                    <TableHead>Matrícula</TableHead>
-                    <TableHead className="text-center w-24">Média</TableHead>
-                    <TableHead className="text-center w-24">Frequência</TableHead>
-                    <TableHead className="text-center w-28">Status</TableHead>
-                    <TableHead className="text-center w-28">Progresso</TableHead>
-                    <TableHead className="text-center w-28">Notas</TableHead>
-                    {canEdit && <TableHead className="text-center w-20">Ações</TableHead>}
-                  </TableRow>
-                </TableHeader>
-                <TableBody>
-                  {enrollments.map(enrollment => {
-                    const avg = getWeightedAverage(enrollment.id);
-                    const attPct = getAttendancePct(enrollment.student_id);
-                    const subjectMinGrade = Number((cs?.subject as any)?.min_grade ?? 7.0);
-                    const subjectMinAtt = Number((cs?.subject as any)?.min_attendance_pct ?? 75.0);
-                    const attOk = attPct === null || attPct >= subjectMinAtt;
-                    const avgOk = avg === null || avg >= subjectMinGrade;
-                    const studentGrades = getStudentGrades(enrollment.id);
-                    const displayStatus = getDisplayStatus(enrollment);
-                    const allEntered = areAllGradesEntered(enrollment.id);
 
-                    // Progress: how many leaf grades entered vs total
-                    const leafItems = templateItems.filter(t => {
-                      if (t.parent_item_id) return true;
-                      if (t.counts_in_final) return !templateItems.some(c => c.parent_item_id === t.id);
-                      return false;
-                    });
-                    const enteredCount = leafItems.filter(leaf =>
-                      studentGrades.some(g => g.grade_type.toUpperCase() === leaf.name.toUpperCase())
-                    ).length;
+            {filteredEnrollments.length === 0 ? (
+              <div className="text-center py-8 border border-border rounded-lg">
+                <p className="text-sm text-muted-foreground">Nenhum aluno encontrado com os filtros aplicados.</p>
+              </div>
+            ) : (
+              <div className="border border-border rounded-lg overflow-x-auto">
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>Aluno</TableHead>
+                      <TableHead>Matrícula</TableHead>
+                      <TableHead className="text-center w-24">Média</TableHead>
+                      <TableHead className="text-center w-24">Frequência</TableHead>
+                      <TableHead className="text-center w-28">Status</TableHead>
+                      <TableHead className="text-center w-28">Progresso</TableHead>
+                      <TableHead className="text-center w-28">Notas</TableHead>
+                      {canEdit && <TableHead className="text-center w-20">Ações</TableHead>}
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {filteredEnrollments.map(enrollment => {
+                      const avg = getWeightedAverage(enrollment.id);
+                      const attPct = getAttendancePct(enrollment.student_id);
+                      const attOk = attPct === null || attPct >= minAtt;
+                      const avgOk = avg === null || avg >= minGrade;
+                      const studentGrades = getStudentGrades(enrollment.id);
+                      const displayStatus = getDisplayStatus(enrollment);
+                      const allEntered = areAllGradesEntered(enrollment.id);
+                      const isAtRisk = atRiskStudents.some(s => s.name === (enrollment.student?.name || ''));
 
-                    return (
-                      <TableRow key={enrollment.id}>
-                        <TableCell className="font-medium">{enrollment.student?.name || '—'}</TableCell>
-                        <TableCell className="text-muted-foreground text-sm">{enrollment.student?.enrollment || '—'}</TableCell>
-                        <TableCell className="text-center font-bold">
-                          {avg !== null ? (
-                            <span className={avgOk ? 'text-primary' : 'text-destructive'}>
-                              {avg.toFixed(2)}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground/40 text-xs">
-                              {studentGrades.length > 0 ? 'Parcial' : '—'}
-                            </span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {attPct !== null ? (
-                            <div className="flex items-center justify-center gap-1">
-                              {attOk ? (
-                                <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
-                              ) : (
-                                <XCircle className="w-3.5 h-3.5 text-destructive" />
+                      const leafItems = templateItems.filter(t => {
+                        if (t.parent_item_id) return true;
+                        if (t.counts_in_final) return !templateItems.some(c => c.parent_item_id === t.id);
+                        return false;
+                      });
+                      const enteredCount = leafItems.filter(leaf =>
+                        studentGrades.some(g => g.grade_type.toUpperCase() === leaf.name.toUpperCase())
+                      ).length;
+
+                      return (
+                        <TableRow key={enrollment.id} className={isAtRisk ? 'bg-amber-500/5' : ''}>
+                          <TableCell className="font-medium">
+                            <div className="flex items-center gap-2">
+                              {enrollment.student?.name || '—'}
+                              {isAtRisk && (
+                                <span className="inline-block w-2 h-2 rounded-full bg-amber-500 animate-pulse" title="Em risco" />
                               )}
-                              <span className={`text-sm font-medium ${attOk ? 'text-primary' : 'text-destructive'}`}>
-                                {attPct.toFixed(0)}%
-                              </span>
                             </div>
-                          ) : (
-                            <span className="text-muted-foreground/40 text-sm">S/A</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Badge variant={STATUS_MAP[displayStatus]?.variant || 'default'}>
-                            {STATUS_MAP[displayStatus]?.label || displayStatus}
-                          </Badge>
-                        </TableCell>
-                        <TableCell className="text-center">
-                          {leafItems.length > 0 ? (
-                            <span className={`text-xs font-medium ${allEntered ? 'text-primary' : 'text-muted-foreground'}`}>
-                              {enteredCount}/{leafItems.length}
-                            </span>
-                          ) : (
-                            <span className="text-muted-foreground/40 text-xs">{studentGrades.length} notas</span>
-                          )}
-                        </TableCell>
-                        <TableCell className="text-center">
-                          <Button
-                            variant="outline"
-                            size="sm"
-                            onClick={() => {
-                              setViewStudentName(enrollment.student?.name || '');
-                              setViewGrades(studentGrades);
-                              setViewAvg(avg);
-                              setViewDialog(true);
-                            }}
-                            disabled={studentGrades.length === 0}
-                          >
-                            <Eye className="w-4 h-4 mr-1" />
-                            Ver Notas
-                          </Button>
-                        </TableCell>
-                        {canEdit && (
+                          </TableCell>
+                          <TableCell className="text-muted-foreground text-sm">{enrollment.student?.enrollment || '—'}</TableCell>
+                          <TableCell className="text-center font-bold">
+                            {avg !== null ? (
+                              <span className={avgOk ? 'text-primary' : 'text-destructive'}>
+                                {avg.toFixed(2)}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/40 text-xs">
+                                {studentGrades.length > 0 ? 'Parcial' : '—'}
+                              </span>
+                            )}
+                          </TableCell>
                           <TableCell className="text-center">
-                            <Button variant="ghost" size="icon" onClick={() => openEditDialog(enrollment)}>
-                              <Pencil className="w-4 h-4" />
+                            {attPct !== null ? (
+                              <div className="flex items-center justify-center gap-1">
+                                {attOk ? (
+                                  <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
+                                ) : (
+                                  <XCircle className="w-3.5 h-3.5 text-destructive" />
+                                )}
+                                <span className={`text-sm font-medium ${attOk ? 'text-primary' : 'text-destructive'}`}>
+                                  {attPct.toFixed(0)}%
+                                </span>
+                              </div>
+                            ) : (
+                              <span className="text-muted-foreground/40 text-sm">S/A</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant={STATUS_MAP[displayStatus]?.variant || 'default'}>
+                              {STATUS_MAP[displayStatus]?.label || displayStatus}
+                            </Badge>
+                          </TableCell>
+                          <TableCell className="text-center">
+                            {leafItems.length > 0 ? (
+                              <span className={`text-xs font-medium ${allEntered ? 'text-primary' : 'text-muted-foreground'}`}>
+                                {enteredCount}/{leafItems.length}
+                              </span>
+                            ) : (
+                              <span className="text-muted-foreground/40 text-xs">{studentGrades.length} notas</span>
+                            )}
+                          </TableCell>
+                          <TableCell className="text-center">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setViewStudentName(enrollment.student?.name || '');
+                                setViewGrades(studentGrades);
+                                setViewAvg(avg);
+                                setViewDialog(true);
+                              }}
+                              disabled={studentGrades.length === 0}
+                            >
+                              <Eye className="w-4 h-4 mr-1" />
+                              Ver
                             </Button>
                           </TableCell>
-                        )}
-                      </TableRow>
-                    );
-                  })}
-                </TableBody>
-              </Table>
+                          {canEdit && (
+                            <TableCell className="text-center">
+                              <div className="flex items-center justify-center gap-1">
+                                <Button variant="ghost" size="icon" onClick={() => openEditDialog(enrollment)}>
+                                  <Pencil className="w-4 h-4" />
+                                </Button>
+                                {isAdmin && (
+                                  <Button
+                                    variant="ghost"
+                                    size="icon"
+                                    onClick={() => {
+                                      setHistoryEnrollmentIds([enrollment.id]);
+                                      setHistoryStudentName(enrollment.student?.name);
+                                      setHistoryDialog(true);
+                                    }}
+                                  >
+                                    <History className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </TableCell>
+                          )}
+                        </TableRow>
+                      );
+                    })}
+                  </TableBody>
+                </Table>
+              </div>
+            )}
+
+            {/* Results count */}
+            <div className="mt-2 text-xs text-muted-foreground">
+              Exibindo {filteredEnrollments.length} de {enrollments.length} alunos
             </div>
           </>
         );
@@ -878,7 +1043,6 @@ const Boletim = () => {
               </div>
             )}
 
-            {/* Header row */}
             <div className="grid grid-cols-[1fr_100px_70px_70px_80px_1fr_40px] gap-2 text-xs font-semibold text-muted-foreground px-1">
               <span>Tipo</span>
               <span>Categoria</span>
@@ -953,7 +1117,6 @@ const Boletim = () => {
             {editRows.some(r => r.grade_value.trim() !== '') && (() => {
               const parentItems = templateItems.filter(t => t.counts_in_final);
 
-              // Calculate each N from its children
               const nCalcs: { name: string; value: number | null; details: string }[] = [];
 
               if (parentItems.length > 0) {
@@ -975,19 +1138,11 @@ const Boletim = () => {
                         parts.push(`${child.name}(? × ${w})`);
                       }
                     }
-                    nCalcs.push({
-                      name: parent.name,
-                      value: allFound ? sum : null,
-                      details: parts.join(' + '),
-                    });
+                    nCalcs.push({ name: parent.name, value: allFound ? sum : null, details: parts.join(' + ') });
                   } else {
                     const row = editRows.find(r => r.grade_type.toUpperCase() === parent.name.toUpperCase());
                     const v = row ? parseFloat(row.grade_value) : NaN;
-                    nCalcs.push({
-                      name: parent.name,
-                      value: !isNaN(v) ? v : null,
-                      details: `${parent.name} = ${!isNaN(v) ? v.toFixed(2) : '?'}`,
-                    });
+                    nCalcs.push({ name: parent.name, value: !isNaN(v) ? v : null, details: `${parent.name} = ${!isNaN(v) ? v.toFixed(2) : '?'}` });
                   }
                 }
               }
@@ -997,7 +1152,6 @@ const Boletim = () => {
                 ? validNs.reduce((a, n) => a + n.value!, 0) / validNs.length
                 : null;
 
-              // Fallback for no template
               if (parentItems.length === 0) {
                 let ws = 0, tw = 0;
                 editRows.forEach(r => {
@@ -1023,7 +1177,6 @@ const Boletim = () => {
               return (
                 <div className="mt-3 p-4 rounded-md border border-border bg-muted/50 space-y-3">
                   <p className="text-sm font-semibold text-foreground">📐 Cálculo das Notas:</p>
-
                   {nCalcs.map((n, i) => (
                     <div key={i} className="p-2 rounded bg-background border border-border">
                       <p className="text-xs text-muted-foreground">{n.details}</p>
@@ -1032,7 +1185,6 @@ const Boletim = () => {
                       </p>
                     </div>
                   ))}
-
                   <div className="p-3 rounded-md bg-primary/10 border border-primary/30">
                     <p className="text-xs text-muted-foreground">
                       MÉDIA = ({nCalcs.map(n => n.name).join(' + ')}) / {nCalcs.length}
@@ -1072,7 +1224,6 @@ const Boletim = () => {
               const hasTemplate = parentItems.length > 0;
 
               if (hasTemplate) {
-                // Build full formula breakdown per parent N
                 const nCalcs: { name: string; value: number | null; children: { name: string; category: string; grade: number | null; weight: number; result: number | null }[] }[] = [];
 
                 for (const parent of parentItems) {
@@ -1081,13 +1232,7 @@ const Boletim = () => {
                     const children = childTemplates.map(child => {
                       const g = viewGrades.find(vg => vg.grade_type.toUpperCase() === child.name.toUpperCase());
                       const grade = g ? g.grade_value : null;
-                      return {
-                        name: child.name,
-                        category: child.category,
-                        grade,
-                        weight: child.weight,
-                        result: grade !== null ? grade * child.weight : null,
-                      };
+                      return { name: child.name, category: child.category, grade, weight: child.weight, result: grade !== null ? grade * child.weight : null };
                     });
                     const allFound = children.every(c => c.result !== null);
                     const sum = allFound ? children.reduce((a, c) => a + c.result!, 0) : null;
@@ -1119,9 +1264,7 @@ const Boletim = () => {
                               </div>
                               <div className="text-muted-foreground text-xs font-mono">
                                 {child.grade !== null ? (
-                                  <span>
-                                    {child.grade.toFixed(1)} × {child.weight} = <strong className="text-foreground">{child.result!.toFixed(2)}</strong>
-                                  </span>
+                                  <span>{child.grade.toFixed(1)} × {child.weight} = <strong className="text-foreground">{child.result!.toFixed(2)}</strong></span>
                                 ) : (
                                   <span className="text-destructive">Não lançada</span>
                                 )}
@@ -1129,13 +1272,12 @@ const Boletim = () => {
                             </div>
                           ))}
                           <div className="pt-1.5 border-t border-border text-xs text-muted-foreground">
-                            <strong>{n.name}</strong> = {n.children.map(c => c.name).join(' + ')} = {n.children.map(c => c.result !== null ? c.result.toFixed(2) : '?').join(' + ')} = <strong className="text-foreground">{n.value !== null ? n.value.toFixed(2) : '—'}</strong>
+                            <strong>{n.name}</strong> = {n.children.map(c => c.result !== null ? c.result.toFixed(2) : '?').join(' + ')} = <strong className="text-foreground">{n.value !== null ? n.value.toFixed(2) : '—'}</strong>
                           </div>
                         </div>
                       </div>
                     ))}
 
-                    {/* Other grades not in template */}
                     {(() => {
                       const templateNames = new Set(templateItems.map(t => t.name.toUpperCase()));
                       const extras = viewGrades.filter(g => !templateNames.has(g.grade_type.toUpperCase()));
@@ -1160,7 +1302,6 @@ const Boletim = () => {
                       );
                     })()}
 
-                    {/* Final average */}
                     <div className="p-4 rounded-lg border border-primary/30 bg-primary/5 space-y-2">
                       <p className="text-xs font-mono text-muted-foreground text-center">
                         MÉDIA = ({nCalcs.map(n => n.name).join(' + ')}) / {nCalcs.length}
@@ -1176,7 +1317,6 @@ const Boletim = () => {
                 );
               }
 
-              // Fallback: no template
               return (
                 <>
                   <Table>
@@ -1219,6 +1359,14 @@ const Boletim = () => {
           </div>
         </DialogContent>
       </Dialog>
+
+      {/* Grade History Dialog */}
+      <BoletimGradeHistory
+        open={historyDialog}
+        onOpenChange={setHistoryDialog}
+        enrollmentIds={historyEnrollmentIds}
+        studentName={historyStudentName}
+      />
     </div>
   );
 };

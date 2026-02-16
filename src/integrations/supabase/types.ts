@@ -639,6 +639,50 @@ export type Database = {
           },
         ]
       }
+      grade_change_logs: {
+        Row: {
+          action: string
+          changed_at: string
+          changed_by_user_id: string
+          enrollment_id: string
+          grade_type: string
+          id: string
+          ip_address: string | null
+          new_value: number
+          old_value: number | null
+        }
+        Insert: {
+          action?: string
+          changed_at?: string
+          changed_by_user_id: string
+          enrollment_id: string
+          grade_type: string
+          id?: string
+          ip_address?: string | null
+          new_value: number
+          old_value?: number | null
+        }
+        Update: {
+          action?: string
+          changed_at?: string
+          changed_by_user_id?: string
+          enrollment_id?: string
+          grade_type?: string
+          id?: string
+          ip_address?: string | null
+          new_value?: number
+          old_value?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "grade_change_logs_enrollment_id_fkey"
+            columns: ["enrollment_id"]
+            isOneToOne: false
+            referencedRelation: "student_subject_enrollments"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       grade_template_items: {
         Row: {
           category: string
