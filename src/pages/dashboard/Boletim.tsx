@@ -17,7 +17,7 @@ import {
 import { Textarea } from '@/components/ui/textarea';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye } from 'lucide-react';
+import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye, Lock } from 'lucide-react';
 
 interface ClassSubject {
   id: string;
@@ -25,7 +25,7 @@ interface ClassSubject {
   subject_id: string;
   professor_user_id: string;
   status: string;
-  class: { id: string; code: string; course_id: string };
+  class: { id: string; code: string; course_id: string; status: string };
   subject: { id: string; name: string; code: string; min_grade: number; min_attendance_pct: number };
 }
 
@@ -113,8 +113,10 @@ const Boletim = () => {
   const [viewAvg, setViewAvg] = useState<number | null>(null);
 
   const isProfessor = hasRole('professor');
-  const isAdmin = hasRole('admin') || hasRole('coordenador') || hasRole('super_admin');
-  const canEdit = isProfessor || isAdmin;
+  const isDiretor = hasRole('diretor');
+  const isCoordenador = hasRole('coordenador');
+  const isAdmin = hasRole('admin') || isCoordenador || hasRole('super_admin') || isDiretor;
+  const canEditRole = isProfessor || isAdmin;
 
   useEffect(() => {
     loadClassSubjects();
@@ -124,7 +126,7 @@ const Boletim = () => {
     setLoading(true);
     let query = supabase
       .from('class_subjects')
-      .select('id, class_id, subject_id, professor_user_id, status, class:classes(id, code, course_id), subject:subjects(id, name, code, min_grade, min_attendance_pct)')
+      .select('id, class_id, subject_id, professor_user_id, status, class:classes(id, code, course_id, status), subject:subjects(id, name, code, min_grade, min_attendance_pct)')
       .eq('status', 'ATIVO');
 
     if (isProfessor && !isAdmin) {
@@ -255,6 +257,30 @@ const Boletim = () => {
     return allFound ? sum : null;
   }
 
+  function areAllGradesEntered(enrollmentId: string): boolean {
+    if (templateItems.length === 0) return false;
+
+    // Leaf items = children (parent_item_id not null) + standalone parents (no children)
+    const leafItems = templateItems.filter(t => {
+      if (t.parent_item_id) return true; // child item
+      // Parent with no children
+      if (t.counts_in_final) {
+        const hasChildren = templateItems.some(c => c.parent_item_id === t.id);
+        return !hasChildren;
+      }
+      return false;
+    });
+
+    if (leafItems.length === 0) return false;
+
+    const studentGrades = grades.filter(g => g.enrollment_id === enrollmentId);
+    for (const leaf of leafItems) {
+      const found = studentGrades.find(g => g.grade_type.toUpperCase() === leaf.name.toUpperCase());
+      if (!found) return false;
+    }
+    return true;
+  }
+
   function getWeightedAverage(enrollmentId: string): number | null {
     const parentItems = templateItems.filter(t => t.counts_in_final);
 
@@ -268,6 +294,9 @@ const Boletim = () => {
       return weightedSum / totalWeight;
     }
 
+    // Only show final average if ALL grades are entered
+    if (!areAllGradesEntered(enrollmentId)) return null;
+
     // MEDIA = (N1 + N2 + ...) / count of N's
     const nValues: number[] = [];
     for (const parent of parentItems) {
@@ -276,6 +305,18 @@ const Boletim = () => {
     }
     if (nValues.length === 0) return null;
     return nValues.reduce((a, b) => a + b, 0) / nValues.length;
+  }
+
+  function getDisplayStatus(enrollment: EnrollmentWithStudent): string {
+    if (enrollment.status === 'TRANCADO') return 'TRANCADO';
+    const studentGrades = getStudentGrades(enrollment.id);
+    // If there are any grades but not all entered → CURSANDO
+    if (studentGrades.length > 0 && templateItems.length > 0 && !areAllGradesEntered(enrollment.id)) {
+      return 'CURSANDO';
+    }
+    // If no grades at all → CURSANDO
+    if (studentGrades.length === 0) return 'CURSANDO';
+    return enrollment.status;
   }
 
   function getAttendancePct(studentId: string): number | null {
@@ -567,93 +608,135 @@ const Boletim = () => {
         </div>
       )}
 
-      {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && (
-        <div className="border border-border rounded-lg overflow-x-auto">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>Aluno</TableHead>
-                <TableHead>Matrícula</TableHead>
-                <TableHead className="text-center w-24">Média Pond.</TableHead>
-                <TableHead className="text-center w-24">Frequência</TableHead>
-                <TableHead className="text-center w-28">Status</TableHead>
-                <TableHead className="text-center w-28">Notas</TableHead>
-                {canEdit && <TableHead className="text-center w-20">Ações</TableHead>}
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {enrollments.map(enrollment => {
-                const avg = getWeightedAverage(enrollment.id);
-                const attPct = getAttendancePct(enrollment.student_id);
-                const cs = classSubjects.find(c => c.id === selectedClassSubject);
-                const subjectMinGrade = Number((cs?.subject as any)?.min_grade ?? 7.0);
-                const subjectMinAtt = Number((cs?.subject as any)?.min_attendance_pct ?? 75.0);
-                const attOk = attPct === null || attPct >= subjectMinAtt;
-                const avgOk = avg === null || avg >= subjectMinGrade;
-                const studentGrades = getStudentGrades(enrollment.id);
+      {selectedClassSubject && !loadingEnrollments && enrollments.length > 0 && (() => {
+        const cs = classSubjects.find(c => c.id === selectedClassSubject);
+        const classStatus = (cs?.class as any)?.status;
+        const isClassOpen = classStatus === 'ATIVO';
+        const canEdit = canEditRole && isClassOpen;
 
-                return (
-                  <TableRow key={enrollment.id}>
-                    <TableCell className="font-medium">{enrollment.student?.name || '—'}</TableCell>
-                    <TableCell className="text-muted-foreground text-sm">{enrollment.student?.enrollment || '—'}</TableCell>
-                    <TableCell className="text-center font-bold">
-                      {avg !== null ? (
-                        <span className={avgOk ? 'text-primary' : 'text-destructive'}>
-                          {avg.toFixed(2)}
-                        </span>
-                      ) : '—'}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      {attPct !== null ? (
-                        <div className="flex items-center justify-center gap-1">
-                          {attOk ? (
-                            <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
-                          ) : (
-                            <XCircle className="w-3.5 h-3.5 text-destructive" />
-                          )}
-                          <span className={`text-sm font-medium ${attOk ? 'text-primary' : 'text-destructive'}`}>
-                            {attPct.toFixed(0)}%
-                          </span>
-                        </div>
-                      ) : (
-                        <span className="text-muted-foreground/40 text-sm">S/A</span>
-                      )}
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Badge variant={STATUS_MAP[enrollment.status]?.variant || 'default'}>
-                        {STATUS_MAP[enrollment.status]?.label || enrollment.status}
-                      </Badge>
-                    </TableCell>
-                    <TableCell className="text-center">
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={() => {
-                          setViewStudentName(enrollment.student?.name || '');
-                          setViewGrades(studentGrades);
-                          setViewAvg(avg);
-                          setViewDialog(true);
-                        }}
-                        disabled={studentGrades.length === 0}
-                      >
-                        <Eye className="w-4 h-4 mr-1" />
-                        Ver Notas
-                      </Button>
-                    </TableCell>
-                    {canEdit && (
-                      <TableCell className="text-center">
-                        <Button variant="ghost" size="icon" onClick={() => openEditDialog(enrollment)}>
-                          <Pencil className="w-4 h-4" />
-                        </Button>
-                      </TableCell>
-                    )}
+        return (
+          <>
+            {!isClassOpen && (
+              <div className="mb-4 p-3 rounded-lg border border-destructive/30 bg-destructive/5 flex items-center gap-2">
+                <Lock className="w-4 h-4 text-destructive shrink-0" />
+                <p className="text-sm text-destructive font-medium">
+                  Turma fechada — edição de notas bloqueada.
+                </p>
+              </div>
+            )}
+            <div className="border border-border rounded-lg overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Aluno</TableHead>
+                    <TableHead>Matrícula</TableHead>
+                    <TableHead className="text-center w-24">Média</TableHead>
+                    <TableHead className="text-center w-24">Frequência</TableHead>
+                    <TableHead className="text-center w-28">Status</TableHead>
+                    <TableHead className="text-center w-28">Progresso</TableHead>
+                    <TableHead className="text-center w-28">Notas</TableHead>
+                    {canEdit && <TableHead className="text-center w-20">Ações</TableHead>}
                   </TableRow>
-                );
-              })}
-            </TableBody>
-          </Table>
-        </div>
-      )}
+                </TableHeader>
+                <TableBody>
+                  {enrollments.map(enrollment => {
+                    const avg = getWeightedAverage(enrollment.id);
+                    const attPct = getAttendancePct(enrollment.student_id);
+                    const subjectMinGrade = Number((cs?.subject as any)?.min_grade ?? 7.0);
+                    const subjectMinAtt = Number((cs?.subject as any)?.min_attendance_pct ?? 75.0);
+                    const attOk = attPct === null || attPct >= subjectMinAtt;
+                    const avgOk = avg === null || avg >= subjectMinGrade;
+                    const studentGrades = getStudentGrades(enrollment.id);
+                    const displayStatus = getDisplayStatus(enrollment);
+                    const allEntered = areAllGradesEntered(enrollment.id);
+
+                    // Progress: how many leaf grades entered vs total
+                    const leafItems = templateItems.filter(t => {
+                      if (t.parent_item_id) return true;
+                      if (t.counts_in_final) return !templateItems.some(c => c.parent_item_id === t.id);
+                      return false;
+                    });
+                    const enteredCount = leafItems.filter(leaf =>
+                      studentGrades.some(g => g.grade_type.toUpperCase() === leaf.name.toUpperCase())
+                    ).length;
+
+                    return (
+                      <TableRow key={enrollment.id}>
+                        <TableCell className="font-medium">{enrollment.student?.name || '—'}</TableCell>
+                        <TableCell className="text-muted-foreground text-sm">{enrollment.student?.enrollment || '—'}</TableCell>
+                        <TableCell className="text-center font-bold">
+                          {avg !== null ? (
+                            <span className={avgOk ? 'text-primary' : 'text-destructive'}>
+                              {avg.toFixed(2)}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/40 text-xs">
+                              {studentGrades.length > 0 ? 'Parcial' : '—'}
+                            </span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {attPct !== null ? (
+                            <div className="flex items-center justify-center gap-1">
+                              {attOk ? (
+                                <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
+                              ) : (
+                                <XCircle className="w-3.5 h-3.5 text-destructive" />
+                              )}
+                              <span className={`text-sm font-medium ${attOk ? 'text-primary' : 'text-destructive'}`}>
+                                {attPct.toFixed(0)}%
+                              </span>
+                            </div>
+                          ) : (
+                            <span className="text-muted-foreground/40 text-sm">S/A</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Badge variant={STATUS_MAP[displayStatus]?.variant || 'default'}>
+                            {STATUS_MAP[displayStatus]?.label || displayStatus}
+                          </Badge>
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {leafItems.length > 0 ? (
+                            <span className={`text-xs font-medium ${allEntered ? 'text-primary' : 'text-muted-foreground'}`}>
+                              {enteredCount}/{leafItems.length}
+                            </span>
+                          ) : (
+                            <span className="text-muted-foreground/40 text-xs">{studentGrades.length} notas</span>
+                          )}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={() => {
+                              setViewStudentName(enrollment.student?.name || '');
+                              setViewGrades(studentGrades);
+                              setViewAvg(avg);
+                              setViewDialog(true);
+                            }}
+                            disabled={studentGrades.length === 0}
+                          >
+                            <Eye className="w-4 h-4 mr-1" />
+                            Ver Notas
+                          </Button>
+                        </TableCell>
+                        {canEdit && (
+                          <TableCell className="text-center">
+                            <Button variant="ghost" size="icon" onClick={() => openEditDialog(enrollment)}>
+                              <Pencil className="w-4 h-4" />
+                            </Button>
+                          </TableCell>
+                        )}
+                      </TableRow>
+                    );
+                  })}
+                </TableBody>
+              </Table>
+            </div>
+          </>
+        );
+      })()}
 
       {/* Edit grades dialog */}
       <Dialog open={editDialog} onOpenChange={setEditDialog}>
