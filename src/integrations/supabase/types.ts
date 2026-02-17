@@ -829,6 +829,47 @@ export type Database = {
         }
         Relationships: []
       }
+      lesson_plan_entries: {
+        Row: {
+          class_subject_id: string
+          created_at: string
+          description: string | null
+          entry_date: string
+          entry_type: string
+          id: string
+          title: string
+          updated_at: string
+        }
+        Insert: {
+          class_subject_id: string
+          created_at?: string
+          description?: string | null
+          entry_date: string
+          entry_type?: string
+          id?: string
+          title: string
+          updated_at?: string
+        }
+        Update: {
+          class_subject_id?: string
+          created_at?: string
+          description?: string | null
+          entry_date?: string
+          entry_type?: string
+          id?: string
+          title?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "lesson_plan_entries_class_subject_id_fkey"
+            columns: ["class_subject_id"]
+            isOneToOne: false
+            referencedRelation: "class_subjects"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       matrix_subjects: {
         Row: {
           created_at: string
