@@ -390,8 +390,13 @@ const MinhasTurmas = () => {
       toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
     } else {
       toast({ title: 'Ementa e bibliografias salvas!' });
-      // Update local state
-      setSelectedCS(prev => prev ? { ...prev, ementa_override: ementa.trim() || null, bibliografia_basica: biblioBasica.trim() || null, bibliografia_complementar: biblioComplementar.trim() || null } : null);
+      // Update local state for selected CS
+      const updatedEmenta = ementa.trim() || null;
+      const updatedBibBasica = biblioBasica.trim() || null;
+      const updatedBibComplementar = biblioComplementar.trim() || null;
+      setSelectedCS(prev => prev ? { ...prev, ementa_override: updatedEmenta, bibliografia_basica: updatedBibBasica, bibliografia_complementar: updatedBibComplementar } : null);
+      // Also update the main classSubjects list so reopening shows fresh data
+      setClassSubjects(prev => prev.map(cs => cs.id === selectedCS.id ? { ...cs, ementa_override: updatedEmenta, bibliografia_basica: updatedBibBasica, bibliografia_complementar: updatedBibComplementar } : cs));
     }
     setEmentaSaving(false);
   }
