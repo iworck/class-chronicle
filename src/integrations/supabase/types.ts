@@ -369,7 +369,10 @@ export type Database = {
       }
       class_subjects: {
         Row: {
+          bibliografia_basica: string | null
+          bibliografia_complementar: string | null
           class_id: string
+          ementa_override: string | null
           grades_closed: boolean
           id: string
           professor_user_id: string
@@ -377,7 +380,10 @@ export type Database = {
           subject_id: string
         }
         Insert: {
+          bibliografia_basica?: string | null
+          bibliografia_complementar?: string | null
           class_id: string
+          ementa_override?: string | null
           grades_closed?: boolean
           id?: string
           professor_user_id: string
@@ -385,7 +391,10 @@ export type Database = {
           subject_id: string
         }
         Update: {
+          bibliografia_basica?: string | null
+          bibliografia_complementar?: string | null
           class_id?: string
+          ementa_override?: string | null
           grades_closed?: boolean
           id?: string
           professor_user_id?: string
@@ -831,32 +840,50 @@ export type Database = {
       }
       lesson_plan_entries: {
         Row: {
+          activities: string | null
           class_subject_id: string
           created_at: string
           description: string | null
           entry_date: string
           entry_type: string
+          exam_type: string | null
           id: string
+          lesson_number: number | null
+          methodology: string | null
+          objective: string | null
+          resource: string | null
           title: string
           updated_at: string
         }
         Insert: {
+          activities?: string | null
           class_subject_id: string
           created_at?: string
           description?: string | null
           entry_date: string
           entry_type?: string
+          exam_type?: string | null
           id?: string
+          lesson_number?: number | null
+          methodology?: string | null
+          objective?: string | null
+          resource?: string | null
           title: string
           updated_at?: string
         }
         Update: {
+          activities?: string | null
           class_subject_id?: string
           created_at?: string
           description?: string | null
           entry_date?: string
           entry_type?: string
+          exam_type?: string | null
           id?: string
+          lesson_number?: number | null
+          methodology?: string | null
+          objective?: string | null
+          resource?: string | null
           title?: string
           updated_at?: string
         }
