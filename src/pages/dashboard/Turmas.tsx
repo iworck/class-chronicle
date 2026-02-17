@@ -4,6 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Textarea } from '@/components/ui/textarea';
 import {
   Table, TableBody, TableCell, TableHead, TableHeader, TableRow,
 } from '@/components/ui/table';
@@ -13,13 +14,17 @@ import {
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from '@/components/ui/select';
+import {
+  Tabs, TabsContent, TabsList, TabsTrigger,
+} from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
 import {
-  Plus, Search, Pencil, Loader2, Calendar, Eye, Users, Trash2, UserPlus, UserMinus, Settings2, Save,
+  Plus, Search, Pencil, Loader2, Calendar, Eye, Users, Trash2, UserPlus, UserMinus, Settings2, Save, FileText, BookOpen, GraduationCap, CheckCircle2, Lock, Unlock,
 } from 'lucide-react';
+import { format } from 'date-fns';
 
 interface Course {
   id: string;
@@ -86,12 +91,39 @@ interface TemplateItem {
   order_index: number;
 }
 
+interface LessonEntry {
+  id: string;
+  entry_date: string;
+  title: string;
+  entry_type: string;
+  exam_type: string | null;
+  lesson_number: number | null;
+  objective: string | null;
+  activities: string | null;
+  resource: string | null;
+  methodology: string | null;
+}
+
+interface GradeTemplateItemView {
+  id: string;
+  name: string;
+  category: string;
+  weight: number;
+  counts_in_final: boolean;
+  parent_item_id: string | null;
+  order_index: number;
+}
+
 const GRADE_CATEGORIES = [
   { value: 'prova', label: 'Prova' },
   { value: 'trabalho', label: 'Trabalho' },
   { value: 'media', label: 'Média' },
   { value: 'ponto_extra', label: 'Ponto Extra' },
 ];
+
+const EXAM_TYPE_LABELS: Record<string, string> = {
+  AV1: 'AV1', AV2: 'AV2', '2_CHAMADA': '2ª Chamada', FINAL: 'Final',
+};
 
 const Turmas = () => {
   const { hasRole } = useAuth();
@@ -117,12 +149,26 @@ const Turmas = () => {
   const [formProfessorId, setFormProfessorId] = useState('');
   const [formStatus, setFormStatus] = useState<'ATIVO' | 'INATIVO'>('ATIVO');
 
-  // View dialog (students)
+  // View dialog (students + plan)
   const [viewDialogOpen, setViewDialogOpen] = useState(false);
   const [viewClass, setViewClass] = useState<ClassRow | null>(null);
   const [viewSubjects, setViewSubjects] = useState<ClassSubjectRow[]>([]);
   const [viewStudents, setViewStudents] = useState<ClassStudentRow[]>([]);
   const [viewLoading, setViewLoading] = useState(false);
+  const [viewTab, setViewTab] = useState('alunos');
+
+  // Plan view data
+  const [viewLessonEntries, setViewLessonEntries] = useState<LessonEntry[]>([]);
+  const [viewExamEntries, setViewExamEntries] = useState<LessonEntry[]>([]);
+  const [viewGradeTemplate, setViewGradeTemplate] = useState<GradeTemplateItemView[]>([]);
+  const [viewClassSubjectData, setViewClassSubjectData] = useState<{
+    ementa_override: string | null;
+    bibliografia_basica: string | null;
+    bibliografia_complementar: string | null;
+    plan_status: string;
+    subject_lesson_plan: string | null;
+  } | null>(null);
+  const [planStatusSaving, setPlanStatusSaving] = useState(false);
 
   // Student linking
   const [linkDialogOpen, setLinkDialogOpen] = useState(false);
@@ -321,15 +367,16 @@ const Turmas = () => {
     setSaving(false);
   }
 
-  // View class details (subjects + students)
+  // View class details (subjects + students + plan)
   async function openView(cls: ClassRow) {
     setViewClass(cls);
     setViewDialogOpen(true);
     setViewLoading(true);
+    setViewTab('alunos');
 
     const [subRes, studRes] = await Promise.all([
       supabase.from('class_subjects')
-        .select('*, subject:subjects(id, name, code)')
+        .select('*, subject:subjects(id, name, code, lesson_plan)')
         .eq('class_id', cls.id),
       supabase.from('class_students')
         .select('*, student:students(id, name, enrollment)')
@@ -337,8 +384,39 @@ const Turmas = () => {
         .order('start_date', { ascending: false }),
     ]);
 
-    setViewSubjects((subRes.data as any[]) || []);
+    const subs = (subRes.data as any[]) || [];
+    setViewSubjects(subs);
     setViewStudents((studRes.data as any[]) || []);
+
+    // Load plan data for first class_subject
+    if (subs.length > 0) {
+      const cs = subs[0];
+      setViewClassSubjectData({
+        ementa_override: cs.ementa_override,
+        bibliografia_basica: cs.bibliografia_basica,
+        bibliografia_complementar: cs.bibliografia_complementar,
+        plan_status: cs.plan_status || 'PENDENTE',
+        subject_lesson_plan: cs.subject?.lesson_plan || null,
+      });
+
+      const [lessonRes, templateRes] = await Promise.all([
+        supabase.from('lesson_plan_entries')
+          .select('*').eq('class_subject_id', cs.id).order('entry_date'),
+        supabase.from('grade_template_items')
+          .select('*').eq('class_subject_id', cs.id).order('order_index'),
+      ]);
+
+      const entries = (lessonRes.data as any[]) || [];
+      setViewLessonEntries(entries.filter((e: any) => e.entry_type !== 'AVALIACAO'));
+      setViewExamEntries(entries.filter((e: any) => e.entry_type === 'AVALIACAO'));
+      setViewGradeTemplate((templateRes.data as GradeTemplateItemView[]) || []);
+    } else {
+      setViewClassSubjectData(null);
+      setViewLessonEntries([]);
+      setViewExamEntries([]);
+      setViewGradeTemplate([]);
+    }
+
     setViewLoading(false);
   }
 
@@ -427,14 +505,50 @@ const Turmas = () => {
       toast({ title: 'Erro ao desvincular', description: error.message, variant: 'destructive' });
     } else {
       toast({ title: 'Aluno desvinculado' });
-      const { data } = await supabase.from('class_students')
-        .select('*, student:students(id, name, enrollment)')
-        .eq('class_id', viewClass.id)
-        .order('start_date', { ascending: false });
-      setViewStudents((data as any[]) || []);
+      await refreshViewStudents();
     }
   }
 
+  async function handleToggleStudentStatus(linkId: string, currentStatus: string) {
+    if (!viewClass) return;
+    const newStatus = currentStatus === 'ATIVO' ? 'INATIVO' : 'ATIVO';
+    const { error } = await supabase.from('class_students').update({ status: newStatus }).eq('id', linkId);
+    if (error) {
+      toast({ title: 'Erro ao alterar status', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: newStatus === 'ATIVO' ? 'Matrícula reativada' : 'Matrícula cancelada na turma' });
+      await refreshViewStudents();
+    }
+  }
+
+  async function refreshViewStudents() {
+    if (!viewClass) return;
+    const { data } = await supabase.from('class_students')
+      .select('*, student:students(id, name, enrollment)')
+      .eq('class_id', viewClass.id)
+      .order('start_date', { ascending: false });
+    setViewStudents((data as any[]) || []);
+  }
+
+  async function handleTogglePlanStatus() {
+    if (!viewSubjects.length) return;
+    setPlanStatusSaving(true);
+    const cs = viewSubjects[0];
+    const currentStatus = viewClassSubjectData?.plan_status || 'PENDENTE';
+    const newStatus = currentStatus === 'APROVADO' ? 'PENDENTE' : 'APROVADO';
+
+    const { error } = await supabase.from('class_subjects')
+      .update({ plan_status: newStatus })
+      .eq('id', cs.id);
+
+    if (error) {
+      toast({ title: 'Erro ao alterar status do plano', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: newStatus === 'APROVADO' ? 'Plano aprovado e bloqueado para edição' : 'Plano desbloqueado para edição do professor' });
+      setViewClassSubjectData(prev => prev ? { ...prev, plan_status: newStatus } : null);
+    }
+    setPlanStatusSaving(false);
+  }
   async function handleDeactivate(id: string) {
     const { error } = await supabase.from('classes').update({ status: 'INATIVO' }).eq('id', id);
     if (error) {
@@ -810,12 +924,12 @@ const Turmas = () => {
         </DialogContent>
       </Dialog>
 
-      {/* View Dialog (Students) */}
+      {/* View Dialog (Students + Plan) */}
       <Dialog open={viewDialogOpen} onOpenChange={setViewDialogOpen}>
-        <DialogContent className="max-w-2xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
+              <GraduationCap className="w-5 h-5 text-primary" />
               {viewClass?.code} — {viewClass?.period}
             </DialogTitle>
           </DialogHeader>
@@ -825,87 +939,292 @@ const Turmas = () => {
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
           ) : (
-            <div className="space-y-6">
-              {/* Class info */}
-              <div className="p-4 bg-muted/30 rounded-lg space-y-2">
-                <div className="flex items-center justify-between">
-                  <span className="text-sm font-medium text-foreground">Curso</span>
-                  <span className="text-sm text-muted-foreground">{viewClass ? courseMap[viewClass.course_id] || '—' : '—'}</span>
+            <div className="space-y-4">
+              {/* Header info */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3 p-4 rounded-lg border border-border bg-muted/30">
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium">Curso</p>
+                  <p className="text-sm font-semibold text-foreground">{viewClass ? courseMap[viewClass.course_id] || '—' : '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium">Turma</p>
+                  <p className="text-sm font-semibold text-foreground">{viewClass?.code || '—'}</p>
                 </div>
                 {viewSubjects.map(vs => (
-                  <div key={vs.id} className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground">Disciplina</span>
-                    <span className="text-sm text-muted-foreground">{vs.subject?.name || '—'} ({vs.subject?.code})</span>
+                  <div key={vs.id}>
+                    <p className="text-xs text-muted-foreground font-medium">Disciplina</p>
+                    <p className="text-sm font-semibold text-foreground">{vs.subject?.name || '—'}</p>
                   </div>
                 ))}
                 {viewSubjects.map(vs => {
                   const prof = professors.find(p => p.id === vs.professor_user_id);
                   return (
-                    <div key={`prof-${vs.id}`} className="flex items-center justify-between">
-                      <span className="text-sm font-medium text-foreground">Professor</span>
-                      <span className="text-sm text-muted-foreground">{prof?.name || '—'}</span>
+                    <div key={`prof-${vs.id}`}>
+                      <p className="text-xs text-muted-foreground font-medium">Professor</p>
+                      <p className="text-sm font-semibold text-foreground">{prof?.name || '—'}</p>
                     </div>
                   );
                 })}
               </div>
 
-              {/* Grade Template Section */}
-              {viewSubjects.length > 0 && (canManage || hasRole('professor')) && (
-                <div>
-                  <div className="flex items-center justify-between mb-3">
-                    <div className="flex items-center gap-2">
-                      <Settings2 className="w-4 h-4 text-muted-foreground" />
-                      <span className="text-sm font-medium text-foreground">Modelo de Notas</span>
+              <Tabs value={viewTab} onValueChange={setViewTab}>
+                <TabsList className="w-full grid grid-cols-2">
+                  <TabsTrigger value="alunos">
+                    <Users className="w-4 h-4 mr-2" /> Alunos ({viewStudents.filter(s => s.status === 'ATIVO').length})
+                  </TabsTrigger>
+                  <TabsTrigger value="plano">
+                    <FileText className="w-4 h-4 mr-2" /> Plano de Ensino
+                    {viewClassSubjectData && (
+                      <Badge variant={viewClassSubjectData.plan_status === 'APROVADO' ? 'default' : 'outline'} className="ml-2 text-xs">
+                        {viewClassSubjectData.plan_status === 'APROVADO' ? 'Aprovado' : 'Pendente'}
+                      </Badge>
+                    )}
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* ======== TAB: ALUNOS ======== */}
+                <TabsContent value="alunos">
+                  <div className="space-y-4">
+                    <div className="flex items-center justify-between">
+                      <span className="text-sm font-medium text-foreground">Alunos Vinculados</span>
+                      {canManage && (
+                        <Button variant="outline" size="sm" onClick={openLinkDialog}>
+                          <UserPlus className="w-4 h-4 mr-2" /> Vincular Alunos
+                        </Button>
+                      )}
                     </div>
-                    <Button variant="outline" size="sm" onClick={() => openTemplateDialog(viewSubjects[0])}>
-                      <Settings2 className="w-4 h-4 mr-2" /> Configurar Notas
-                    </Button>
-                  </div>
-                  <p className="text-xs text-muted-foreground">
-                    Configure os critérios de avaliação (tipos, pesos, composição) para padronizar o lançamento de notas de todos os alunos desta turma.
-                  </p>
-                </div>
-              )}
 
-              {/* Students section */}
-              <div>
-                <div className="flex items-center justify-between mb-3">
-                  <div className="flex items-center gap-2">
-                    <Users className="w-4 h-4 text-muted-foreground" />
-                    <span className="text-sm font-medium text-foreground">
-                      Alunos Vinculados ({viewStudents.length})
-                    </span>
+                    {viewStudents.length === 0 ? (
+                      <p className="text-sm text-muted-foreground text-center py-6">Nenhum aluno vinculado a esta turma.</p>
+                    ) : (
+                      <div className="border border-border rounded-lg divide-y divide-border">
+                        {viewStudents.map(vs => (
+                          <div key={vs.id} className="px-4 py-3 flex items-center justify-between">
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{vs.student?.name || '—'}</p>
+                              <p className="text-xs text-muted-foreground">Matrícula: {vs.student?.enrollment || '—'}</p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <Badge variant={vs.status === 'ATIVO' ? 'default' : 'secondary'}>{vs.status}</Badge>
+                              {canManage && (
+                                <Button
+                                  variant="ghost"
+                                  size="sm"
+                                  className="h-8 text-xs"
+                                  onClick={() => handleToggleStudentStatus(vs.id, vs.status)}
+                                  title={vs.status === 'ATIVO' ? 'Cancelar matrícula na turma' : 'Reativar matrícula'}
+                                >
+                                  {vs.status === 'ATIVO' ? (
+                                    <><UserMinus className="w-3.5 h-3.5 mr-1 text-destructive" /> Desativar</>
+                                  ) : (
+                                    <><UserPlus className="w-3.5 h-3.5 mr-1 text-primary" /> Reativar</>
+                                  )}
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
                   </div>
-                  {canManage && (
-                    <Button variant="outline" size="sm" onClick={openLinkDialog}>
-                      <UserPlus className="w-4 h-4 mr-2" /> Vincular Alunos
-                    </Button>
-                  )}
-                </div>
+                </TabsContent>
 
-                {viewStudents.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-6">Nenhum aluno vinculado a esta turma.</p>
-                ) : (
-                  <div className="border border-border rounded-lg divide-y divide-border">
-                    {viewStudents.map(vs => (
-                      <div key={vs.id} className="px-4 py-3 flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{vs.student?.name || '—'}</p>
-                          <p className="text-xs text-muted-foreground">Matrícula: {vs.student?.enrollment || '—'}</p>
-                        </div>
-                        <div className="flex items-center gap-2">
-                          <Badge variant={vs.status === 'ATIVO' ? 'default' : 'secondary'}>{vs.status}</Badge>
-                          {canManage && (
-                            <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleUnlinkStudent(vs.id)} title="Desvincular">
-                              <UserMinus className="w-4 h-4 text-destructive" />
-                            </Button>
+                {/* ======== TAB: PLANO DE ENSINO ======== */}
+                <TabsContent value="plano">
+                  <div className="space-y-6">
+                    {/* Plan Status Control */}
+                    {canManage && viewClassSubjectData && (
+                      <div className={`p-4 rounded-lg border flex items-center justify-between ${
+                        viewClassSubjectData.plan_status === 'APROVADO'
+                          ? 'border-primary/30 bg-primary/5'
+                          : 'border-border bg-muted/30'
+                      }`}>
+                        <div className="flex items-center gap-3">
+                          {viewClassSubjectData.plan_status === 'APROVADO' ? (
+                            <Lock className="w-5 h-5 text-primary" />
+                          ) : (
+                            <Unlock className="w-5 h-5 text-muted-foreground" />
                           )}
+                          <div>
+                            <p className="text-sm font-medium text-foreground">
+                              {viewClassSubjectData.plan_status === 'APROVADO'
+                                ? 'Plano aprovado — Bloqueado para edição'
+                                : 'Plano pendente — Professor pode editar'}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {viewClassSubjectData.plan_status === 'APROVADO'
+                                ? 'O plano está visível para os alunos. Desbloqueie para permitir alterações.'
+                                : 'Aprove para bloquear edições e tornar visível aos alunos.'}
+                            </p>
+                          </div>
+                        </div>
+                        <Button
+                          variant={viewClassSubjectData.plan_status === 'APROVADO' ? 'outline' : 'default'}
+                          size="sm"
+                          onClick={handleTogglePlanStatus}
+                          disabled={planStatusSaving}
+                        >
+                          {planStatusSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                          {viewClassSubjectData.plan_status === 'APROVADO' ? (
+                            <><Unlock className="w-4 h-4 mr-2" /> Desbloquear</>
+                          ) : (
+                            <><CheckCircle2 className="w-4 h-4 mr-2" /> Aprovar Plano</>
+                          )}
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Grade Template Config */}
+                    {viewSubjects.length > 0 && canManage && (
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <Settings2 className="w-4 h-4 text-muted-foreground" />
+                          <span className="text-sm font-medium text-foreground">Modelo de Notas</span>
+                        </div>
+                        <Button variant="outline" size="sm" onClick={() => openTemplateDialog(viewSubjects[0])}>
+                          <Settings2 className="w-4 h-4 mr-2" /> Configurar
+                        </Button>
+                      </div>
+                    )}
+
+                    {/* Grade Formula (read-only) */}
+                    {viewGradeTemplate.length > 0 && (
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                          <Settings2 className="w-4 h-4 text-primary" /> Fórmula de Notas
+                        </h3>
+                        <div className="p-4 border border-border rounded-lg bg-muted/20 space-y-2">
+                          {(() => {
+                            const finals = viewGradeTemplate.filter(i => i.counts_in_final);
+                            const formulas = finals.map(f => {
+                              const children = viewGradeTemplate.filter(c => c.parent_item_id === f.id);
+                              if (children.length > 0) {
+                                const parts = children.map(c => `${c.name} × ${c.weight}`).join(' + ');
+                                return { name: f.name, formula: parts };
+                              }
+                              return { name: f.name, formula: null };
+                            });
+                            return (
+                              <>
+                                {formulas.map(f => (
+                                  <div key={f.name} className="flex items-center gap-2 text-sm">
+                                    <Badge variant="default" className="text-xs font-mono">{f.name}</Badge>
+                                    {f.formula ? (
+                                      <span className="font-mono text-muted-foreground">= {f.formula}</span>
+                                    ) : (
+                                      <span className="text-muted-foreground text-xs italic">valor direto</span>
+                                    )}
+                                  </div>
+                                ))}
+                                {finals.length > 0 && (
+                                  <div className="pt-2 border-t border-border mt-2 flex items-center gap-2 text-sm font-medium">
+                                    <Badge variant="secondary" className="text-xs font-mono">Média Final</Badge>
+                                    <span className="font-mono text-foreground">= ({finals.map(f => f.name).join(' + ')}) / {finals.length}</span>
+                                  </div>
+                                )}
+                              </>
+                            );
+                          })()}
                         </div>
                       </div>
-                    ))}
+                    )}
+
+                    {/* Exam Dates */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                        <Calendar className="w-4 h-4 text-primary" /> Datas das Provas
+                      </h3>
+                      {viewExamEntries.length === 0 ? (
+                        <p className="text-sm text-muted-foreground italic p-3 border border-border rounded-lg bg-muted/20">Nenhuma data de prova cadastrada.</p>
+                      ) : (
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead>Tipo</TableHead>
+                              <TableHead>Data</TableHead>
+                            </TableRow>
+                          </TableHeader>
+                          <TableBody>
+                            {viewExamEntries.map(e => (
+                              <TableRow key={e.id}>
+                                <TableCell><Badge variant="outline">{EXAM_TYPE_LABELS[e.exam_type || ''] || e.title}</Badge></TableCell>
+                                <TableCell className="font-mono text-sm">{format(new Date(e.entry_date + 'T12:00:00'), 'dd/MM/yyyy')}</TableCell>
+                              </TableRow>
+                            ))}
+                          </TableBody>
+                        </Table>
+                      )}
+                    </div>
+
+                    {/* Ementa */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                        <BookOpen className="w-4 h-4 text-primary" /> Ementa
+                      </h3>
+                      <div className="p-3 border border-border rounded-lg bg-muted/20 text-sm whitespace-pre-wrap">
+                        {viewClassSubjectData?.ementa_override || viewClassSubjectData?.subject_lesson_plan || <span className="text-muted-foreground italic">Não preenchida.</span>}
+                      </div>
+                    </div>
+
+                    {/* Bibliografias */}
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground mb-2">Bibliografia Básica</h3>
+                        <div className="p-3 border border-border rounded-lg bg-muted/20 text-sm whitespace-pre-wrap min-h-[60px]">
+                          {viewClassSubjectData?.bibliografia_basica || <span className="text-muted-foreground italic">Não preenchida.</span>}
+                        </div>
+                      </div>
+                      <div>
+                        <h3 className="text-sm font-semibold text-foreground mb-2">Bibliografia Complementar</h3>
+                        <div className="p-3 border border-border rounded-lg bg-muted/20 text-sm whitespace-pre-wrap min-h-[60px]">
+                          {viewClassSubjectData?.bibliografia_complementar || <span className="text-muted-foreground italic">Não preenchida.</span>}
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* Plano de Aula */}
+                    <div>
+                      <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                        <FileText className="w-4 h-4 text-primary" /> Plano de Aula
+                      </h3>
+                      {viewLessonEntries.length === 0 ? (
+                        <p className="text-sm text-muted-foreground italic p-3 border border-border rounded-lg bg-muted/20">Nenhuma aula cadastrada.</p>
+                      ) : (
+                        <div className="overflow-x-auto">
+                          <Table>
+                            <TableHeader>
+                              <TableRow>
+                                <TableHead className="w-16">Aula Nº</TableHead>
+                                <TableHead className="w-24">Dia</TableHead>
+                                <TableHead>Conteúdo</TableHead>
+                                <TableHead>Objetivo</TableHead>
+                                <TableHead>Atividades</TableHead>
+                                <TableHead>Recurso</TableHead>
+                                <TableHead>Metodologia</TableHead>
+                              </TableRow>
+                            </TableHeader>
+                            <TableBody>
+                              {viewLessonEntries.map(entry => (
+                                <TableRow key={entry.id}>
+                                  <TableCell className="font-mono font-bold text-center">{entry.lesson_number || '—'}</TableCell>
+                                  <TableCell className="font-mono text-xs whitespace-nowrap">
+                                    {format(new Date(entry.entry_date + 'T12:00:00'), 'dd/MM/yyyy')}
+                                  </TableCell>
+                                  <TableCell className="text-xs">{entry.title || '—'}</TableCell>
+                                  <TableCell className="text-xs">{entry.objective || '—'}</TableCell>
+                                  <TableCell className="text-xs">{entry.activities || '—'}</TableCell>
+                                  <TableCell className="text-xs">{entry.resource || '—'}</TableCell>
+                                  <TableCell className="text-xs">{entry.methodology || '—'}</TableCell>
+                                </TableRow>
+                              ))}
+                            </TableBody>
+                          </Table>
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
+                </TabsContent>
+              </Tabs>
             </div>
           )}
         </DialogContent>

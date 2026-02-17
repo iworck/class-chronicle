@@ -375,6 +375,7 @@ export type Database = {
           ementa_override: string | null
           grades_closed: boolean
           id: string
+          plan_status: string
           professor_user_id: string
           status: Database["public"]["Enums"]["entity_status"]
           subject_id: string
@@ -386,6 +387,7 @@ export type Database = {
           ementa_override?: string | null
           grades_closed?: boolean
           id?: string
+          plan_status?: string
           professor_user_id: string
           status?: Database["public"]["Enums"]["entity_status"]
           subject_id: string
@@ -397,6 +399,7 @@ export type Database = {
           ementa_override?: string | null
           grades_closed?: boolean
           id?: string
+          plan_status?: string
           professor_user_id?: string
           status?: Database["public"]["Enums"]["entity_status"]
           subject_id?: string

@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import {
-  Loader2, Calendar, Eye, Users, UserPlus, Settings2, Save, Plus, Trash2, FileText, Search, BookOpen, GraduationCap, Edit,
+  Loader2, Calendar, Eye, Users, UserPlus, Settings2, Save, Plus, Trash2, FileText, Search, BookOpen, GraduationCap, Edit, Lock,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -33,6 +33,7 @@ interface ClassSubjectRow {
   professor_user_id: string;
   status: string;
   grades_closed: boolean;
+  plan_status: string;
   ementa_override: string | null;
   bibliografia_basica: string | null;
   bibliografia_complementar: string | null;
@@ -155,7 +156,7 @@ const MinhasTurmas = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('class_subjects')
-      .select('id, class_id, subject_id, professor_user_id, status, grades_closed, ementa_override, bibliografia_basica, bibliografia_complementar, class:classes(id, code, period, course_id, status), subject:subjects(id, name, code, min_grade, min_attendance_pct, lesson_plan)')
+      .select('id, class_id, subject_id, professor_user_id, status, grades_closed, plan_status, ementa_override, bibliografia_basica, bibliografia_complementar, class:classes(id, code, period, course_id, status), subject:subjects(id, name, code, min_grade, min_attendance_pct, lesson_plan)')
       .eq('professor_user_id', user!.id)
       .eq('status', 'ATIVO')
       .order('class_id');
@@ -637,6 +638,17 @@ const MinhasTurmas = () => {
                 </div>
               </div>
 
+              {/* Plan locked banner */}
+              {selectedCS?.plan_status === 'APROVADO' && (
+                <div className="p-3 rounded-lg border border-primary/30 bg-primary/5 flex items-center gap-3">
+                  <Lock className="w-5 h-5 text-primary shrink-0" />
+                  <div>
+                    <p className="text-sm font-medium text-foreground">Plano aprovado pelo coordenador — Edições bloqueadas</p>
+                    <p className="text-xs text-muted-foreground">Para alterar, solicite ao coordenador que desbloqueie o plano.</p>
+                  </div>
+                </div>
+              )}
+
               <Tabs value={activeTab} onValueChange={setActiveTab}>
                 <TabsList className="w-full grid grid-cols-5">
                   <TabsTrigger value="provas" className="text-xs">
@@ -660,7 +672,7 @@ const MinhasTurmas = () => {
                 <TabsContent value="provas" className="space-y-4 mt-4">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">Datas das provas e avaliações programadas.</p>
-                    <Button size="sm" onClick={openNewExam}>
+                    <Button size="sm" onClick={openNewExam} disabled={selectedCS?.plan_status === 'APROVADO'}>
                       <Plus className="w-4 h-4 mr-2" /> Nova Prova
                     </Button>
                   </div>
@@ -689,6 +701,7 @@ const MinhasTurmas = () => {
                               {format(new Date(exam.entry_date + 'T12:00:00'), 'dd/MM/yyyy')}
                             </TableCell>
                             <TableCell className="text-right">
+                              {selectedCS?.plan_status !== 'APROVADO' && (
                               <div className="flex justify-end gap-1">
                                 <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditExam(exam)}>
                                   <Edit className="w-3.5 h-3.5" />
@@ -697,6 +710,7 @@ const MinhasTurmas = () => {
                                   <Trash2 className="w-3.5 h-3.5 text-destructive" />
                                 </Button>
                               </div>
+                              )}
                             </TableCell>
                           </TableRow>
                         ))}
@@ -711,18 +725,18 @@ const MinhasTurmas = () => {
                     <div>
                       <Label className="text-sm font-semibold">Ementa</Label>
                       <p className="text-xs text-muted-foreground mb-1">Carregada da ementa da disciplina. Pode ser alterada pelo professor.</p>
-                      <Textarea value={ementa} onChange={e => setEmenta(e.target.value)} rows={5} placeholder="Ementa da disciplina..." />
+                      <Textarea value={ementa} onChange={e => setEmenta(e.target.value)} rows={5} placeholder="Ementa da disciplina..." disabled={selectedCS?.plan_status === 'APROVADO'} />
                     </div>
                     <div>
                       <Label className="text-sm font-semibold">Bibliografia Básica</Label>
-                      <Textarea value={biblioBasica} onChange={e => setBiblioBasica(e.target.value)} rows={4} placeholder="Insira a bibliografia básica..." />
+                      <Textarea value={biblioBasica} onChange={e => setBiblioBasica(e.target.value)} rows={4} placeholder="Insira a bibliografia básica..." disabled={selectedCS?.plan_status === 'APROVADO'} />
                     </div>
                     <div>
                       <Label className="text-sm font-semibold">Bibliografia Complementar</Label>
-                      <Textarea value={biblioComplementar} onChange={e => setBiblioComplementar(e.target.value)} rows={4} placeholder="Insira a bibliografia complementar..." />
+                      <Textarea value={biblioComplementar} onChange={e => setBiblioComplementar(e.target.value)} rows={4} placeholder="Insira a bibliografia complementar..." disabled={selectedCS?.plan_status === 'APROVADO'} />
                     </div>
                     <div className="flex justify-end">
-                      <Button onClick={handleSaveEmenta} disabled={ementaSaving}>
+                      <Button onClick={handleSaveEmenta} disabled={ementaSaving || selectedCS?.plan_status === 'APROVADO'}>
                         {ementaSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
                         <Save className="w-4 h-4 mr-2" /> Salvar
                       </Button>
@@ -734,7 +748,7 @@ const MinhasTurmas = () => {
                 <TabsContent value="plano" className="space-y-4 mt-4">
                   <div className="flex items-center justify-between">
                     <p className="text-sm text-muted-foreground">Cronograma detalhado das aulas.</p>
-                    <Button size="sm" onClick={openNewLesson}>
+                    <Button size="sm" onClick={openNewLesson} disabled={selectedCS?.plan_status === 'APROVADO'}>
                       <Plus className="w-4 h-4 mr-2" /> Nova Aula
                     </Button>
                   </div>
@@ -772,6 +786,7 @@ const MinhasTurmas = () => {
                               <TableCell className="text-xs">{entry.resource || '—'}</TableCell>
                               <TableCell className="text-xs">{entry.methodology || '—'}</TableCell>
                               <TableCell className="text-right">
+                                {selectedCS?.plan_status !== 'APROVADO' && (
                                 <div className="flex justify-end gap-1">
                                   <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditLesson(entry)}>
                                     <Edit className="w-3.5 h-3.5" />
@@ -780,6 +795,7 @@ const MinhasTurmas = () => {
                                     <Trash2 className="w-3.5 h-3.5 text-destructive" />
                                   </Button>
                                 </div>
+                                )}
                               </TableCell>
                             </TableRow>
                           ))}
@@ -795,7 +811,7 @@ const MinhasTurmas = () => {
                     <p className="text-sm text-muted-foreground">
                       Configure os critérios de avaliação e composição das notas finais.
                     </p>
-                    <Button size="sm" onClick={openTemplateDialog}>
+                    <Button size="sm" onClick={openTemplateDialog} disabled={selectedCS?.plan_status === 'APROVADO'}>
                       <Settings2 className="w-4 h-4 mr-2" /> Configurar Modelo
                     </Button>
                   </div>
