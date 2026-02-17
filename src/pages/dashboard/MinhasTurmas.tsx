@@ -21,7 +21,7 @@ import {
 } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import {
-  Loader2, Calendar, Eye, Users, UserPlus, Settings2, Save, Plus, Trash2, FileText, Search,
+  Loader2, Calendar, Eye, Users, UserPlus, Settings2, Save, Plus, Trash2, FileText, Search, BookOpen, GraduationCap, Edit,
 } from 'lucide-react';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -33,9 +33,13 @@ interface ClassSubjectRow {
   professor_user_id: string;
   status: string;
   grades_closed: boolean;
+  ementa_override: string | null;
+  bibliografia_basica: string | null;
+  bibliografia_complementar: string | null;
   class: { id: string; code: string; period: string; course_id: string; status: string };
-  subject: { id: string; name: string; code: string; min_grade: number; min_attendance_pct: number };
+  subject: { id: string; name: string; code: string; min_grade: number; min_attendance_pct: number; lesson_plan: string | null };
   course?: { name: string };
+  professor?: { name: string };
 }
 
 interface ClassStudentRow {
@@ -51,6 +55,12 @@ interface LessonPlanEntry {
   title: string;
   description: string;
   entry_type: 'AULA' | 'ATIVIDADE' | 'AVALIACAO';
+  objective: string | null;
+  activities: string | null;
+  resource: string | null;
+  methodology: string | null;
+  lesson_number: number | null;
+  exam_type: string | null;
 }
 
 interface TemplateItem {
@@ -70,16 +80,18 @@ const GRADE_CATEGORIES = [
   { value: 'ponto_extra', label: 'Ponto Extra' },
 ];
 
-const ENTRY_TYPE_LABELS: Record<string, string> = {
-  AULA: 'Aula',
-  ATIVIDADE: 'Atividade',
-  AVALIACAO: 'Avaliação',
-};
+const EXAM_TYPES = [
+  { value: 'AV1', label: 'AV1' },
+  { value: 'AV2', label: 'AV2' },
+  { value: '2_CHAMADA', label: '2ª Chamada' },
+  { value: 'FINAL', label: 'Final' },
+];
 
-const ENTRY_TYPE_COLORS: Record<string, 'default' | 'secondary' | 'destructive' | 'outline'> = {
-  AULA: 'default',
-  ATIVIDADE: 'secondary',
-  AVALIACAO: 'outline',
+const EXAM_TYPE_LABELS: Record<string, string> = {
+  AV1: 'AV1',
+  AV2: 'AV2',
+  '2_CHAMADA': '2ª Chamada',
+  FINAL: 'Final',
 };
 
 const MinhasTurmas = () => {
@@ -95,16 +107,32 @@ const MinhasTurmas = () => {
   const [detailLoading, setDetailLoading] = useState(false);
   const [activeTab, setActiveTab] = useState('plano');
 
-  // Lesson plan
+  // Lesson plan entries (AULA rows)
   const [lessonEntries, setLessonEntries] = useState<LessonPlanEntry[]>([]);
-  const [lessonLoading, setLessonLoading] = useState(false);
   const [lessonFormOpen, setLessonFormOpen] = useState(false);
   const [editingEntry, setEditingEntry] = useState<LessonPlanEntry | null>(null);
   const [entryDate, setEntryDate] = useState('');
   const [entryTitle, setEntryTitle] = useState('');
-  const [entryDescription, setEntryDescription] = useState('');
-  const [entryType, setEntryType] = useState<'AULA' | 'ATIVIDADE' | 'AVALIACAO'>('AULA');
+  const [entryObjective, setEntryObjective] = useState('');
+  const [entryActivities, setEntryActivities] = useState('');
+  const [entryResource, setEntryResource] = useState('');
+  const [entryMethodology, setEntryMethodology] = useState('');
+  const [entryLessonNumber, setEntryLessonNumber] = useState('');
   const [entrySaving, setEntrySaving] = useState(false);
+
+  // Exam dates
+  const [examEntries, setExamEntries] = useState<LessonPlanEntry[]>([]);
+  const [examFormOpen, setExamFormOpen] = useState(false);
+  const [editingExam, setEditingExam] = useState<LessonPlanEntry | null>(null);
+  const [examDate, setExamDate] = useState('');
+  const [examType, setExamType] = useState('AV1');
+  const [examSaving, setExamSaving] = useState(false);
+
+  // Ementa & bibliografias
+  const [ementa, setEmenta] = useState('');
+  const [biblioBasica, setBiblioBasica] = useState('');
+  const [biblioComplementar, setBiblioComplementar] = useState('');
+  const [ementaSaving, setEmentaSaving] = useState(false);
 
   // Enrollment suggestion
   const [suggestOpen, setSuggestOpen] = useState(false);
@@ -127,7 +155,7 @@ const MinhasTurmas = () => {
     setLoading(true);
     const { data, error } = await supabase
       .from('class_subjects')
-      .select('id, class_id, subject_id, professor_user_id, status, grades_closed, class:classes(id, code, period, course_id, status), subject:subjects(id, name, code, min_grade, min_attendance_pct)')
+      .select('id, class_id, subject_id, professor_user_id, status, grades_closed, ementa_override, bibliografia_basica, bibliografia_complementar, class:classes(id, code, period, course_id, status), subject:subjects(id, name, code, min_grade, min_attendance_pct, lesson_plan)')
       .eq('professor_user_id', user!.id)
       .eq('status', 'ATIVO')
       .order('class_id');
@@ -139,7 +167,6 @@ const MinhasTurmas = () => {
     }
 
     const items = (data as any[]) || [];
-    // Load course names
     const courseIds = [...new Set(items.map(i => i.class?.course_id).filter(Boolean))];
     if (courseIds.length > 0) {
       const { data: courses } = await supabase.from('courses').select('id, name').in('id', courseIds);
@@ -149,6 +176,12 @@ const MinhasTurmas = () => {
           item.course = { name: courseMap[item.class.course_id] || '—' };
         }
       }
+    }
+
+    // Load professor name
+    const { data: profile } = await supabase.from('profiles').select('name').eq('id', user!.id).single();
+    for (const item of items) {
+      item.professor = { name: profile?.name || '—' };
     }
 
     setClassSubjects(items);
@@ -165,12 +198,16 @@ const MinhasTurmas = () => {
     );
   }, [classSubjects, search]);
 
-  // Open class detail
   async function openDetail(cs: ClassSubjectRow) {
     setSelectedCS(cs);
     setDetailOpen(true);
     setDetailLoading(true);
     setActiveTab('plano');
+
+    // Load ementa and bibliografias
+    setEmenta(cs.ementa_override || cs.subject?.lesson_plan || '');
+    setBiblioBasica(cs.bibliografia_basica || '');
+    setBiblioComplementar(cs.bibliografia_complementar || '');
 
     const [studRes, lessonRes] = await Promise.all([
       supabase.from('class_students')
@@ -184,33 +221,42 @@ const MinhasTurmas = () => {
         .order('entry_date'),
     ]);
 
+    const allEntries = (lessonRes.data as any[]) || [];
+    setLessonEntries(allEntries.filter((e: any) => e.entry_type !== 'AVALIACAO'));
+    setExamEntries(allEntries.filter((e: any) => e.entry_type === 'AVALIACAO'));
     setStudents((studRes.data as any[]) || []);
-    setLessonEntries((lessonRes.data as any[]) || []);
     setDetailLoading(false);
   }
 
   // ---- Lesson Plan CRUD ----
-  function openNewEntry() {
+  function openNewLesson() {
     setEditingEntry(null);
     setEntryDate('');
     setEntryTitle('');
-    setEntryDescription('');
-    setEntryType('AULA');
+    setEntryObjective('');
+    setEntryActivities('');
+    setEntryResource('');
+    setEntryMethodology('');
+    const nextNumber = lessonEntries.length > 0 ? Math.max(...lessonEntries.map(e => e.lesson_number || 0)) + 1 : 1;
+    setEntryLessonNumber(String(nextNumber));
     setLessonFormOpen(true);
   }
 
-  function openEditEntry(entry: LessonPlanEntry) {
+  function openEditLesson(entry: LessonPlanEntry) {
     setEditingEntry(entry);
     setEntryDate(entry.entry_date);
-    setEntryTitle(entry.title);
-    setEntryDescription(entry.description || '');
-    setEntryType(entry.entry_type);
+    setEntryTitle(entry.title || '');
+    setEntryObjective(entry.objective || '');
+    setEntryActivities(entry.activities || '');
+    setEntryResource(entry.resource || '');
+    setEntryMethodology(entry.methodology || '');
+    setEntryLessonNumber(String(entry.lesson_number || ''));
     setLessonFormOpen(true);
   }
 
-  async function handleSaveEntry() {
+  async function handleSaveLesson() {
     if (!entryDate || !entryTitle.trim() || !selectedCS) {
-      toast({ title: 'Preencha data e título', variant: 'destructive' });
+      toast({ title: 'Preencha data e conteúdo', variant: 'destructive' });
       return;
     }
     setEntrySaving(true);
@@ -219,8 +265,14 @@ const MinhasTurmas = () => {
       class_subject_id: selectedCS.id,
       entry_date: entryDate,
       title: entryTitle.trim(),
-      description: entryDescription.trim() || null,
-      entry_type: entryType,
+      description: null as string | null,
+      entry_type: 'AULA' as const,
+      objective: entryObjective.trim() || null,
+      activities: entryActivities.trim() || null,
+      resource: entryResource.trim() || null,
+      methodology: entryMethodology.trim() || null,
+      lesson_number: parseInt(entryLessonNumber) || null,
+      exam_type: null as string | null,
     };
 
     if (editingEntry?.id) {
@@ -239,13 +291,9 @@ const MinhasTurmas = () => {
       }
     }
 
-    toast({ title: editingEntry ? 'Entrada atualizada' : 'Entrada adicionada ao plano de aula' });
+    toast({ title: editingEntry ? 'Aula atualizada' : 'Aula adicionada ao plano' });
     setLessonFormOpen(false);
-
-    // Refresh
-    const { data } = await supabase.from('lesson_plan_entries')
-      .select('*').eq('class_subject_id', selectedCS.id).order('entry_date');
-    setLessonEntries((data as any[]) || []);
+    await refreshEntries();
     setEntrySaving(false);
   }
 
@@ -257,7 +305,94 @@ const MinhasTurmas = () => {
       return;
     }
     toast({ title: 'Entrada removida' });
-    setLessonEntries(prev => prev.filter(e => e.id !== id));
+    await refreshEntries();
+  }
+
+  async function refreshEntries() {
+    if (!selectedCS) return;
+    const { data } = await supabase.from('lesson_plan_entries')
+      .select('*').eq('class_subject_id', selectedCS.id).order('entry_date');
+    const allEntries = (data as any[]) || [];
+    setLessonEntries(allEntries.filter((e: any) => e.entry_type !== 'AVALIACAO'));
+    setExamEntries(allEntries.filter((e: any) => e.entry_type === 'AVALIACAO'));
+  }
+
+  // ---- Exam Dates ----
+  function openNewExam() {
+    setEditingExam(null);
+    setExamDate('');
+    setExamType('AV1');
+    setExamFormOpen(true);
+  }
+
+  function openEditExam(entry: LessonPlanEntry) {
+    setEditingExam(entry);
+    setExamDate(entry.entry_date);
+    setExamType(entry.exam_type || 'AV1');
+    setExamFormOpen(true);
+  }
+
+  async function handleSaveExam() {
+    if (!examDate || !selectedCS) {
+      toast({ title: 'Preencha a data', variant: 'destructive' });
+      return;
+    }
+    setExamSaving(true);
+
+    const payload = {
+      class_subject_id: selectedCS.id,
+      entry_date: examDate,
+      title: EXAM_TYPE_LABELS[examType] || examType,
+      entry_type: 'AVALIACAO' as const,
+      exam_type: examType,
+      description: null as string | null,
+      objective: null as string | null,
+      activities: null as string | null,
+      resource: null as string | null,
+      methodology: null as string | null,
+      lesson_number: null as number | null,
+    };
+
+    if (editingExam?.id) {
+      const { error } = await supabase.from('lesson_plan_entries').update(payload).eq('id', editingExam.id);
+      if (error) {
+        toast({ title: 'Erro ao atualizar', description: error.message, variant: 'destructive' });
+        setExamSaving(false);
+        return;
+      }
+    } else {
+      const { error } = await supabase.from('lesson_plan_entries').insert(payload);
+      if (error) {
+        toast({ title: 'Erro ao criar', description: error.message, variant: 'destructive' });
+        setExamSaving(false);
+        return;
+      }
+    }
+
+    toast({ title: editingExam ? 'Prova atualizada' : 'Data de prova adicionada' });
+    setExamFormOpen(false);
+    await refreshEntries();
+    setExamSaving(false);
+  }
+
+  // ---- Save Ementa & Bibliografias ----
+  async function handleSaveEmenta() {
+    if (!selectedCS) return;
+    setEmentaSaving(true);
+    const { error } = await supabase.from('class_subjects').update({
+      ementa_override: ementa.trim() || null,
+      bibliografia_basica: biblioBasica.trim() || null,
+      bibliografia_complementar: biblioComplementar.trim() || null,
+    }).eq('id', selectedCS.id);
+
+    if (error) {
+      toast({ title: 'Erro ao salvar', description: error.message, variant: 'destructive' });
+    } else {
+      toast({ title: 'Ementa e bibliografias salvas!' });
+      // Update local state
+      setSelectedCS(prev => prev ? { ...prev, ementa_override: ementa.trim() || null, bibliografia_basica: biblioBasica.trim() || null, bibliografia_complementar: biblioComplementar.trim() || null } : null);
+    }
+    setEmentaSaving(false);
   }
 
   // ---- Enrollment Suggestion ----
@@ -286,7 +421,7 @@ const MinhasTurmas = () => {
     setSuggestSaving(false);
   }
 
-  // ---- Grade Template (same logic as Turmas.tsx) ----
+  // ---- Grade Template ----
   async function openTemplateDialog() {
     if (!selectedCS) return;
     setDeletedTemplateIds([]);
@@ -372,7 +507,6 @@ const MinhasTurmas = () => {
           savedItems.push({ tempIndex: i, dbId: data.id });
         }
       }
-      // Second pass for parent references
       for (let i = 0; i < templateItems.length; i++) {
         const item = templateItems[i];
         if (!item.parent_item_id || item.id) continue;
@@ -467,13 +601,13 @@ const MinhasTurmas = () => {
         )}
       </div>
 
-      {/* Detail Dialog */}
+      {/* ============ DETAIL DIALOG ============ */}
       <Dialog open={detailOpen} onOpenChange={setDetailOpen}>
-        <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-5xl max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle className="flex items-center gap-2">
-              <Calendar className="w-5 h-5" />
-              {selectedCS?.class?.code} — {selectedCS?.subject?.name}
+              <GraduationCap className="w-5 h-5 text-primary" />
+              Plano de Ensino
             </DialogTitle>
           </DialogHeader>
 
@@ -482,153 +616,273 @@ const MinhasTurmas = () => {
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
           ) : (
-            <Tabs value={activeTab} onValueChange={setActiveTab}>
-              <TabsList className="w-full grid grid-cols-3">
-                <TabsTrigger value="plano">
-                  <FileText className="w-4 h-4 mr-2" /> Plano de Aula
-                </TabsTrigger>
-                <TabsTrigger value="notas">
-                  <Settings2 className="w-4 h-4 mr-2" /> Critérios de Notas
-                </TabsTrigger>
-                <TabsTrigger value="alunos">
-                  <Users className="w-4 h-4 mr-2" /> Alunos ({students.length})
-                </TabsTrigger>
-              </TabsList>
-
-              {/* TAB: Lesson Plan */}
-              <TabsContent value="plano" className="space-y-4 mt-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Registre as datas das aulas, atividades e avaliações programadas.
-                  </p>
-                  <Button size="sm" onClick={openNewEntry}>
-                    <Plus className="w-4 h-4 mr-2" /> Nova Entrada
-                  </Button>
+            <div className="space-y-6">
+              {/* HEADER INFO */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-4 rounded-lg border border-border bg-muted/30">
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium">Curso</p>
+                  <p className="text-sm font-semibold text-foreground">{selectedCS?.course?.name || '—'}</p>
                 </div>
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium">Turma</p>
+                  <p className="text-sm font-semibold text-foreground">{selectedCS?.class?.code || '—'}</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium">Matéria / Disciplina</p>
+                  <p className="text-sm font-semibold text-foreground">{selectedCS?.subject?.name || '—'} ({selectedCS?.subject?.code})</p>
+                </div>
+                <div>
+                  <p className="text-xs text-muted-foreground font-medium">Professor</p>
+                  <p className="text-sm font-semibold text-foreground">{selectedCS?.professor?.name || '—'}</p>
+                </div>
+              </div>
 
-                {lessonEntries.length === 0 ? (
-                  <div className="text-center py-8 text-muted-foreground">
-                    <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                    <p className="text-sm">Nenhuma entrada no plano de aula.</p>
+              <Tabs value={activeTab} onValueChange={setActiveTab}>
+                <TabsList className="w-full grid grid-cols-5">
+                  <TabsTrigger value="provas" className="text-xs">
+                    <Calendar className="w-3.5 h-3.5 mr-1" /> Provas
+                  </TabsTrigger>
+                  <TabsTrigger value="ementa" className="text-xs">
+                    <BookOpen className="w-3.5 h-3.5 mr-1" /> Ementa
+                  </TabsTrigger>
+                  <TabsTrigger value="plano" className="text-xs">
+                    <FileText className="w-3.5 h-3.5 mr-1" /> Plano de Aula
+                  </TabsTrigger>
+                  <TabsTrigger value="notas" className="text-xs">
+                    <Settings2 className="w-3.5 h-3.5 mr-1" /> Notas
+                  </TabsTrigger>
+                  <TabsTrigger value="alunos" className="text-xs">
+                    <Users className="w-3.5 h-3.5 mr-1" /> Alunos
+                  </TabsTrigger>
+                </TabsList>
+
+                {/* TAB: DATAS DAS PROVAS */}
+                <TabsContent value="provas" className="space-y-4 mt-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Datas das provas e avaliações programadas.</p>
+                    <Button size="sm" onClick={openNewExam}>
+                      <Plus className="w-4 h-4 mr-2" /> Nova Prova
+                    </Button>
                   </div>
-                ) : (
-                  <div className="space-y-2">
-                    {lessonEntries.map(entry => (
-                      <div key={entry.id} className="p-3 rounded-lg border border-border bg-muted/20 flex items-start justify-between gap-3">
-                        <div className="flex-1 min-w-0">
-                          <div className="flex items-center gap-2 mb-1">
-                            <Badge variant={ENTRY_TYPE_COLORS[entry.entry_type]}>
-                              {ENTRY_TYPE_LABELS[entry.entry_type]}
-                            </Badge>
-                            <span className="text-xs text-muted-foreground font-mono">
-                              {format(new Date(entry.entry_date + 'T12:00:00'), 'dd/MM/yyyy')}
-                            </span>
+
+                  {examEntries.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <Calendar className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm">Nenhuma data de prova cadastrada.</p>
+                    </div>
+                  ) : (
+                    <Table>
+                      <TableHeader>
+                        <TableRow>
+                          <TableHead>Tipo</TableHead>
+                          <TableHead>Data</TableHead>
+                          <TableHead className="text-right">Ações</TableHead>
+                        </TableRow>
+                      </TableHeader>
+                      <TableBody>
+                        {examEntries.map(exam => (
+                          <TableRow key={exam.id}>
+                            <TableCell>
+                              <Badge variant="outline">{EXAM_TYPE_LABELS[exam.exam_type || ''] || exam.title}</Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">
+                              {format(new Date(exam.entry_date + 'T12:00:00'), 'dd/MM/yyyy')}
+                            </TableCell>
+                            <TableCell className="text-right">
+                              <div className="flex justify-end gap-1">
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditExam(exam)}>
+                                  <Edit className="w-3.5 h-3.5" />
+                                </Button>
+                                <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteEntry(exam.id!)}>
+                                  <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                                </Button>
+                              </div>
+                            </TableCell>
+                          </TableRow>
+                        ))}
+                      </TableBody>
+                    </Table>
+                  )}
+                </TabsContent>
+
+                {/* TAB: EMENTA & BIBLIOGRAFIAS */}
+                <TabsContent value="ementa" className="space-y-4 mt-4">
+                  <div className="space-y-4">
+                    <div>
+                      <Label className="text-sm font-semibold">Ementa</Label>
+                      <p className="text-xs text-muted-foreground mb-1">Carregada da ementa da disciplina. Pode ser alterada pelo professor.</p>
+                      <Textarea value={ementa} onChange={e => setEmenta(e.target.value)} rows={5} placeholder="Ementa da disciplina..." />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-semibold">Bibliografia Básica</Label>
+                      <Textarea value={biblioBasica} onChange={e => setBiblioBasica(e.target.value)} rows={4} placeholder="Insira a bibliografia básica..." />
+                    </div>
+                    <div>
+                      <Label className="text-sm font-semibold">Bibliografia Complementar</Label>
+                      <Textarea value={biblioComplementar} onChange={e => setBiblioComplementar(e.target.value)} rows={4} placeholder="Insira a bibliografia complementar..." />
+                    </div>
+                    <div className="flex justify-end">
+                      <Button onClick={handleSaveEmenta} disabled={ementaSaving}>
+                        {ementaSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                        <Save className="w-4 h-4 mr-2" /> Salvar
+                      </Button>
+                    </div>
+                  </div>
+                </TabsContent>
+
+                {/* TAB: PLANO DE AULA (tabela completa) */}
+                <TabsContent value="plano" className="space-y-4 mt-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">Cronograma detalhado das aulas.</p>
+                    <Button size="sm" onClick={openNewLesson}>
+                      <Plus className="w-4 h-4 mr-2" /> Nova Aula
+                    </Button>
+                  </div>
+
+                  {lessonEntries.length === 0 ? (
+                    <div className="text-center py-8 text-muted-foreground">
+                      <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                      <p className="text-sm">Nenhuma aula cadastrada no plano.</p>
+                    </div>
+                  ) : (
+                    <div className="overflow-x-auto">
+                      <Table>
+                        <TableHeader>
+                          <TableRow>
+                            <TableHead className="w-16">Aula Nº</TableHead>
+                            <TableHead className="w-24">Dia</TableHead>
+                            <TableHead>Conteúdo</TableHead>
+                            <TableHead>Objetivo</TableHead>
+                            <TableHead>Atividades</TableHead>
+                            <TableHead>Recurso</TableHead>
+                            <TableHead>Metodologia</TableHead>
+                            <TableHead className="w-20 text-right">Ações</TableHead>
+                          </TableRow>
+                        </TableHeader>
+                        <TableBody>
+                          {lessonEntries.map(entry => (
+                            <TableRow key={entry.id}>
+                              <TableCell className="font-mono font-bold text-center">{entry.lesson_number || '—'}</TableCell>
+                              <TableCell className="font-mono text-xs whitespace-nowrap">
+                                {format(new Date(entry.entry_date + 'T12:00:00'), 'dd/MM/yyyy')}
+                              </TableCell>
+                              <TableCell className="text-xs">{entry.title || '—'}</TableCell>
+                              <TableCell className="text-xs">{entry.objective || '—'}</TableCell>
+                              <TableCell className="text-xs">{entry.activities || '—'}</TableCell>
+                              <TableCell className="text-xs">{entry.resource || '—'}</TableCell>
+                              <TableCell className="text-xs">{entry.methodology || '—'}</TableCell>
+                              <TableCell className="text-right">
+                                <div className="flex justify-end gap-1">
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditLesson(entry)}>
+                                    <Edit className="w-3.5 h-3.5" />
+                                  </Button>
+                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteEntry(entry.id!)}>
+                                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                                  </Button>
+                                </div>
+                              </TableCell>
+                            </TableRow>
+                          ))}
+                        </TableBody>
+                      </Table>
+                    </div>
+                  )}
+                </TabsContent>
+
+                {/* TAB: Grade Template */}
+                <TabsContent value="notas" className="space-y-4 mt-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Configure os critérios de avaliação e composição das notas finais.
+                    </p>
+                    <Button size="sm" onClick={openTemplateDialog}>
+                      <Settings2 className="w-4 h-4 mr-2" /> Configurar Modelo
+                    </Button>
+                  </div>
+                  <div className="p-4 rounded-lg border border-border bg-muted/30">
+                    <p className="text-xs text-muted-foreground">
+                      Nota mínima: <strong>{selectedCS?.subject?.min_grade}</strong> | 
+                      Frequência mínima: <strong>{selectedCS?.subject?.min_attendance_pct}%</strong>
+                    </p>
+                  </div>
+                </TabsContent>
+
+                {/* TAB: Students */}
+                <TabsContent value="alunos" className="space-y-4 mt-4">
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm text-muted-foreground">
+                      Alunos vinculados a esta turma. Para incluir um aluno, envie uma sugestão ao coordenador.
+                    </p>
+                    <Button variant="outline" size="sm" onClick={() => setSuggestOpen(true)}>
+                      <UserPlus className="w-4 h-4 mr-2" /> Sugerir Inclusão
+                    </Button>
+                  </div>
+
+                  {students.length === 0 ? (
+                    <p className="text-sm text-muted-foreground text-center py-6">Nenhum aluno vinculado.</p>
+                  ) : (
+                    <div className="border border-border rounded-lg divide-y divide-border">
+                      {students.map(s => (
+                        <div key={s.id} className="px-4 py-3 flex items-center justify-between">
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{s.student?.name || '—'}</p>
+                            <p className="text-xs text-muted-foreground">Matrícula: {s.student?.enrollment || '—'}</p>
                           </div>
-                          <p className="text-sm font-medium text-foreground">{entry.title}</p>
-                          {entry.description && (
-                            <p className="text-xs text-muted-foreground mt-1">{entry.description}</p>
-                          )}
+                          <Badge variant={s.status === 'ATIVO' ? 'default' : 'secondary'}>{s.status}</Badge>
                         </div>
-                        <div className="flex gap-1 shrink-0">
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => openEditEntry(entry)} title="Editar">
-                            <FileText className="w-3.5 h-3.5" />
-                          </Button>
-                          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={() => handleDeleteEntry(entry.id!)} title="Excluir">
-                            <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                          </Button>
-                        </div>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-
-              {/* TAB: Grade Template */}
-              <TabsContent value="notas" className="space-y-4 mt-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Configure os critérios de avaliação e composição das notas finais.
-                  </p>
-                  <Button size="sm" onClick={openTemplateDialog}>
-                    <Settings2 className="w-4 h-4 mr-2" /> Configurar Modelo
-                  </Button>
-                </div>
-                <div className="p-4 rounded-lg border border-border bg-muted/30">
-                  <p className="text-xs text-muted-foreground">
-                    Nota mínima: <strong>{selectedCS?.subject?.min_grade}</strong> | 
-                    Frequência mínima: <strong>{selectedCS?.subject?.min_attendance_pct}%</strong>
-                  </p>
-                </div>
-              </TabsContent>
-
-              {/* TAB: Students */}
-              <TabsContent value="alunos" className="space-y-4 mt-4">
-                <div className="flex items-center justify-between">
-                  <p className="text-sm text-muted-foreground">
-                    Alunos vinculados a esta turma. Para incluir um aluno, envie uma sugestão ao coordenador.
-                  </p>
-                  <Button variant="outline" size="sm" onClick={() => setSuggestOpen(true)}>
-                    <UserPlus className="w-4 h-4 mr-2" /> Sugerir Inclusão
-                  </Button>
-                </div>
-
-                {students.length === 0 ? (
-                  <p className="text-sm text-muted-foreground text-center py-6">Nenhum aluno vinculado.</p>
-                ) : (
-                  <div className="border border-border rounded-lg divide-y divide-border">
-                    {students.map(s => (
-                      <div key={s.id} className="px-4 py-3 flex items-center justify-between">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{s.student?.name || '—'}</p>
-                          <p className="text-xs text-muted-foreground">Matrícula: {s.student?.enrollment || '—'}</p>
-                        </div>
-                        <Badge variant={s.status === 'ATIVO' ? 'default' : 'secondary'}>{s.status}</Badge>
-                      </div>
-                    ))}
-                  </div>
-                )}
-              </TabsContent>
-            </Tabs>
+                      ))}
+                    </div>
+                  )}
+                </TabsContent>
+              </Tabs>
+            </div>
           )}
         </DialogContent>
       </Dialog>
 
-      {/* Lesson Plan Entry Form */}
+      {/* ============ LESSON ENTRY FORM ============ */}
       <Dialog open={lessonFormOpen} onOpenChange={setLessonFormOpen}>
-        <DialogContent className="max-w-md">
+        <DialogContent className="max-w-lg">
           <DialogHeader>
-            <DialogTitle>{editingEntry ? 'Editar Entrada' : 'Nova Entrada no Plano de Aula'}</DialogTitle>
+            <DialogTitle>{editingEntry ? 'Editar Aula' : 'Nova Aula no Plano'}</DialogTitle>
           </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label>Data *</Label>
-              <Input type="date" value={entryDate} onChange={e => setEntryDate(e.target.value)} />
+          <div className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <Label>Aula Nº</Label>
+                <Input type="number" min="1" value={entryLessonNumber} onChange={e => setEntryLessonNumber(e.target.value)} />
+              </div>
+              <div>
+                <Label>Dia *</Label>
+                <Input type="date" value={entryDate} onChange={e => setEntryDate(e.target.value)} />
+              </div>
             </div>
             <div>
-              <Label>Tipo *</Label>
-              <Select value={entryType} onValueChange={v => setEntryType(v as any)}>
-                <SelectTrigger><SelectValue /></SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="AULA">Aula</SelectItem>
-                  <SelectItem value="ATIVIDADE">Atividade</SelectItem>
-                  <SelectItem value="AVALIACAO">Avaliação</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <Label>Título *</Label>
+              <Label>Conteúdo *</Label>
               <Input value={entryTitle} onChange={e => setEntryTitle(e.target.value)} placeholder="Ex: Introdução à Álgebra Linear" />
             </div>
             <div>
-              <Label>Descrição</Label>
-              <Textarea value={entryDescription} onChange={e => setEntryDescription(e.target.value)} placeholder="Detalhes da aula ou atividade..." rows={3} />
+              <Label>Objetivo</Label>
+              <Textarea value={entryObjective} onChange={e => setEntryObjective(e.target.value)} placeholder="Objetivo da aula..." rows={2} />
+            </div>
+            <div>
+              <Label>Atividades</Label>
+              <Input value={entryActivities} onChange={e => setEntryActivities(e.target.value)} placeholder="Ex: Exercícios práticos" />
+            </div>
+            <div>
+              <Label>Recurso</Label>
+              <Input value={entryResource} onChange={e => setEntryResource(e.target.value)} placeholder="Ex: Projetor, Quadro" />
+            </div>
+            <div>
+              <Label>Metodologia</Label>
+              <Input value={entryMethodology} onChange={e => setEntryMethodology(e.target.value)} placeholder="Ex: Aula expositiva dialogada" />
             </div>
           </div>
           <DialogFooter>
             <DialogClose asChild>
               <Button variant="outline">Cancelar</Button>
             </DialogClose>
-            <Button onClick={handleSaveEntry} disabled={entrySaving}>
+            <Button onClick={handleSaveLesson} disabled={entrySaving}>
               {entrySaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
               {editingEntry ? 'Salvar' : 'Adicionar'}
             </Button>
@@ -636,7 +890,40 @@ const MinhasTurmas = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Enrollment Suggestion Dialog */}
+      {/* ============ EXAM DATE FORM ============ */}
+      <Dialog open={examFormOpen} onOpenChange={setExamFormOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>{editingExam ? 'Editar Data de Prova' : 'Nova Data de Prova'}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label>Tipo *</Label>
+              <Select value={examType} onValueChange={setExamType}>
+                <SelectTrigger><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {EXAM_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label>Data *</Label>
+              <Input type="date" value={examDate} onChange={e => setExamDate(e.target.value)} />
+            </div>
+          </div>
+          <DialogFooter>
+            <DialogClose asChild>
+              <Button variant="outline">Cancelar</Button>
+            </DialogClose>
+            <Button onClick={handleSaveExam} disabled={examSaving}>
+              {examSaving && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+              {editingExam ? 'Salvar' : 'Adicionar'}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ============ ENROLLMENT SUGGESTION ============ */}
       <Dialog open={suggestOpen} onOpenChange={setSuggestOpen}>
         <DialogContent className="max-w-md">
           <DialogHeader>
@@ -667,7 +954,7 @@ const MinhasTurmas = () => {
         </DialogContent>
       </Dialog>
 
-      {/* Grade Template Dialog */}
+      {/* ============ GRADE TEMPLATE DIALOG ============ */}
       <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
         <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
           <DialogHeader>
@@ -740,7 +1027,6 @@ const MinhasTurmas = () => {
                 <Plus className="w-4 h-4 mr-2" /> Adicionar Item
               </Button>
 
-              {/* Preview formula */}
               {templateItems.length > 0 && (() => {
                 const parentItems = templateItems.filter(t => t.counts_in_final && t.name.trim());
                 const orphanItems = templateItems.filter(t => !t.counts_in_final && !t.parent_item_id && t.name.trim());
