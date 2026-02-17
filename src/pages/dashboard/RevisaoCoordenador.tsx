@@ -605,7 +605,7 @@ const RevisaoCoordenador = () => {
                 )}
               </div>
 
-              {/* Critérios de Notas */}
+              {/* Critérios de Notas (Fórmula) */}
               <div>
                 <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
                   <Settings2 className="w-4 h-4 text-primary" /> Critérios de Notas
@@ -613,41 +613,38 @@ const RevisaoCoordenador = () => {
                 {gradeTemplateItems.length === 0 ? (
                   <p className="text-sm text-muted-foreground italic p-3 border border-border rounded-lg bg-muted/20">Nenhum critério de nota configurado pelo professor.</p>
                 ) : (
-                  <Table>
-                    <TableHeader>
-                      <TableRow>
-                        <TableHead>Nome</TableHead>
-                        <TableHead>Categoria</TableHead>
-                        <TableHead>Peso</TableHead>
-                        <TableHead>Compõe Nota Final</TableHead>
-                        <TableHead>Pai (Agrupador)</TableHead>
-                      </TableRow>
-                    </TableHeader>
-                    <TableBody>
-                      {gradeTemplateItems.map(item => {
-                        const parent = item.parent_item_id
-                          ? gradeTemplateItems.find(p => p.id === item.parent_item_id)
-                          : null;
-                        return (
-                          <TableRow key={item.id} className={item.counts_in_final ? 'bg-primary/5 font-medium' : ''}>
-                            <TableCell className="text-sm">{item.name}</TableCell>
-                            <TableCell>
-                              <Badge variant="secondary" className="text-xs">
-                                {CATEGORY_LABELS[item.category] || item.category}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="font-mono text-sm">{item.weight}</TableCell>
-                            <TableCell>
-                              <Badge variant={item.counts_in_final ? 'default' : 'outline'} className="text-xs">
-                                {item.counts_in_final ? 'Sim' : 'Não'}
-                              </Badge>
-                            </TableCell>
-                            <TableCell className="text-sm text-muted-foreground">{parent?.name || '—'}</TableCell>
-                          </TableRow>
-                        );
-                      })}
-                    </TableBody>
-                  </Table>
+                  <div className="p-4 border border-border rounded-lg bg-muted/20 space-y-2">
+                    {(() => {
+                      const finals = gradeTemplateItems.filter(i => i.counts_in_final);
+                      const formulas = finals.map(f => {
+                        const children = gradeTemplateItems.filter(c => c.parent_item_id === f.id);
+                        if (children.length > 0) {
+                          const parts = children.map(c => `${c.name} × ${c.weight}`).join(' + ');
+                          return { name: f.name, formula: parts };
+                        }
+                        return { name: f.name, formula: null };
+                      });
+                      const mediaFinal = finals.map(f => f.name).join(' + ') + ') / ' + finals.length;
+                      return (
+                        <>
+                          {formulas.map(f => (
+                            <div key={f.name} className="flex items-center gap-2 text-sm">
+                              <Badge variant="default" className="text-xs font-mono">{f.name}</Badge>
+                              {f.formula ? (
+                                <span className="font-mono text-muted-foreground">= {f.formula}</span>
+                              ) : (
+                                <span className="text-muted-foreground text-xs italic">valor direto</span>
+                              )}
+                            </div>
+                          ))}
+                          <div className="pt-2 border-t border-border mt-2 flex items-center gap-2 text-sm font-medium">
+                            <Badge variant="secondary" className="text-xs font-mono">Média Final</Badge>
+                            <span className="font-mono text-foreground">= ({mediaFinal}</span>
+                          </div>
+                        </>
+                      );
+                    })()}
+                  </div>
                 )}
               </div>
 
