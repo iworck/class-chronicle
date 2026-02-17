@@ -17,7 +17,7 @@ import {
 } from '@/components/ui/tabs';
 import { toast } from '@/hooks/use-toast';
 import {
-  Loader2, Search, UserPlus, CheckCircle2, XCircle, Clock, Eye, FileText, Calendar, BookOpen, GraduationCap,
+  Loader2, Search, UserPlus, CheckCircle2, XCircle, Clock, Eye, FileText, Calendar, BookOpen, GraduationCap, Settings2,
 } from 'lucide-react';
 import { format } from 'date-fns';
 
@@ -63,6 +63,20 @@ interface LessonEntry {
   methodology: string | null;
 }
 
+interface GradeTemplateItem {
+  id: string;
+  name: string;
+  category: string;
+  weight: number;
+  counts_in_final: boolean;
+  parent_item_id: string | null;
+  order_index: number;
+}
+
+const CATEGORY_LABELS: Record<string, string> = {
+  prova: 'Prova', trabalho: 'Trabalho', media: 'Média', ponto_extra: 'Ponto Extra',
+};
+
 const STATUS_CONFIG: Record<string, { label: string; variant: 'default' | 'secondary' | 'destructive' | 'outline'; icon: React.ElementType }> = {
   PENDENTE: { label: 'Pendente', variant: 'outline', icon: Clock },
   APROVADO: { label: 'Aprovado', variant: 'default', icon: CheckCircle2 },
@@ -94,6 +108,7 @@ const RevisaoCoordenador = () => {
   const [selectedPlan, setSelectedPlan] = useState<ClassSubjectForReview | null>(null);
   const [planEntries, setPlanEntries] = useState<LessonEntry[]>([]);
   const [examEntries, setExamEntries] = useState<LessonEntry[]>([]);
+  const [gradeTemplateItems, setGradeTemplateItems] = useState<GradeTemplateItem[]>([]);
   const [reviewLoading, setReviewLoading] = useState(false);
 
   useEffect(() => {
@@ -286,15 +301,23 @@ const RevisaoCoordenador = () => {
     setReviewOpen(true);
     setReviewLoading(true);
 
-    const { data } = await supabase
-      .from('lesson_plan_entries')
-      .select('*')
-      .eq('class_subject_id', cs.id)
-      .order('entry_date');
+    const [lessonRes, templateRes] = await Promise.all([
+      supabase
+        .from('lesson_plan_entries')
+        .select('*')
+        .eq('class_subject_id', cs.id)
+        .order('entry_date'),
+      supabase
+        .from('grade_template_items')
+        .select('*')
+        .eq('class_subject_id', cs.id)
+        .order('order_index'),
+    ]);
 
-    const entries = (data as any[]) || [];
+    const entries = (lessonRes.data as any[]) || [];
     setPlanEntries(entries.filter(e => e.entry_type !== 'AVALIACAO'));
     setExamEntries(entries.filter(e => e.entry_type === 'AVALIACAO'));
+    setGradeTemplateItems((templateRes.data as GradeTemplateItem[]) || []);
     setReviewLoading(false);
   }
 
@@ -582,7 +605,52 @@ const RevisaoCoordenador = () => {
                 )}
               </div>
 
-              {/* Ementa */}
+              {/* Critérios de Notas */}
+              <div>
+                <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
+                  <Settings2 className="w-4 h-4 text-primary" /> Critérios de Notas
+                </h3>
+                {gradeTemplateItems.length === 0 ? (
+                  <p className="text-sm text-muted-foreground italic p-3 border border-border rounded-lg bg-muted/20">Nenhum critério de nota configurado pelo professor.</p>
+                ) : (
+                  <Table>
+                    <TableHeader>
+                      <TableRow>
+                        <TableHead>Nome</TableHead>
+                        <TableHead>Categoria</TableHead>
+                        <TableHead>Peso</TableHead>
+                        <TableHead>Compõe Nota Final</TableHead>
+                        <TableHead>Pai (Agrupador)</TableHead>
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {gradeTemplateItems.map(item => {
+                        const parent = item.parent_item_id
+                          ? gradeTemplateItems.find(p => p.id === item.parent_item_id)
+                          : null;
+                        return (
+                          <TableRow key={item.id} className={item.counts_in_final ? 'bg-primary/5 font-medium' : ''}>
+                            <TableCell className="text-sm">{item.name}</TableCell>
+                            <TableCell>
+                              <Badge variant="secondary" className="text-xs">
+                                {CATEGORY_LABELS[item.category] || item.category}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="font-mono text-sm">{item.weight}</TableCell>
+                            <TableCell>
+                              <Badge variant={item.counts_in_final ? 'default' : 'outline'} className="text-xs">
+                                {item.counts_in_final ? 'Sim' : 'Não'}
+                              </Badge>
+                            </TableCell>
+                            <TableCell className="text-sm text-muted-foreground">{parent?.name || '—'}</TableCell>
+                          </TableRow>
+                        );
+                      })}
+                    </TableBody>
+                  </Table>
+                )}
+              </div>
+
               <div>
                 <h3 className="text-sm font-semibold text-foreground mb-2 flex items-center gap-2">
                   <BookOpen className="w-4 h-4 text-primary" /> Ementa
