@@ -34,6 +34,7 @@ import Alunos from '@/pages/dashboard/Alunos';
 import Boletim from '@/pages/dashboard/Boletim';
 import Permissoes from '@/pages/dashboard/Permissoes';
 import MinhasTurmas from '@/pages/dashboard/MinhasTurmas';
+import RevisaoCoordenador from '@/pages/dashboard/RevisaoCoordenador';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -122,6 +123,12 @@ const Dashboard = () => {
       label: 'Minhas Turmas',
       path: '/dashboard/minhas-turmas',
       roles: ['professor'] 
+    },
+    { 
+      icon: UserCheck, 
+      label: 'Revisão',
+      path: '/dashboard/revisao',
+      roles: ['coordenador'] 
     },
     { 
       icon: FileText, 
@@ -291,6 +298,7 @@ const Dashboard = () => {
               <Route path="matrizes" element={<Matrizes />} />
               <Route path="turmas" element={<Turmas />} />
               <Route path="minhas-turmas" element={<MinhasTurmas />} />
+              <Route path="revisao" element={<RevisaoCoordenador />} />
               <Route path="alunos" element={<Alunos />} />
               <Route path="boletim" element={<Boletim />} />
               <Route path="configuracoes" element={<Configuracoes />} />
@@ -380,6 +388,12 @@ function DashboardHome() {
               title="Gerenciar Turmas"
               description="Criar e editar turmas e vínculos"
               href="/dashboard/turmas"
+            />
+            <QuickAction 
+              icon={UserCheck}
+              title="Revisão"
+              description="Sugestões de inclusão e planos de aula"
+              href="/dashboard/revisao"
             />
             <QuickAction 
               icon={UserCheck}
