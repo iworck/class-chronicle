@@ -33,6 +33,7 @@ import Turmas from '@/pages/dashboard/Turmas';
 import Alunos from '@/pages/dashboard/Alunos';
 import Boletim from '@/pages/dashboard/Boletim';
 import Permissoes from '@/pages/dashboard/Permissoes';
+import MinhasTurmas from '@/pages/dashboard/MinhasTurmas';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -118,8 +119,8 @@ const Dashboard = () => {
     },
     { 
       icon: Calendar, 
-      label: 'Minhas Aulas',
-      path: '/dashboard/aulas',
+      label: 'Minhas Turmas',
+      path: '/dashboard/minhas-turmas',
       roles: ['professor'] 
     },
     { 
@@ -289,6 +290,7 @@ const Dashboard = () => {
               <Route path="disciplinas" element={<Disciplinas />} />
               <Route path="matrizes" element={<Matrizes />} />
               <Route path="turmas" element={<Turmas />} />
+              <Route path="minhas-turmas" element={<MinhasTurmas />} />
               <Route path="alunos" element={<Alunos />} />
               <Route path="boletim" element={<Boletim />} />
               <Route path="configuracoes" element={<Configuracoes />} />
@@ -353,15 +355,15 @@ function DashboardHome() {
           <div className="grid sm:grid-cols-2 gap-4">
             <QuickAction 
               icon={Calendar}
-              title="Abrir Nova Aula"
-              description="Gerar QR Code para registro de presença"
-              href="/dashboard/aulas"
+              title="Minhas Turmas"
+              description="Gerenciar planos de aula e critérios de notas"
+              href="/dashboard/minhas-turmas"
             />
             <QuickAction 
               icon={FileText}
-              title="Ver Histórico"
-              description="Consultar aulas anteriores e presenças"
-              href="/dashboard/aulas"
+              title="Boletim"
+              description="Lançar e consultar notas dos alunos"
+              href="/dashboard/boletim"
             />
           </div>
         </div>
