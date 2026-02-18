@@ -356,10 +356,20 @@ export default function ProfessorDashboard() {
                         </Button>
                       )
                     ) : isPast_ ? (
-                      <Badge variant="secondary" className="text-xs">
-                        <TrendingUp className="w-3 h-3 mr-1" />
-                        {item.hasSessions ? 'Realizada' : 'Sem chamada'}
-                      </Badge>
+                      item.hasSessions ? (
+                        <Badge variant="secondary" className="text-xs">
+                          <TrendingUp className="w-3 h-3 mr-1" /> Realizada
+                        </Badge>
+                      ) : (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { setSelectedScheduleItem(item); setWizardOpen(true); }}
+                          className="text-xs h-7 text-muted-foreground"
+                        >
+                          <Play className="w-3 h-3 mr-1" /> Lançar Retroativo
+                        </Button>
+                      )
                     ) : (
                       <Badge variant="outline" className="text-xs text-muted-foreground">
                         Programada
