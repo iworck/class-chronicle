@@ -4,7 +4,7 @@ import { useAuth } from '@/lib/auth';
 import { Link } from 'react-router-dom';
 import {
   BookOpen, Users, CheckCircle2, AlertTriangle, Clock, CalendarCheck,
-  ChevronRight, Loader2, FileText, Play, TrendingUp, XCircle,
+  ChevronRight, Loader2, FileText, Play, XCircle, ChevronDown,
 } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -13,6 +13,7 @@ import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import AttendanceSessionWizard from '@/components/dashboard/AttendanceSessionWizard';
 import ActiveSessionPanel from '@/components/dashboard/ActiveSessionPanel';
+import ManualAttendanceModal from '@/components/dashboard/ManualAttendanceModal';
 
 interface ProfessorStats {
   totalSubjects: number;
@@ -36,6 +37,8 @@ interface ScheduleItem {
   entryType: string;
   examType: string | null;
   hasSessions: boolean;
+  sessionId?: string;
+  sessionStatus?: string;
 }
 
 export default function ProfessorDashboard() {
@@ -45,7 +48,9 @@ export default function ProfessorDashboard() {
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [selectedScheduleItem, setSelectedScheduleItem] = useState<ScheduleItem | null>(null);
-  // Live session code state (passed from wizard to panel)
+  const [manualOpen, setManualOpen] = useState(false);
+  const [manualSessionId, setManualSessionId] = useState<string | null>(null);
+  const [showAllSchedule, setShowAllSchedule] = useState(false);
   const [liveCode, setLiveCode] = useState<string | undefined>(undefined);
   const [liveSessionId, setLiveSessionId] = useState<string | undefined>(undefined);
 
@@ -53,7 +58,6 @@ export default function ProfessorDashboard() {
     if (!user) return;
     setLoading(true);
 
-    // 1. Load class_subjects for this professor
     const { data: classSubjects } = await supabase
       .from('class_subjects')
       .select('id, class_id, subject_id, plan_status')
@@ -65,7 +69,6 @@ export default function ProfessorDashboard() {
     const subjectIds = [...new Set(csItems.map(c => c.subject_id))];
     const csIds = csItems.map(c => c.id);
 
-    // 2. Parallel: students, attendance sessions/records, lesson entries, suggestions
     const [studentsRes, sessionsRes, entriesRes, suggestionsRes] = await Promise.all([
       classIds.length > 0
         ? supabase.from('class_students').select('student_id').in('class_id', classIds).eq('status', 'ATIVO')
@@ -96,10 +99,8 @@ export default function ProfessorDashboard() {
     const entries = entriesRes.data || [];
     const suggestions = suggestionsRes.data || [];
 
-    // Unique students
     const uniqueStudents = new Set(students.map((s: any) => s.student_id)).size;
 
-    // Attendance % — count PRESENTE vs total records in closed sessions
     let attendancePct: number | null = null;
     let absentPct: number | null = null;
     const closedSessions = sessions.filter((s: any) => ['ENCERRADA', 'AUDITORIA_FINALIZADA'].includes(s.status));
@@ -118,7 +119,6 @@ export default function ProfessorDashboard() {
       }
     }
 
-    // Plan status breakdown
     const planNotStarted = csItems.filter(c => !c.plan_status || c.plan_status === 'NAO_INICIADO').length;
     const planPending = csItems.filter(c => c.plan_status === 'PENDENTE').length;
     const planApproved = csItems.filter(c => c.plan_status === 'APROVADO').length;
@@ -134,9 +134,8 @@ export default function ProfessorDashboard() {
       pendingEnrollmentSuggestions: suggestions.length,
     });
 
-    // Build schedule from lesson_plan_entries
+    // Build schedule — today + next 3 days
     if (entries.length > 0 && csItems.length > 0) {
-      // Load class codes and subject names
       const { data: classes } = classIds.length > 0
         ? await supabase.from('classes').select('id, code').in('id', classIds)
         : { data: [] };
@@ -148,41 +147,41 @@ export default function ProfessorDashboard() {
       const subjectMap = Object.fromEntries((subjects || []).map((s: any) => [s.id, s.name]));
       const csMap = Object.fromEntries(csItems.map(c => [c.id, c]));
 
-      // Which class_subject_ids have open/closed sessions today?
-      const todaySessionCsIds = new Set(
-        sessions
-          .filter((s: any) => {
-            const cs = csItems.find(c => c.subject_id === s.subject_id && c.class_id === s.class_id);
-            return cs;
-          })
-          .map((s: any) => {
-            const cs = csItems.find(c => c.subject_id === s.subject_id && c.class_id === s.class_id);
-            return cs?.id;
-          })
-          .filter(Boolean)
-      );
-
-      const scheduleItems: ScheduleItem[] = entries.map((e: any) => {
-        const cs = csMap[e.class_subject_id];
-        return {
-          id: e.id,
-          classSubjectId: e.class_subject_id,
-          className: cs ? classMap[cs.class_id] || '—' : '—',
-          subjectName: cs ? subjectMap[cs.subject_id] || '—' : '—',
-          entryDate: e.entry_date,
-          title: e.title,
-          lessonNumber: e.lesson_number,
-          entryType: e.entry_type,
-          examType: e.exam_type,
-          hasSessions: todaySessionCsIds.has(e.class_subject_id),
-        };
+      const sessionByCsId = new Map<string, { id: string; status: string }>();
+      sessions.forEach((s: any) => {
+        const cs = csItems.find(c => c.subject_id === s.subject_id && c.class_id === s.class_id);
+        if (cs && !sessionByCsId.has(cs.id)) {
+          sessionByCsId.set(cs.id, { id: s.id, status: s.status });
+        }
       });
 
-      // Show: past 3 + today + next 7 days
       const today = new Date().toISOString().split('T')[0];
-      const upcoming = scheduleItems.filter(s => s.entryDate >= today).slice(0, 8);
-      const past = scheduleItems.filter(s => s.entryDate < today).slice(-3);
-      setSchedule([...past, ...upcoming]);
+      const limit = new Date();
+      limit.setDate(limit.getDate() + 3);
+      const limitStr = limit.toISOString().split('T')[0];
+
+      const scheduleItems: ScheduleItem[] = (entries as any[])
+        .filter(e => e.entry_date >= today && e.entry_date <= limitStr)
+        .map(e => {
+          const cs = csMap[e.class_subject_id];
+          const session = sessionByCsId.get(e.class_subject_id);
+          return {
+            id: e.id,
+            classSubjectId: e.class_subject_id,
+            className: cs ? classMap[cs.class_id] || '—' : '—',
+            subjectName: cs ? subjectMap[cs.subject_id] || '—' : '—',
+            entryDate: e.entry_date,
+            title: e.title,
+            lessonNumber: e.lesson_number,
+            entryType: e.entry_type,
+            examType: e.exam_type,
+            hasSessions: !!session,
+            sessionId: session?.id,
+            sessionStatus: session?.status,
+          };
+        });
+
+      setSchedule(scheduleItems);
     }
 
     setLoading(false);
@@ -199,6 +198,7 @@ export default function ProfessorDashboard() {
   }
 
   const today = new Date().toISOString().split('T')[0];
+  const displayedSchedule = showAllSchedule ? schedule : schedule.slice(0, 5);
 
   return (
     <div className="max-w-6xl mx-auto animate-fade-in space-y-8">
@@ -220,20 +220,8 @@ export default function ProfessorDashboard() {
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-        <StatCard
-          icon={BookOpen}
-          label="Matérias Vinculadas"
-          value={String(stats?.totalSubjects ?? 0)}
-          sub="turmas ativas"
-          color="primary"
-        />
-        <StatCard
-          icon={Users}
-          label="Alunos Vinculados"
-          value={String(stats?.totalStudents ?? 0)}
-          sub="em todas as turmas"
-          color="info"
-        />
+        <StatCard icon={BookOpen} label="Matérias Vinculadas" value={String(stats?.totalSubjects ?? 0)} sub="turmas ativas" color="primary" />
+        <StatCard icon={Users} label="Alunos Vinculados" value={String(stats?.totalStudents ?? 0)} sub="em todas as turmas" color="info" />
         <StatCard
           icon={CheckCircle2}
           label="Frequência Média"
@@ -256,24 +244,9 @@ export default function ProfessorDashboard() {
           <FileText className="w-5 h-5 text-primary" /> Status dos Planos de Aula
         </h2>
         <div className="grid grid-cols-3 gap-4">
-          <PlanStatusCard
-            label="Não Iniciados"
-            count={stats?.planNotStarted ?? 0}
-            color="muted"
-            icon={XCircle}
-          />
-          <PlanStatusCard
-            label="Pendentes de Aprovação"
-            count={stats?.planPending ?? 0}
-            color="warning"
-            icon={Clock}
-          />
-          <PlanStatusCard
-            label="Aprovados"
-            count={stats?.planApproved ?? 0}
-            color="success"
-            icon={CheckCircle2}
-          />
+          <PlanStatusCard label="Não Iniciados" count={stats?.planNotStarted ?? 0} color="muted" icon={XCircle} />
+          <PlanStatusCard label="Pendentes de Aprovação" count={stats?.planPending ?? 0} color="warning" icon={Clock} />
+          <PlanStatusCard label="Aprovados" count={stats?.planApproved ?? 0} color="success" icon={CheckCircle2} />
         </div>
         <div className="mt-4 text-right">
           <Link to="/dashboard/minhas-turmas">
@@ -284,115 +257,116 @@ export default function ProfessorDashboard() {
         </div>
       </div>
 
-      {/* Agenda / Plano de Aulas */}
+      {/* Ações Rápidas */}
+      <div className="bg-card rounded-xl border border-border p-6 shadow-card">
+        <h2 className="text-lg font-semibold text-foreground mb-4">Ações Rápidas</h2>
+        <div className="grid sm:grid-cols-3 gap-3">
+          <QuickLink icon={BookOpen} title="Minhas Turmas" desc="Planos de aula e critérios de notas" href="/dashboard/minhas-turmas" />
+          <QuickLink icon={FileText} title="Boletim" desc="Lançar e consultar notas" href="/dashboard/boletim" />
+          <QuickLink icon={CalendarCheck} title="Aulas" desc="Histórico e presença manual" href="/dashboard/aulas" />
+        </div>
+      </div>
+
+      {/* Agenda de Aulas — hoje + até 3 dias seguintes */}
       <div className="bg-card rounded-xl border border-border shadow-card overflow-hidden">
         <div className="p-5 border-b border-border flex items-center justify-between">
           <h2 className="text-lg font-semibold text-foreground flex items-center gap-2">
             <CalendarCheck className="w-5 h-5 text-primary" /> Agenda de Aulas
           </h2>
-          <span className="text-xs text-muted-foreground">Baseado no plano de ensino cadastrado</span>
+          <Link to="/dashboard/aulas">
+            <Button variant="ghost" size="sm" className="text-xs text-muted-foreground gap-1">
+              Ver todas <ChevronRight className="w-3 h-3" />
+            </Button>
+          </Link>
         </div>
 
         {schedule.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-14 text-muted-foreground">
             <CalendarCheck className="w-12 h-12 mb-3 opacity-30" />
-            <p className="text-sm">Nenhuma aula cadastrada no plano de ensino.</p>
+            <p className="text-sm">Nenhuma aula nos próximos 3 dias.</p>
             <Link to="/dashboard/minhas-turmas" className="mt-2">
               <Button size="sm" variant="outline">Cadastrar Plano de Aula</Button>
             </Link>
           </div>
         ) : (
-          <div className="divide-y divide-border">
-            {schedule.map(item => {
-              const isToday_ = item.entryDate === today;
-              const isPast_ = item.entryDate < today;
-              return (
-                <div
-                  key={item.id}
-                  className={cn(
-                    'flex items-center gap-4 px-5 py-3 transition-colors',
-                    isToday_ && 'bg-primary/5 border-l-4 border-l-primary',
-                    isPast_ && !isToday_ && 'opacity-60',
-                  )}
-                >
-                  {/* Date */}
-                  <div className="w-14 text-center shrink-0">
-                    <p className="text-xs font-bold text-muted-foreground uppercase">
-                      {format(new Date(item.entryDate + 'T12:00:00'), 'MMM', { locale: ptBR })}
-                    </p>
-                    <p className={cn('text-xl font-display font-bold', isToday_ ? 'text-primary' : 'text-foreground')}>
-                      {format(new Date(item.entryDate + 'T12:00:00'), 'd')}
-                    </p>
-                  </div>
+          <>
+            <div className="divide-y divide-border">
+              {displayedSchedule.map(item => {
+                const isToday_ = item.entryDate === today;
+                const hasOpenSession = item.sessionStatus === 'ABERTA';
+                const hasClosedSession = item.sessionStatus && item.sessionStatus !== 'ABERTA';
 
-                  {/* Info */}
-                  <div className="flex-1 min-w-0">
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <p className="font-medium text-foreground text-sm truncate">
-                        {item.lessonNumber ? `Aula ${item.lessonNumber} — ` : ''}{item.title}
+                return (
+                  <div
+                    key={item.id}
+                    className={cn(
+                      'flex items-center gap-4 px-5 py-3 transition-colors',
+                      isToday_ && 'bg-primary/5 border-l-4 border-l-primary',
+                    )}
+                  >
+                    <div className="w-14 text-center shrink-0">
+                      <p className="text-xs font-bold text-muted-foreground uppercase">
+                        {format(new Date(item.entryDate + 'T12:00:00'), 'MMM', { locale: ptBR })}
                       </p>
-                      {isToday_ && <Badge className="text-xs shrink-0">Hoje</Badge>}
-                      {isPast_ && <Badge variant="secondary" className="text-xs shrink-0">Passado</Badge>}
+                      <p className={cn('text-xl font-display font-bold', isToday_ ? 'text-primary' : 'text-foreground')}>
+                        {format(new Date(item.entryDate + 'T12:00:00'), 'd')}
+                      </p>
                     </div>
-                    <p className="text-xs text-muted-foreground">
-                      {item.className} · {item.subjectName}
-                    </p>
-                  </div>
 
-                  {/* Status / Action */}
-                  <div className="shrink-0">
-                    {isToday_ ? (
-                      item.hasSessions ? (
-                        <Badge variant="outline" className="text-xs border-success text-success">
-                          <CheckCircle2 className="w-3 h-3 mr-1" /> Sessão aberta
-                        </Badge>
-                      ) : (
-                        <Button
-                          size="sm"
-                          onClick={() => { setSelectedScheduleItem(item); setWizardOpen(true); }}
-                          className="text-xs h-7"
-                        >
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium text-foreground text-sm truncate">
+                          {item.lessonNumber ? `Aula ${item.lessonNumber} — ` : ''}{item.title}
+                        </p>
+                        {isToday_ && <Badge className="text-xs shrink-0">Hoje</Badge>}
+                      </div>
+                      <p className="text-xs text-muted-foreground">{item.className} · {item.subjectName}</p>
+                    </div>
+
+                    <div className="shrink-0 flex gap-2">
+                      {isToday_ && !item.hasSessions && (
+                        <Button size="sm" onClick={() => { setSelectedScheduleItem(item); setWizardOpen(true); }} className="text-xs h-7">
                           <Play className="w-3 h-3 mr-1" /> Abrir Chamada
                         </Button>
-                      )
-                    ) : isPast_ ? (
-                      item.hasSessions ? (
+                      )}
+                      {isToday_ && hasOpenSession && item.sessionId && (
+                        <>
+                          <Badge variant="outline" className="text-xs border-success text-success">
+                            <CheckCircle2 className="w-3 h-3 mr-1" /> Aberta
+                          </Badge>
+                          <Button size="sm" variant="outline" className="text-xs h-7 border-primary text-primary"
+                            onClick={() => { setManualSessionId(item.sessionId!); setManualOpen(true); }}>
+                            Lançar Presença
+                          </Button>
+                        </>
+                      )}
+                      {isToday_ && hasClosedSession && (
                         <Badge variant="secondary" className="text-xs">
-                          <TrendingUp className="w-3 h-3 mr-1" /> Realizada
+                          <CheckCircle2 className="w-3 h-3 mr-1" /> Realizada
                         </Badge>
-                      ) : (
-                        <Button
-                          size="sm"
-                          variant="outline"
-                          onClick={() => { setSelectedScheduleItem(item); setWizardOpen(true); }}
-                          className="text-xs h-7 text-muted-foreground"
-                        >
-                          <Play className="w-3 h-3 mr-1" /> Lançar Retroativo
-                        </Button>
-                      )
-                    ) : (
-                      <Badge variant="outline" className="text-xs text-muted-foreground">
-                        Programada
-                      </Badge>
-                    )}
+                      )}
+                      {!isToday_ && (
+                        <Badge variant="outline" className="text-xs text-muted-foreground">Programada</Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
-              );
-            })}
-          </div>
+                );
+              })}
+            </div>
+
+            {schedule.length > 5 && (
+              <div className="flex justify-center p-3 border-t border-border">
+                <Button variant="ghost" size="sm" className="text-xs gap-1.5 text-muted-foreground" onClick={() => setShowAllSchedule(p => !p)}>
+                  <ChevronDown className={cn('w-3.5 h-3.5 transition-transform', showAllSchedule && 'rotate-180')} />
+                  {showAllSchedule ? 'Mostrar menos' : `Ver mais ${schedule.length - 5} aulas`}
+                </Button>
+              </div>
+            )}
+          </>
         )}
       </div>
 
-      {/* Quick Links */}
-      <div className="bg-card rounded-xl border border-border p-6 shadow-card">
-        <h2 className="text-lg font-semibold text-foreground mb-4">Ações Rápidas</h2>
-        <div className="grid sm:grid-cols-2 gap-3">
-          <QuickLink icon={BookOpen} title="Minhas Turmas" desc="Planos de aula e critérios de notas" href="/dashboard/minhas-turmas" />
-          <QuickLink icon={FileText} title="Boletim" desc="Lançar e consultar notas" href="/dashboard/boletim" />
-        </div>
-      </div>
-
-      {/* Wizard de abertura de chamada */}
+      {/* Wizard */}
       {wizardOpen && selectedScheduleItem && (
         <AttendanceSessionWizard
           open={wizardOpen}
@@ -408,6 +382,14 @@ export default function ProfessorDashboard() {
           lessonTitle={selectedScheduleItem.title}
           lessonNumber={selectedScheduleItem.lessonNumber}
           professorUserId={user!.id}
+        />
+      )}
+
+      {/* Manual Attendance */}
+      {manualOpen && manualSessionId && (
+        <ManualAttendanceModal
+          sessionId={manualSessionId}
+          onClose={() => { setManualOpen(false); setManualSessionId(null); loadDashboard(); }}
         />
       )}
     </div>
@@ -443,18 +425,20 @@ function StatCard({ icon: Icon, label, value, sub, color }: {
 }
 
 function PlanStatusCard({ label, count, color, icon: Icon }: {
-  label: string; count: number; color: 'muted' | 'warning' | 'success'; icon: React.ElementType;
+  label: string; count: number;
+  color: 'muted' | 'warning' | 'success';
+  icon: React.ElementType;
 }) {
-  const styles: Record<string, string> = {
-    muted: 'bg-muted/50 text-muted-foreground',
-    warning: 'bg-warning/10 text-warning border-warning/30',
-    success: 'bg-success/10 text-success border-success/30',
+  const colors = {
+    muted: 'text-muted-foreground bg-muted/30',
+    warning: 'text-warning bg-warning/10',
+    success: 'text-success bg-success/10',
   };
   return (
-    <div className={cn('rounded-lg border p-4 flex flex-col items-center gap-2', styles[color])}>
+    <div className={cn('rounded-lg p-4 flex flex-col gap-2', colors[color])}>
       <Icon className="w-5 h-5" />
       <p className="text-2xl font-display font-bold">{count}</p>
-      <p className="text-xs text-center font-medium leading-tight">{label}</p>
+      <p className="text-xs font-medium">{label}</p>
     </div>
   );
 }
@@ -463,15 +447,15 @@ function QuickLink({ icon: Icon, title, desc, href }: {
   icon: React.ElementType; title: string; desc: string; href: string;
 }) {
   return (
-    <Link to={href} className="flex items-start gap-4 p-4 rounded-xl bg-muted/50 hover:bg-muted transition-colors group">
-      <div className="w-10 h-10 rounded-lg bg-primary/10 flex items-center justify-center text-primary group-hover:scale-110 transition-transform">
-        <Icon className="w-5 h-5" />
+    <Link to={href} className="flex items-start gap-3 p-4 rounded-xl bg-muted/50 hover:bg-muted transition-colors group">
+      <div className="w-9 h-9 rounded-lg bg-primary/10 flex items-center justify-center text-primary shrink-0 group-hover:scale-110 transition-transform">
+        <Icon className="w-4 h-4" />
       </div>
       <div className="flex-1 min-w-0">
-        <p className="font-medium text-foreground">{title}</p>
-        <p className="text-sm text-muted-foreground">{desc}</p>
+        <p className="font-medium text-foreground text-sm">{title}</p>
+        <p className="text-xs text-muted-foreground truncate">{desc}</p>
       </div>
-      <ChevronRight className="w-5 h-5 text-muted-foreground group-hover:text-primary transition-colors" />
+      <ChevronRight className="w-4 h-4 text-muted-foreground group-hover:text-primary transition-colors mt-0.5" />
     </Link>
   );
 }
