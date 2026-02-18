@@ -218,7 +218,7 @@ const Turmas = () => {
 
     const course = courses.find(c => c.id === courseId);
     if (!course?.unit_id) {
-      setFilteredProfessors(professors);
+      setFilteredProfessors([]);
       setLoadingProfessors(false);
       return;
     }
@@ -230,7 +230,7 @@ const Turmas = () => {
       .single();
 
     if (!unitData) {
-      setFilteredProfessors(professors);
+      setFilteredProfessors([]);
       setLoadingProfessors(false);
       return;
     }
