@@ -114,7 +114,7 @@ export default function AlunoDashboard() {
       .eq('student_id', student.id)
       .in('session_id', sessionIds.length ? sessionIds : ['none']);
 
-    const enriched: EnrollmentData[] = (enrollData || []).map(e => {
+    const enriched: EnrollmentData[] = (enrollData || []).filter(e => e.subject !== null).map(e => {
       const subjectSessions = attSessions.filter(s => s.subject_id === e.subject_id);
       const subjectAttRecords = (attRecords || []).filter(r =>
         subjectSessions.some(s => s.id === r.session_id)
