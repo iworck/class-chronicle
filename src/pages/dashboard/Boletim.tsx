@@ -113,6 +113,7 @@ const Boletim = () => {
   const [editStudentName, setEditStudentName] = useState('');
   const [editRows, setEditRows] = useState<EditGradeRow[]>([]);
   const [deletedGradeIds, setDeletedGradeIds] = useState<string[]>([]);
+  const [orphanGradeIds, setOrphanGradeIds] = useState<string[]>([]);
   const [saving, setSaving] = useState(false);
 
   // View grades dialog (read-only)
@@ -708,14 +709,18 @@ const Boletim = () => {
         };
       });
 
-      // Detect orphan grades (exist in DB but not in template) and auto-mark for deletion
+      // Detect orphan grades (exist in DB but not in template) — do NOT auto-delete, just signal
       const leafNames = new Set(leafItems.map(t => t.name.toUpperCase()));
       const orphans = existingGrades.filter(g => !leafNames.has(g.grade_type.toUpperCase()));
       const orphanIds = orphans.filter(g => g.id).map(g => g.id);
-      setDeletedGradeIds(orphanIds);
+      // Store orphan IDs separately so the warning banner can show them,
+      // but do NOT add them to deletedGradeIds until the user clicks "Reconfigurar"
+      setDeletedGradeIds([]);
+      setOrphanGradeIds(orphanIds);
       setEditRows(rows);
     } else if (existingGrades.length > 0) {
       setDeletedGradeIds([]);
+      setOrphanGradeIds([]);
       setEditRows(existingGrades.map(g => ({
         id: g.id,
         grade_type: g.grade_type,
@@ -727,6 +732,7 @@ const Boletim = () => {
       })));
     } else {
       setDeletedGradeIds([]);
+      setOrphanGradeIds([]);
       setEditRows([{ grade_type: 'N1', grade_category: 'prova', grade_value: '', weight: '1', counts_in_final: true, observations: '' }]);
     }
     setEditDialog(true);
@@ -1331,17 +1337,38 @@ const Boletim = () => {
               </div>
             )}
 
-            {templateItems.length > 0 && deletedGradeIds.length > 0 && (
-              <div className="p-2 rounded border border-amber-500/30 bg-amber-500/10 flex items-start gap-2">
+            {templateItems.length > 0 && orphanGradeIds.length > 0 && (
+              <div className="p-3 rounded border border-amber-500/40 bg-amber-500/10 flex items-start gap-2">
                 <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
                 <div className="flex-1">
-                  <p className="text-xs text-amber-700 font-medium">
-                    {deletedGradeIds.length} registro(s) fora do padrão do modelo detectado(s)
+                  <p className="text-xs text-amber-700 font-semibold">
+                    {orphanGradeIds.length} registro(s) fora do padrão do modelo detectado(s)
                   </p>
                   <p className="text-xs text-amber-600 mt-0.5">
-                    Esses registros serão excluídos ao salvar para sincronizar com o modelo atual da turma.
+                    Este aluno possui notas com tipos que não existem no modelo atual da turma. Clique em <strong>Reconfigurar</strong> para removê-los e sincronizar com o modelo.
                   </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="mt-2 border-amber-500/50 text-amber-700 hover:bg-amber-500/20 h-7 text-xs gap-1.5"
+                    onClick={() => {
+                      setDeletedGradeIds(orphanGradeIds);
+                      setOrphanGradeIds([]);
+                    }}
+                  >
+                    <Trash2 className="w-3 h-3" />
+                    Reconfigurar para o Modelo da Turma
+                  </Button>
                 </div>
+              </div>
+            )}
+
+            {templateItems.length > 0 && deletedGradeIds.length > 0 && orphanGradeIds.length === 0 && (
+              <div className="p-2 rounded border border-primary/30 bg-primary/5 flex items-center gap-2">
+                <CheckCircle2 className="w-4 h-4 text-primary shrink-0" />
+                <p className="text-xs text-primary font-medium">
+                  {deletedGradeIds.length} registro(s) fora do padrão serão excluídos ao salvar. O boletim ficará alinhado ao modelo da turma.
+                </p>
               </div>
             )}
 
