@@ -10,9 +10,10 @@ import {
 import { toast } from '@/hooks/use-toast';
 import {
   Loader2, CalendarCheck, Search, Filter, Play, CheckCircle2, Clock,
-  ClipboardList, Users, ChevronDown, XCircle, AlertCircle,
+  ClipboardList, Users, ChevronDown, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown,
+  GraduationCap,
 } from 'lucide-react';
-import { format, addDays, parseISO } from 'date-fns';
+import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import AttendanceSessionWizard from '@/components/dashboard/AttendanceSessionWizard';
@@ -49,6 +50,9 @@ export default function Aulas() {
   const [loading, setLoading] = useState(true);
   const [lessons, setLessons] = useState<LessonEntry[]>([]);
 
+  // Sort order
+  const [sortAsc, setSortAsc] = useState(true);
+
   // Filters
   const [search, setSearch] = useState('');
   const [filterStatus, setFilterStatus] = useState<string>('all');
@@ -68,6 +72,9 @@ export default function Aulas() {
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
   const [liveCode, setLiveCode] = useState<string | undefined>();
   const [liveSessionId, setLiveSessionId] = useState<string | undefined>();
+
+  // Active sessions (to block simultaneous opens)
+  const [hasOpenSession, setHasOpenSession] = useState(false);
 
   const load = useCallback(async () => {
     if (!user) return;
@@ -97,7 +104,7 @@ export default function Aulas() {
         .from('lesson_plan_entries')
         .select('id, class_subject_id, entry_date, title, lesson_number, entry_type, exam_type, objective')
         .in('class_subject_id', csIds)
-        .order('entry_date', { ascending: false }),
+        .order('entry_date', { ascending: true }),
       supabase.from('classes').select('id, code').in('id', classIds),
       supabase.from('subjects').select('id, name').in('id', subjectIds),
       supabase
@@ -112,6 +119,10 @@ export default function Aulas() {
     const csMap = Object.fromEntries(csItems.map(c => [c.id, c]));
     const sessions = sessionsRes.data || [];
 
+    // Check if professor has any currently open session
+    const openSession = sessions.find((s: any) => s.status === 'ABERTA');
+    setHasOpenSession(!!openSession);
+
     const today = new Date().toISOString().split('T')[0];
 
     const items: LessonEntry[] = (entriesRes.data || []).map((e: any) => {
@@ -123,14 +134,23 @@ export default function Aulas() {
 
       const isToday = e.entry_date === today;
       const isPast = e.entry_date < today;
-      const hasSession = !!session;
+      const isExam = e.entry_type === 'AVALIACAO';
+      const hasClosedSession = !!session && (session.status === 'ENCERRADA' || session.status === 'AUDITORIA_FINALIZADA');
 
       let lessonStatus: LessonEntry['lessonStatus'];
-      if (hasSession && (session.status === 'ENCERRADA' || session.status === 'AUDITORIA_FINALIZADA')) {
+
+      // Exams in the future/today → always 'programada' (they're not classes with attendance)
+      if (isExam && !isPast) {
+        lessonStatus = 'programada';
+      } else if (isExam && isPast && hasClosedSession) {
+        lessonStatus = 'realizada';
+      } else if (isExam && isPast) {
+        lessonStatus = 'programada'; // past exam without session still "programada"
+      } else if (hasClosedSession) {
         lessonStatus = 'realizada';
       } else if (isToday) {
         lessonStatus = 'hoje';
-      } else if (isPast && !hasSession) {
+      } else if (isPast && !session) {
         lessonStatus = 'passada_sem_chamada';
       } else {
         lessonStatus = 'programada';
@@ -168,9 +188,9 @@ export default function Aulas() {
     return Array.from(map.keys()).sort();
   }, [lessons]);
 
-  // Apply filters
+  // Apply filters + sort
   const filtered = useMemo(() => {
-    let result = lessons;
+    let result = [...lessons];
 
     if (search.trim()) {
       const q = search.toLowerCase();
@@ -193,8 +213,14 @@ export default function Aulas() {
       result = result.filter(l => l.entry_date <= filterDateTo);
     }
 
+    // Sort by date
+    result.sort((a, b) => {
+      const cmp = a.entry_date.localeCompare(b.entry_date);
+      return sortAsc ? cmp : -cmp;
+    });
+
     return result;
-  }, [lessons, search, filterStatus, filterSubject, filterDateFrom, filterDateTo]);
+  }, [lessons, search, filterStatus, filterSubject, filterDateFrom, filterDateTo, sortAsc]);
 
   const paged = filtered.slice(0, (page + 1) * PAGE_SIZE);
   const hasMore = paged.length < filtered.length;
@@ -208,6 +234,14 @@ export default function Aulas() {
   }), [lessons]);
 
   function openWizard(lesson: LessonEntry) {
+    if (hasOpenSession) {
+      toast({
+        title: 'Sessão já aberta',
+        description: 'Você já tem uma chamada aberta. Encerre a sessão atual antes de abrir uma nova.',
+        variant: 'destructive',
+      });
+      return;
+    }
     setSelectedLesson(lesson);
     setWizardOpen(true);
   }
@@ -224,6 +258,16 @@ export default function Aulas() {
         <h1 className="text-2xl font-display font-bold text-foreground">Aulas</h1>
         <p className="text-sm text-muted-foreground mt-0.5">Histórico completo de aulas planejadas, realizadas e programadas</p>
       </div>
+
+      {/* Active session alert */}
+      {hasOpenSession && (
+        <div className="flex items-center gap-3 p-3 rounded-lg border border-primary/40 bg-primary/5">
+          <GraduationCap className="w-5 h-5 text-primary shrink-0" />
+          <p className="text-sm text-foreground">
+            <strong>Chamada em andamento.</strong> Você tem uma sessão aberta. Encerre-a antes de abrir uma nova chamada.
+          </p>
+        </div>
+      )}
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
@@ -252,6 +296,15 @@ export default function Aulas() {
               className="pl-9"
             />
           </div>
+          {/* Sort toggle */}
+          <Button
+            variant="outline"
+            size="icon"
+            onClick={() => { setSortAsc(p => !p); setPage(0); }}
+            title={sortAsc ? 'Ordem crescente (mais antiga primeiro)' : 'Ordem decrescente (mais recente primeiro)'}
+          >
+            {sortAsc ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />}
+          </Button>
           <Button variant="outline" size="icon" onClick={() => setShowFilters(p => !p)} className={cn(showFilters && 'border-primary text-primary')}>
             <Filter className="w-4 h-4" />
           </Button>
@@ -311,17 +364,34 @@ export default function Aulas() {
           </div>
         ) : (
           <>
+            {/* Column header */}
+            <div className="flex items-center gap-4 px-5 py-2 bg-muted/40 border-b border-border text-xs font-semibold text-muted-foreground">
+              <div className="w-14 text-center">
+                <button
+                  className="flex items-center gap-1 mx-auto hover:text-foreground transition-colors"
+                  onClick={() => { setSortAsc(p => !p); setPage(0); }}
+                >
+                  Data <ArrowUpDown className="w-3 h-3" />
+                </button>
+              </div>
+              <div className="flex-1">Conteúdo / Turma</div>
+              <div className="w-28 text-center">Situação</div>
+              <div className="w-36 text-right">Ação</div>
+            </div>
+
             <div className="divide-y divide-border">
-              {paged.map(lesson => {
+              {paged.map((lesson, idx) => {
                 const cfg = STATUS_CONFIG[lesson.lessonStatus];
                 const Icon = cfg.icon;
                 const dateObj = parseISO(lesson.entry_date + 'T12:00:00');
+                const isExam = lesson.entry_type === 'AVALIACAO';
 
                 return (
                   <div key={lesson.id} className={cn(
                     'flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-muted/30',
                     lesson.lessonStatus === 'hoje' && 'bg-primary/5 border-l-4 border-l-primary',
-                    lesson.lessonStatus === 'passada_sem_chamada' && 'bg-destructive/3',
+                    lesson.lessonStatus === 'passada_sem_chamada' && 'bg-destructive/5',
+                    isExam && 'bg-warning/5',
                   )}>
                     {/* Date */}
                     <div className="w-14 text-center shrink-0">
@@ -340,7 +410,12 @@ export default function Aulas() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 flex-wrap">
                         <p className="font-medium text-foreground text-sm truncate">
-                          {lesson.lesson_number ? `Aula ${lesson.lesson_number} — ` : ''}{lesson.title}
+                          {isExam
+                            ? `📋 ${lesson.title}`
+                            : lesson.lesson_number
+                              ? `Aula ${lesson.lesson_number} — ${lesson.title}`
+                              : lesson.title
+                          }
                         </p>
                         <Badge variant="outline" className={cn('text-xs shrink-0 flex items-center gap-1', cfg.color)}>
                           <Icon className="w-3 h-3" />
@@ -349,38 +424,48 @@ export default function Aulas() {
                       </div>
                       <p className="text-xs text-muted-foreground mt-0.5">
                         {lesson.className} · {lesson.subjectName}
+                        {isExam && lesson.exam_type && (
+                          <span className="ml-2 font-semibold text-warning">{lesson.exam_type.replace('_', ' ')}</span>
+                        )}
                       </p>
-                      {lesson.objective && (
+                      {lesson.objective && !isExam && (
                         <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">{lesson.objective}</p>
                       )}
                     </div>
 
                     {/* Actions */}
                     <div className="shrink-0 flex gap-2">
-                      {lesson.lessonStatus === 'hoje' && !lesson.sessionId && (
-                        <Button size="sm" className="h-7 text-xs gap-1" onClick={() => openWizard(lesson)}>
+                      {/* Only non-exam entries can open attendance */}
+                      {!isExam && lesson.lessonStatus === 'hoje' && !lesson.sessionId && (
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          onClick={() => openWizard(lesson)}
+                          disabled={hasOpenSession}
+                        >
                           <Play className="w-3 h-3" /> Abrir Chamada
                         </Button>
                       )}
-                      {lesson.lessonStatus === 'hoje' && lesson.sessionId && (
+                      {!isExam && lesson.lessonStatus === 'hoje' && lesson.sessionId && (
                         <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-success text-success hover:bg-success/10" onClick={() => openManual(lesson.sessionId!)}>
                           <Users className="w-3 h-3" /> Lançar Presença
                         </Button>
                       )}
-                      {lesson.lessonStatus === 'passada_sem_chamada' && (
-                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-muted-foreground" onClick={() => openWizard(lesson)}>
+                      {!isExam && lesson.lessonStatus === 'passada_sem_chamada' && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-7 text-xs gap-1 text-muted-foreground"
+                          onClick={() => openWizard(lesson)}
+                          disabled={hasOpenSession}
+                        >
                           <ClipboardList className="w-3 h-3" /> Lançar Retroativo
                         </Button>
                       )}
-                      {lesson.lessonStatus === 'realizada' && lesson.sessionId && (
+                      {!isExam && lesson.lessonStatus === 'realizada' && lesson.sessionId && (
                         <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground" onClick={() => openManual(lesson.sessionId!)}>
                           <Users className="w-3 h-3" /> Ver / Editar Presença
                         </Button>
-                      )}
-                      {lesson.lessonStatus === 'programada' && (
-                        <span className="text-xs text-muted-foreground px-2">
-                          {format(dateObj, "d 'de' MMM", { locale: ptBR })}
-                        </span>
                       )}
                     </div>
                   </div>
@@ -398,7 +483,7 @@ export default function Aulas() {
             )}
 
             <div className="px-5 py-2.5 bg-muted/30 border-t border-border text-xs text-muted-foreground">
-              Exibindo {paged.length} de {filtered.length} aulas
+              Exibindo {paged.length} de {filtered.length} registros · Ordem {sortAsc ? 'crescente' : 'decrescente'} por data
             </div>
           </>
         )}

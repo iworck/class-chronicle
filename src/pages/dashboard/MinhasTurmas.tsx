@@ -219,7 +219,7 @@ const MinhasTurmas = () => {
       supabase.from('lesson_plan_entries')
         .select('*')
         .eq('class_subject_id', cs.id)
-        .order('entry_date'),
+        .order('entry_date', { ascending: true }),
     ]);
 
     const allEntries = (lessonRes.data as any[]) || [];
@@ -749,65 +749,109 @@ const MinhasTurmas = () => {
                   </div>
                 </TabsContent>
 
-                {/* TAB: PLANO DE AULA (tabela completa) */}
+                {/* TAB: PLANO DE AULA (cronograma unificado: aulas + provas ordenadas por data) */}
                 <TabsContent value="plano" className="space-y-4 mt-4">
                   <div className="flex items-center justify-between">
-                    <p className="text-sm text-muted-foreground">Cronograma detalhado das aulas.</p>
+                    <p className="text-sm text-muted-foreground">Cronograma detalhado — aulas e provas organizados por data crescente.</p>
                     <Button size="sm" onClick={openNewLesson} disabled={selectedCS?.plan_status === 'APROVADO'}>
                       <Plus className="w-4 h-4 mr-2" /> Nova Aula
                     </Button>
                   </div>
 
-                  {lessonEntries.length === 0 ? (
-                    <div className="text-center py-8 text-muted-foreground">
-                      <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
-                      <p className="text-sm">Nenhuma aula cadastrada no plano.</p>
-                    </div>
-                  ) : (
-                    <div className="overflow-x-auto">
-                      <Table>
-                        <TableHeader>
-                          <TableRow>
-                            <TableHead className="w-16">Aula Nº</TableHead>
-                            <TableHead className="w-24">Dia</TableHead>
-                            <TableHead>Conteúdo</TableHead>
-                            <TableHead>Objetivo</TableHead>
-                            <TableHead>Atividades</TableHead>
-                            <TableHead>Recurso</TableHead>
-                            <TableHead>Metodologia</TableHead>
-                            <TableHead className="w-20 text-right">Ações</TableHead>
-                          </TableRow>
-                        </TableHeader>
-                        <TableBody>
-                          {lessonEntries.map(entry => (
-                            <TableRow key={entry.id}>
-                              <TableCell className="font-mono font-bold text-center">{entry.lesson_number || '—'}</TableCell>
-                              <TableCell className="font-mono text-xs whitespace-nowrap">
-                                {format(new Date(entry.entry_date + 'T12:00:00'), 'dd/MM/yyyy')}
-                              </TableCell>
-                              <TableCell className="text-xs">{entry.title || '—'}</TableCell>
-                              <TableCell className="text-xs">{entry.objective || '—'}</TableCell>
-                              <TableCell className="text-xs">{entry.activities || '—'}</TableCell>
-                              <TableCell className="text-xs">{entry.resource || '—'}</TableCell>
-                              <TableCell className="text-xs">{entry.methodology || '—'}</TableCell>
-                              <TableCell className="text-right">
-                                {selectedCS?.plan_status !== 'APROVADO' && (
-                                <div className="flex justify-end gap-1">
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => openEditLesson(entry)}>
-                                    <Edit className="w-3.5 h-3.5" />
-                                  </Button>
-                                  <Button variant="ghost" size="icon" className="h-7 w-7" onClick={() => handleDeleteEntry(entry.id!)}>
-                                    <Trash2 className="w-3.5 h-3.5 text-destructive" />
-                                  </Button>
-                                </div>
-                                )}
-                              </TableCell>
+                  {(() => {
+                    // Merge aulas + provas, sort by date ascending, auto-number
+                    const all = [
+                      ...lessonEntries.map(e => ({ ...e, isExam: false })),
+                      ...examEntries.map(e => ({ ...e, isExam: true })),
+                    ].sort((a, b) => a.entry_date.localeCompare(b.entry_date));
+
+                    if (all.length === 0) {
+                      return (
+                        <div className="text-center py-8 text-muted-foreground">
+                          <FileText className="w-10 h-10 mx-auto mb-3 opacity-30" />
+                          <p className="text-sm">Nenhuma aula ou prova cadastrada no plano.</p>
+                        </div>
+                      );
+                    }
+
+                    // Auto sequential numbering (exam rows count as entries)
+                    let counter = 0;
+                    return (
+                      <div className="overflow-x-auto">
+                        <Table>
+                          <TableHeader>
+                            <TableRow>
+                              <TableHead className="w-12 text-center">Nº</TableHead>
+                              <TableHead className="w-24">Dia</TableHead>
+                              <TableHead className="w-24">Tipo</TableHead>
+                              <TableHead>Conteúdo / Prova</TableHead>
+                              <TableHead>Objetivo</TableHead>
+                              <TableHead>Atividades</TableHead>
+                              <TableHead>Recurso</TableHead>
+                              <TableHead>Metodologia</TableHead>
+                              <TableHead className="w-20 text-right">Ações</TableHead>
                             </TableRow>
-                          ))}
-                        </TableBody>
-                      </Table>
-                    </div>
-                  )}
+                          </TableHeader>
+                          <TableBody>
+                            {all.map(entry => {
+                              counter += 1;
+                              const num = counter;
+                              return (
+                                <TableRow
+                                  key={entry.id}
+                                  className={entry.isExam ? 'bg-warning/5 border-l-2 border-l-warning/60' : ''}
+                                >
+                                  <TableCell className="font-mono font-bold text-center text-muted-foreground">
+                                    {num}
+                                  </TableCell>
+                                  <TableCell className="font-mono text-xs whitespace-nowrap">
+                                    {format(new Date(entry.entry_date + 'T12:00:00'), 'dd/MM/yyyy')}
+                                  </TableCell>
+                                  <TableCell>
+                                    {entry.isExam ? (
+                                      <Badge variant="outline" className="text-xs bg-warning/10 text-warning border-warning/40">
+                                        📋 {entry.exam_type?.replace('_', ' ') || 'Prova'}
+                                      </Badge>
+                                    ) : (
+                                      <Badge variant="outline" className="text-xs">
+                                        Aula {entry.lesson_number || num}
+                                      </Badge>
+                                    )}
+                                  </TableCell>
+                                  <TableCell className="text-xs font-medium">{entry.title || '—'}</TableCell>
+                                  <TableCell className="text-xs text-muted-foreground">{entry.isExam ? '—' : (entry.objective || '—')}</TableCell>
+                                  <TableCell className="text-xs text-muted-foreground">{entry.isExam ? '—' : (entry.activities || '—')}</TableCell>
+                                  <TableCell className="text-xs text-muted-foreground">{entry.isExam ? '—' : (entry.resource || '—')}</TableCell>
+                                  <TableCell className="text-xs text-muted-foreground">{entry.isExam ? '—' : (entry.methodology || '—')}</TableCell>
+                                  <TableCell className="text-right">
+                                    {selectedCS?.plan_status !== 'APROVADO' && (
+                                      <div className="flex justify-end gap-1">
+                                        <Button
+                                          variant="ghost" size="icon" className="h-7 w-7"
+                                          onClick={() => entry.isExam ? openEditExam(entry as any) : openEditLesson(entry as any)}
+                                        >
+                                          <Edit className="w-3.5 h-3.5" />
+                                        </Button>
+                                        <Button
+                                          variant="ghost" size="icon" className="h-7 w-7"
+                                          onClick={() => handleDeleteEntry(entry.id!)}
+                                        >
+                                          <Trash2 className="w-3.5 h-3.5 text-destructive" />
+                                        </Button>
+                                      </div>
+                                    )}
+                                  </TableCell>
+                                </TableRow>
+                              );
+                            })}
+                          </TableBody>
+                        </Table>
+                        <div className="px-4 py-2 bg-muted/30 border-t border-border text-xs text-muted-foreground">
+                          {all.filter(e => !e.isExam).length} aula(s) · {all.filter(e => e.isExam).length} prova(s) · {all.length} registros no total
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </TabsContent>
 
                 {/* TAB: Grade Template */}
@@ -1084,7 +1128,7 @@ const MinhasTurmas = () => {
                       </div>
                     )}
                     {orphanItems.length > 0 && (
-                      <p className="text-xs text-amber-600">
+                      <p className="text-xs text-warning">
                         ⚠ Itens sem pai e que não compõem a média: {orphanItems.map(t => t.name.trim().toUpperCase()).join(', ')}
                       </p>
                     )}
