@@ -1,8 +1,10 @@
-import { useEffect, lazy, Suspense } from 'react';
+import { useEffect, Suspense, useState } from 'react';
 import { useNavigate, Link, useLocation, Routes, Route } from 'react-router-dom';
 import ProfessorDashboard from '@/components/dashboard/ProfessorDashboard';
-import { useAuth } from '@/lib/auth';
+import { ImpersonateSubordinateModal } from '@/components/dashboard/ImpersonateSubordinateModal';
+import { useAuth, AppRole } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
+import { Badge } from '@/components/ui/badge';
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -28,8 +30,8 @@ import {
   X,
   ChevronDown,
   UserCog,
+  RefreshCw,
 } from 'lucide-react';
-import { useState } from 'react';
 import { cn } from '@/lib/utils';
 import Disciplinas from '@/pages/dashboard/Disciplinas';
 import Instituicoes from '@/pages/dashboard/Instituicoes';
@@ -47,11 +49,38 @@ import MinhasTurmas from '@/pages/dashboard/MinhasTurmas';
 import RevisaoCoordenador from '@/pages/dashboard/RevisaoCoordenador';
 import Aulas from '@/pages/dashboard/Aulas';
 
+// Hierarchy levels: lower index = more privilege
+const ROLE_HIERARCHY: AppRole[] = ['super_admin', 'admin', 'diretor', 'gerente', 'coordenador', 'professor', 'aluno'];
+
+function roleIndex(role: AppRole | null): number {
+  if (!role) return 999;
+  return ROLE_HIERARCHY.indexOf(role);
+}
+
+// Returns true if activeRole can access items visible to targetRole
+function canAccessRoleItems(activeRole: AppRole | null, targetRole: AppRole): boolean {
+  return roleIndex(activeRole) <= roleIndex(targetRole);
+}
+
+interface NavItem {
+  icon: React.ElementType;
+  label: string;
+  path: string;
+  roles: AppRole[];
+  // if set, clicking this item requires selecting a subordinate of this role first
+  requiresImpersonation?: AppRole;
+}
+
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, profile, roles, activeRole, setActiveRole, loading, signOut, hasRole } = useAuth();
+  const { user, profile, roles, activeRole, setActiveRole, impersonatedUser, setImpersonatedUser, loading, signOut, hasRole, hasRoleOrAbove } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
+  const [impersonateModal, setImpersonateModal] = useState<{ open: boolean; targetRole: AppRole; pendingPath: string }>({
+    open: false,
+    targetRole: 'professor',
+    pendingPath: '',
+  });
 
   useEffect(() => {
     if (!loading && !user) {
@@ -74,115 +103,121 @@ const Dashboard = () => {
     navigate('/');
   };
 
-  const navItems = [
+  // ─── Navigation items ───────────────────────────────────────────────────────
+  // "roles" here = which activeRoles can see this item natively
+  // Items that need impersonation will be added separately
+  const baseNavItems: NavItem[] = [
     { 
-      icon: LayoutDashboard, 
-      label: 'Visão Geral', 
-      path: '/dashboard',
-      roles: ['super_admin', 'admin', 'diretor', 'gerente', 'coordenador', 'professor'] 
+      icon: LayoutDashboard, label: 'Visão Geral', path: '/dashboard',
+      roles: ['super_admin', 'admin', 'diretor', 'gerente', 'coordenador', 'professor'],
     },
     { 
-      icon: Building2, 
-      label: 'Instituições', 
-      path: '/dashboard/instituicoes',
-      roles: ['super_admin'] 
+      icon: Building2, label: 'Instituições', path: '/dashboard/instituicoes',
+      roles: ['super_admin'],
     },
     { 
-      icon: Building2, 
-      label: 'Campi', 
-      path: '/dashboard/campi',
-      roles: ['super_admin', 'admin'] 
+      icon: Building2, label: 'Campi', path: '/dashboard/campi',
+      roles: ['super_admin', 'admin'],
     },
     { 
-      icon: Building2, 
-      label: 'Unidades', 
-      path: '/dashboard/unidades',
-      roles: ['super_admin', 'admin', 'diretor'] 
+      icon: Building2, label: 'Unidades', path: '/dashboard/unidades',
+      roles: ['super_admin', 'admin', 'diretor', 'gerente'],
     },
     { 
-      icon: GraduationCap, 
-      label: 'Cursos', 
-      path: '/dashboard/cursos',
-      roles: ['super_admin', 'admin', 'diretor', 'gerente'] 
+      icon: GraduationCap, label: 'Cursos', path: '/dashboard/cursos',
+      roles: ['super_admin', 'admin', 'diretor', 'gerente'],
     },
     { 
-      icon: BookOpen, 
-      label: 'Disciplinas', 
-      path: '/dashboard/disciplinas',
-      roles: ['admin', 'coordenador'] 
+      icon: BookOpen, label: 'Disciplinas', path: '/dashboard/disciplinas',
+      roles: ['admin', 'coordenador', 'gerente', 'diretor'],
     },
     { 
-      icon: GraduationCap, 
-      label: 'Matrizes', 
-      path: '/dashboard/matrizes',
-      roles: ['admin', 'super_admin', 'coordenador'] 
+      icon: GraduationCap, label: 'Matrizes', path: '/dashboard/matrizes',
+      roles: ['admin', 'super_admin', 'coordenador', 'gerente', 'diretor'],
     },
     { 
-      icon: Calendar, 
-      label: 'Turmas', 
-      path: '/dashboard/turmas',
-      roles: ['admin', 'coordenador'] 
+      icon: Calendar, label: 'Turmas', path: '/dashboard/turmas',
+      roles: ['admin', 'coordenador', 'gerente', 'diretor'],
     },
     { 
-      icon: UserCheck, 
-      label: 'Alunos', 
-      path: '/dashboard/alunos',
-      roles: ['admin', 'coordenador', 'gerente'] 
+      icon: UserCheck, label: 'Alunos', path: '/dashboard/alunos',
+      roles: ['admin', 'coordenador', 'gerente', 'diretor'],
     },
     { 
-      icon: Calendar, 
-      label: 'Minhas Turmas',
-      path: '/dashboard/minhas-turmas',
-      roles: ['professor'] 
+      icon: UserCheck, label: 'Revisão', path: '/dashboard/revisao',
+      roles: ['coordenador', 'gerente', 'diretor'],
     },
     { 
-      icon: CalendarCheck, 
-      label: 'Aulas',
-      path: '/dashboard/aulas',
-      roles: ['professor'] 
+      icon: FileText, label: 'Boletim', path: '/dashboard/boletim',
+      roles: ['professor', 'admin', 'coordenador', 'super_admin', 'gerente', 'diretor'],
     },
     { 
-      icon: UserCheck, 
-      label: 'Revisão',
-      path: '/dashboard/revisao',
-      roles: ['coordenador'] 
+      icon: FileText, label: 'Relatórios', path: '/dashboard/relatorios',
+      roles: ['admin', 'diretor', 'coordenador', 'gerente'],
     },
     { 
-      icon: FileText, 
-      label: 'Boletim',
-      path: '/dashboard/boletim',
-      roles: ['professor', 'admin', 'coordenador', 'super_admin'] 
+      icon: Settings, label: 'Configurações', path: '/dashboard/configuracoes',
+      roles: ['super_admin', 'admin', 'coordenador'],
     },
     { 
-      icon: FileText, 
-      label: 'Relatórios', 
-      path: '/dashboard/relatorios',
-      roles: ['admin', 'diretor', 'coordenador'] 
+      icon: Users, label: 'Usuários', path: '/dashboard/usuarios',
+      roles: ['super_admin', 'admin'],
     },
     { 
-      icon: Settings, 
-      label: 'Configurações', 
-      path: '/dashboard/configuracoes',
-      roles: ['super_admin', 'admin'] 
-    },
-    { 
-      icon: Users, 
-      label: 'Usuários', 
-      path: '/dashboard/usuarios',
-      roles: ['super_admin', 'admin'] 
-    },
-    { 
-      icon: Shield, 
-      label: 'Permissões', 
-      path: '/dashboard/permissoes',
-      roles: ['super_admin', 'admin'] 
+      icon: Shield, label: 'Permissões', path: '/dashboard/permissoes',
+      roles: ['super_admin', 'admin'],
     },
   ];
 
-  const visibleNavItems = navItems.filter(item => 
-    item.roles.some(role => hasRole(role as any))
+  // Items that require impersonation (only shown for superior roles, not when already that role)
+  const impersonationNavItems: NavItem[] = [
+    {
+      icon: Calendar,
+      label: 'Minhas Turmas',
+      path: '/dashboard/minhas-turmas',
+      roles: ['professor'],
+      requiresImpersonation: 'professor',
+    },
+    {
+      icon: CalendarCheck,
+      label: 'Aulas',
+      path: '/dashboard/aulas',
+      roles: ['professor'],
+      requiresImpersonation: 'professor',
+    },
+  ];
+
+  const visibleNavItems = baseNavItems.filter(item =>
+    item.roles.some(role => hasRole(role as AppRole))
   );
 
+  // For superior roles: show professor/coordenador items with impersonation gate
+  const visibleImpersonationItems: NavItem[] = [];
+
+  if (activeRole && !hasRole('professor') && canAccessRoleItems(activeRole, 'professor')) {
+    // Superior roles (gerente, coordenador, diretor, admin, super_admin) see professor-specific items
+    // These always require impersonation
+    impersonationNavItems.forEach(item => {
+      visibleImpersonationItems.push(item);
+    });
+  } else if (hasRole('professor')) {
+    // Pure professor sees them directly
+    impersonationNavItems.forEach(item => {
+      visibleNavItems.push({ ...item, requiresImpersonation: undefined });
+    });
+  }
+
+  // ─── Click handler for nav items that require impersonation ─────────────────
+  function handleNavClick(item: NavItem, e: React.MouseEvent) {
+    if (item.requiresImpersonation && !hasRole(item.requiresImpersonation)) {
+      e.preventDefault();
+      setImpersonateModal({ open: true, targetRole: item.requiresImpersonation, pendingPath: item.path });
+    } else {
+      setSidebarOpen(false);
+    }
+  }
+
+  // ─── Role labels ─────────────────────────────────────────────────────────────
   const roleLabels: Record<string, string> = {
     super_admin: 'Super Administrador',
     admin: 'Administrador',
@@ -195,9 +230,8 @@ const Dashboard = () => {
 
   const getRoleLabel = (role?: string | null) => {
     if (role) return roleLabels[role] ?? 'Usuário';
-    // fallback priority
     const priority = ['super_admin', 'admin', 'diretor', 'gerente', 'coordenador', 'professor', 'aluno'];
-    const found = priority.find(r => roles.includes(r as any));
+    const found = priority.find(r => roles.includes(r as AppRole));
     return found ? roleLabels[found] : 'Usuário';
   };
 
@@ -237,14 +271,16 @@ const Dashboard = () => {
         </div>
 
         {/* User info */}
-        <div className="px-4 py-3 mx-4 rounded-xl bg-sidebar-accent">
+        <div className="px-4 py-3 mx-4 rounded-xl bg-sidebar-accent space-y-1">
           <p className="font-medium text-sidebar-foreground truncate text-sm">
             {profile?.name || user.email}
           </p>
+
+          {/* Role switcher */}
           {hasMultipleRoles ? (
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <button className="flex items-center gap-1 mt-1 text-xs text-sidebar-primary hover:text-sidebar-primary/80 transition-colors group">
+                <button className="flex items-center gap-1 text-xs text-sidebar-primary hover:text-sidebar-primary/80 transition-colors group">
                   <UserCog className="w-3 h-3" />
                   <span className="font-medium">{getRoleLabel(activeRole)}</span>
                   <ChevronDown className="w-3 h-3 group-data-[state=open]:rotate-180 transition-transform" />
@@ -270,9 +306,26 @@ const Dashboard = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           ) : (
-            <p className="text-xs text-sidebar-foreground/60 mt-0.5">
+            <p className="text-xs text-sidebar-foreground/60">
               {getRoleLabel(activeRole)}
             </p>
+          )}
+
+          {/* Impersonation indicator */}
+          {impersonatedUser && (
+            <div className="flex items-center justify-between pt-1 border-t border-sidebar-primary/20">
+              <div className="min-w-0">
+                <p className="text-[10px] text-sidebar-foreground/50 uppercase tracking-wide">Emulando</p>
+                <p className="text-xs font-medium text-primary truncate">{impersonatedUser.name}</p>
+              </div>
+              <button
+                onClick={() => setImpersonatedUser(null)}
+                className="ml-2 text-sidebar-foreground/40 hover:text-sidebar-foreground/80 shrink-0"
+                title="Cancelar emulação"
+              >
+                <X className="w-3.5 h-3.5" />
+              </button>
+            </div>
           )}
         </div>
 
@@ -282,7 +335,7 @@ const Dashboard = () => {
             <Link
               key={item.path}
               to={item.path}
-              onClick={() => setSidebarOpen(false)}
+              onClick={(e) => handleNavClick(item, e)}
               className={cn(
                 "nav-item",
                 location.pathname === item.path && "active"
@@ -292,6 +345,47 @@ const Dashboard = () => {
               {item.label}
             </Link>
           ))}
+
+          {/* Impersonation items — shown for superior roles */}
+          {visibleImpersonationItems.length > 0 && (
+            <>
+              <div className="pt-3 pb-1">
+                <p className="px-3 text-[10px] font-semibold uppercase tracking-wider text-sidebar-foreground/40">
+                  Funções de Professor
+                </p>
+              </div>
+              {visibleImpersonationItems.map((item) => (
+                <button
+                  key={item.path}
+                  onClick={(e) => {
+                    // Check if we already have the right impersonation active
+                    if (impersonatedUser?.role === item.requiresImpersonation) {
+                      navigate(item.path);
+                      setSidebarOpen(false);
+                    } else {
+                      setImpersonateModal({
+                        open: true,
+                        targetRole: item.requiresImpersonation!,
+                        pendingPath: item.path,
+                      });
+                    }
+                  }}
+                  className={cn(
+                    "nav-item w-full",
+                    location.pathname === item.path && "active"
+                  )}
+                >
+                  <item.icon className="w-5 h-5" />
+                  {item.label}
+                  {item.requiresImpersonation && (
+                    <Badge variant="outline" className="ml-auto text-[10px] py-0 px-1.5 border-sidebar-primary/30 text-sidebar-primary/70">
+                      Prof
+                    </Badge>
+                  )}
+                </button>
+              ))}
+            </>
+          )}
         </nav>
 
         {/* Sign out */}
@@ -324,13 +418,30 @@ const Dashboard = () => {
               <>
                 <ChevronRight className="w-4 h-4" />
                 <span className="text-foreground">
-                  {visibleNavItems.find(item => item.path === location.pathname)?.label || 'Página'}
+                  {[...visibleNavItems, ...visibleImpersonationItems]
+                    .find(item => item.path === location.pathname)?.label || 'Página'}
                 </span>
               </>
             )}
           </div>
 
           <div className="flex items-center gap-3">
+            {/* Impersonation banner in header */}
+            {impersonatedUser && (
+              <div className="flex items-center gap-2 px-3 py-1.5 rounded-lg bg-warning/10 border border-warning/20 text-warning">
+                <RefreshCw className="w-3.5 h-3.5" />
+                <span className="text-xs font-medium hidden sm:inline">
+                  Emulando: <strong>{impersonatedUser.name}</strong>
+                </span>
+                <button
+                  onClick={() => setImpersonatedUser(null)}
+                  className="hover:opacity-70 transition-opacity"
+                  title="Encerrar emulação"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
             <Button 
               variant="outline" 
               size="sm"
@@ -366,15 +477,26 @@ const Dashboard = () => {
           </Suspense>
         </div>
       </main>
+
+      {/* Impersonate modal */}
+      <ImpersonateSubordinateModal
+        open={impersonateModal.open}
+        onOpenChange={(open) => setImpersonateModal(prev => ({ ...prev, open }))}
+        targetRole={impersonateModal.targetRole}
+        onSelect={(impersonated) => {
+          setImpersonatedUser(impersonated);
+          navigate(impersonateModal.pendingPath);
+          setSidebarOpen(false);
+        }}
+      />
     </div>
   );
 };
 
 function DashboardHome() {
-  const { profile, hasRole } = useAuth();
+  const { profile, hasRole, hasRoleOrAbove } = useAuth();
 
-  // Professor gets full real-data dashboard
-  if (hasRole('professor') && !hasRole('admin') && !hasRole('coordenador') && !hasRole('super_admin')) {
+  if (hasRole('professor')) {
     return <ProfessorDashboard />;
   }
 
@@ -389,7 +511,7 @@ function DashboardHome() {
         </p>
       </div>
 
-      {(hasRole('admin') || hasRole('coordenador')) && (
+      {hasRoleOrAbove('coordenador') && (
         <div className="bg-card rounded-xl border border-border p-6 shadow-card">
           <h2 className="text-xl font-semibold text-foreground mb-4">
             Gestão
@@ -425,9 +547,6 @@ function DashboardHome() {
     </div>
   );
 }
-
-
-
 
 function QuickAction({ 
   icon: Icon, 
