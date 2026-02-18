@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import {
   GraduationCap, LogOut, BookOpen, CheckCircle2, XCircle, Clock,
-  TrendingUp, CalendarCheck, Award, Loader2, AlertTriangle, ListChecks,
+  TrendingUp, CalendarCheck, Award, Loader2, AlertTriangle, ListChecks, ShieldAlert,
 } from 'lucide-react';
 
 interface EnrollmentData {
@@ -292,8 +292,23 @@ export default function AlunoDashboard() {
               enrollments.map(e => {
                 const avg = calcAverage(e.grades);
                 const st = STATUS_MAP[e.status] || STATUS_MAP.CURSANDO;
+
+                // Risk indicator calculation
+                const subjectSessions = sessionDetails.filter(s => s.subject_id === e.subject_id);
+                const totalSessions = subjectSessions.length;
+                const maxAbsencesAllowed = totalSessions > 0
+                  ? Math.floor(totalSessions * (1 - e.subject.min_attendance_pct / 100))
+                  : null;
+                const absencesSoFar = totalSessions > 0
+                  ? subjectSessions.filter(s => s.final_status === 'FALTA').length
+                  : null;
+                const absencesRemaining = (maxAbsencesAllowed !== null && absencesSoFar !== null)
+                  ? Math.max(0, maxAbsencesAllowed - absencesSoFar)
+                  : null;
+                const isAttRisk = e.attendance_pct !== null && e.attendance_pct < e.subject.min_attendance_pct;
+
                 return (
-                  <Card key={e.id} className="border-border">
+                  <Card key={e.id} className={`border-border ${isAttRisk ? 'border-destructive/40' : ''}`}>
                     <CardContent className="pt-4 pb-4">
                       <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div className="min-w-0">
@@ -304,6 +319,7 @@ export default function AlunoDashboard() {
                           {st.icon}{st.label}
                         </span>
                       </div>
+
                       {(avg !== null || e.attendance_pct !== null) && (
                         <div className="mt-3 grid grid-cols-2 gap-3">
                           {avg !== null && (
@@ -324,6 +340,26 @@ export default function AlunoDashboard() {
                               <Progress value={e.attendance_pct} className="h-1.5 mt-1" />
                               <p className="text-xs text-muted-foreground">Mín: {e.subject.min_attendance_pct}%</p>
                             </div>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Risk indicator */}
+                      {absencesRemaining !== null && totalSessions > 0 && (
+                        <div className={`mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
+                          absencesRemaining === 0
+                            ? 'bg-destructive/10 text-destructive border border-destructive/20'
+                            : absencesRemaining <= 2
+                            ? 'bg-orange-500/10 text-orange-700 dark:text-orange-400 border border-orange-500/20'
+                            : 'bg-muted text-muted-foreground border border-border'
+                        }`}>
+                          <ShieldAlert className="w-4 h-4 shrink-0" />
+                          {absencesRemaining === 0 ? (
+                            <span className="font-medium">Nenhuma falta restante — risco de reprovação por frequência!</span>
+                          ) : (
+                            <span>
+                              Pode faltar mais <strong>{absencesRemaining} {absencesRemaining === 1 ? 'vez' : 'vezes'}</strong> sem ser reprovado por frequência.
+                            </span>
                           )}
                         </div>
                       )}
