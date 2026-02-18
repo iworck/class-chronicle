@@ -671,7 +671,6 @@ const Boletim = () => {
   function openEditDialog(enrollment: EnrollmentWithStudent) {
     setEditEnrollmentId(enrollment.id);
     setEditStudentName(enrollment.student?.name || '');
-    setDeletedGradeIds([]);
 
     const existingGrades = getStudentGrades(enrollment.id);
 
@@ -691,11 +690,11 @@ const Boletim = () => {
         if (existing) {
           return {
             id: existing.id,
-            grade_type: existing.grade_type,
-            grade_category: existing.grade_category || t.category,
+            grade_type: t.name, // Always use template name (canonical casing)
+            grade_category: t.category, // Always use template category
             grade_value: String(existing.grade_value),
-            weight: String(existing.weight || t.weight),
-            counts_in_final: existing.counts_in_final !== false,
+            weight: String(t.weight), // Always use template weight
+            counts_in_final: t.counts_in_final, // Always use template flag
             observations: existing.observations || '',
           };
         }
@@ -709,22 +708,14 @@ const Boletim = () => {
         };
       });
 
+      // Detect orphan grades (exist in DB but not in template) and auto-mark for deletion
       const leafNames = new Set(leafItems.map(t => t.name.toUpperCase()));
-      const extras = existingGrades.filter(g => !leafNames.has(g.grade_type.toUpperCase()));
-      for (const g of extras) {
-        rows.push({
-          id: g.id,
-          grade_type: g.grade_type,
-          grade_category: g.grade_category || 'prova',
-          grade_value: String(g.grade_value),
-          weight: String(g.weight || 1),
-          counts_in_final: g.counts_in_final !== false,
-          observations: g.observations || '',
-        });
-      }
-
+      const orphans = existingGrades.filter(g => !leafNames.has(g.grade_type.toUpperCase()));
+      const orphanIds = orphans.filter(g => g.id).map(g => g.id);
+      setDeletedGradeIds(orphanIds);
       setEditRows(rows);
     } else if (existingGrades.length > 0) {
+      setDeletedGradeIds([]);
       setEditRows(existingGrades.map(g => ({
         id: g.id,
         grade_type: g.grade_type,
@@ -735,6 +726,7 @@ const Boletim = () => {
         observations: g.observations || '',
       })));
     } else {
+      setDeletedGradeIds([]);
       setEditRows([{ grade_type: 'N1', grade_category: 'prova', grade_value: '', weight: '1', counts_in_final: true, observations: '' }]);
     }
     setEditDialog(true);
@@ -1334,8 +1326,22 @@ const Boletim = () => {
             {templateItems.length > 0 && (
               <div className="p-2 rounded border border-primary/20 bg-primary/5">
                 <p className="text-xs text-muted-foreground">
-                  Notas pré-configuradas pelo modelo da turma. Itens com <strong>"Compõe Média"</strong> desativado são critérios de composição.
+                  Notas pré-configuradas pelo modelo da turma. Pesos, categorias e flags são herdados automaticamente do modelo.
                 </p>
+              </div>
+            )}
+
+            {templateItems.length > 0 && deletedGradeIds.length > 0 && (
+              <div className="p-2 rounded border border-amber-500/30 bg-amber-500/10 flex items-start gap-2">
+                <Info className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                <div className="flex-1">
+                  <p className="text-xs text-amber-700 font-medium">
+                    {deletedGradeIds.length} registro(s) fora do padrão do modelo detectado(s)
+                  </p>
+                  <p className="text-xs text-amber-600 mt-0.5">
+                    Esses registros serão excluídos ao salvar para sincronizar com o modelo atual da turma.
+                  </p>
+                </div>
               </div>
             )}
 
@@ -1349,15 +1355,20 @@ const Boletim = () => {
               <span></span>
             </div>
 
-            {editRows.map((row, idx) => (
+            {editRows.map((row, idx) => {
+              // When template exists, these rows are locked to template spec
+              const lockedByTemplate = templateItems.length > 0;
+              return (
               <div key={idx} className={`grid grid-cols-[1fr_100px_70px_70px_80px_1fr_40px] gap-2 items-center p-1.5 rounded-md ${row.counts_in_final ? 'bg-primary/5 border border-primary/20' : 'bg-muted/30 border border-border'}`}>
                 <Input
                   placeholder="N1, T1..."
                   value={row.grade_type}
                   onChange={e => updateGradeRow(idx, 'grade_type', e.target.value)}
                   className="text-sm font-mono"
+                  disabled={lockedByTemplate}
+                  title={lockedByTemplate ? 'Tipo definido pelo modelo da turma' : undefined}
                 />
-                <Select value={row.grade_category} onValueChange={v => updateGradeRow(idx, 'grade_category', v)}>
+                <Select value={row.grade_category} onValueChange={v => updateGradeRow(idx, 'grade_category', v)} disabled={lockedByTemplate}>
                   <SelectTrigger className="text-xs">
                     <SelectValue />
                   </SelectTrigger>
@@ -1385,11 +1396,14 @@ const Boletim = () => {
                   value={row.weight}
                   onChange={e => updateGradeRow(idx, 'weight', e.target.value)}
                   className="text-sm"
+                  disabled={lockedByTemplate}
+                  title={lockedByTemplate ? 'Peso definido pelo modelo da turma' : undefined}
                 />
                 <div className="flex justify-center">
                   <Switch
                     checked={row.counts_in_final}
                     onCheckedChange={v => updateGradeRow(idx, 'counts_in_final', v)}
+                    disabled={lockedByTemplate}
                   />
                 </div>
                 <Input
@@ -1398,16 +1412,25 @@ const Boletim = () => {
                   onChange={e => updateGradeRow(idx, 'observations', e.target.value)}
                   className="text-sm"
                 />
-                <Button variant="ghost" size="icon" onClick={() => removeGradeRow(idx)} className="shrink-0">
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  onClick={() => removeGradeRow(idx)}
+                  className="shrink-0"
+                  disabled={lockedByTemplate}
+                  title={lockedByTemplate ? 'Use o lançamento em lote para editar notas em massa' : 'Remover nota'}
+                >
                   <Trash2 className="w-4 h-4 text-destructive" />
                 </Button>
               </div>
-            ))}
+            )})}
 
-            <Button variant="outline" size="sm" onClick={addGradeRow} className="mt-2">
-              <Plus className="w-4 h-4 mr-2" />
-              Adicionar Nota
-            </Button>
+            {!templateItems.length && (
+              <Button variant="outline" size="sm" onClick={addGradeRow} className="mt-2">
+                <Plus className="w-4 h-4 mr-2" />
+                Adicionar Nota
+              </Button>
+            )}
 
             {/* Preview with formula */}
             {editRows.some(r => r.grade_value.trim() !== '') && (() => {
