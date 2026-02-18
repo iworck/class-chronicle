@@ -253,9 +253,9 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
               </div>
             )}
 
-            {/* Session ID (compacto) */}
+            {/* Session ID curto (6 chars do UUID sem hífens) */}
             <div className="rounded-lg bg-muted/40 border border-border px-3 py-2 text-xs font-mono text-muted-foreground truncate mb-4">
-              ID: {session.id}
+              ID da Aula: <span className="font-bold text-foreground tracking-widest">{session.id.replace(/-/g, '').slice(0, 6).toUpperCase()}</span>
             </div>
 
             {/* Encerrar */}
