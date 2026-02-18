@@ -3,6 +3,12 @@ import { useNavigate, Link, useLocation, Routes, Route } from 'react-router-dom'
 import ProfessorDashboard from '@/components/dashboard/ProfessorDashboard';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu';
 import { 
   GraduationCap, 
   LayoutDashboard, 
@@ -20,6 +26,8 @@ import {
   Loader2,
   Menu,
   X,
+  ChevronDown,
+  UserCog,
 } from 'lucide-react';
 import { useState } from 'react';
 import { cn } from '@/lib/utils';
@@ -42,7 +50,7 @@ import Aulas from '@/pages/dashboard/Aulas';
 const Dashboard = () => {
   const navigate = useNavigate();
   const location = useLocation();
-  const { user, profile, roles, loading, signOut, hasRole } = useAuth();
+  const { user, profile, roles, activeRole, setActiveRole, loading, signOut, hasRole } = useAuth();
   const [sidebarOpen, setSidebarOpen] = useState(false);
 
   useEffect(() => {
@@ -175,15 +183,25 @@ const Dashboard = () => {
     item.roles.some(role => hasRole(role as any))
   );
 
-  const getRoleLabel = () => {
-    if (hasRole('super_admin')) return 'Super Administrador';
-    if (hasRole('admin')) return 'Administrador';
-    if (hasRole('diretor')) return 'Diretor';
-    if (hasRole('gerente')) return 'Gerente';
-    if (hasRole('coordenador')) return 'Coordenador';
-    if (hasRole('professor')) return 'Professor';
-    return 'Usuário';
+  const roleLabels: Record<string, string> = {
+    super_admin: 'Super Administrador',
+    admin: 'Administrador',
+    diretor: 'Diretor',
+    gerente: 'Gerente',
+    coordenador: 'Coordenador',
+    professor: 'Professor',
+    aluno: 'Aluno',
   };
+
+  const getRoleLabel = (role?: string | null) => {
+    if (role) return roleLabels[role] ?? 'Usuário';
+    // fallback priority
+    const priority = ['super_admin', 'admin', 'diretor', 'gerente', 'coordenador', 'professor', 'aluno'];
+    const found = priority.find(r => roles.includes(r as any));
+    return found ? roleLabels[found] : 'Usuário';
+  };
+
+  const hasMultipleRoles = roles.length > 1;
 
   return (
     <div className="min-h-screen bg-background flex">
@@ -219,13 +237,43 @@ const Dashboard = () => {
         </div>
 
         {/* User info */}
-        <div className="px-6 py-4 mx-4 rounded-xl bg-sidebar-accent">
-          <p className="font-medium text-sidebar-foreground truncate">
+        <div className="px-4 py-3 mx-4 rounded-xl bg-sidebar-accent">
+          <p className="font-medium text-sidebar-foreground truncate text-sm">
             {profile?.name || user.email}
           </p>
-          <p className="text-sm text-sidebar-foreground/60">
-            {getRoleLabel()}
-          </p>
+          {hasMultipleRoles ? (
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button className="flex items-center gap-1 mt-1 text-xs text-sidebar-primary hover:text-sidebar-primary/80 transition-colors group">
+                  <UserCog className="w-3 h-3" />
+                  <span className="font-medium">{getRoleLabel(activeRole)}</span>
+                  <ChevronDown className="w-3 h-3 group-data-[state=open]:rotate-180 transition-transform" />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="start" className="w-52">
+                {roles.map(role => (
+                  <DropdownMenuItem
+                    key={role}
+                    onClick={() => {
+                      setActiveRole(role);
+                      navigate('/dashboard');
+                    }}
+                    className={cn(
+                      "cursor-pointer",
+                      activeRole === role && "bg-primary/10 text-primary font-medium"
+                    )}
+                  >
+                    {activeRole === role && <span className="mr-2">✓</span>}
+                    {roleLabels[role] ?? role}
+                  </DropdownMenuItem>
+                ))}
+              </DropdownMenuContent>
+            </DropdownMenu>
+          ) : (
+            <p className="text-xs text-sidebar-foreground/60 mt-0.5">
+              {getRoleLabel(activeRole)}
+            </p>
+          )}
         </div>
 
         {/* Navigation */}

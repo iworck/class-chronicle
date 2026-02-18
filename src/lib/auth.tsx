@@ -18,6 +18,8 @@ interface AuthContextType {
   session: Session | null;
   profile: Profile | null;
   roles: AppRole[];
+  activeRole: AppRole | null;
+  setActiveRole: (role: AppRole) => void;
   loading: boolean;
   signIn: (email: string, password: string) => Promise<{ error: Error | null }>;
   signUp: (email: string, password: string, name: string) => Promise<{ error: Error | null }>;
@@ -33,6 +35,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [profile, setProfile] = useState<Profile | null>(null);
   const [roles, setRoles] = useState<AppRole[]>([]);
+  const [activeRole, setActiveRole] = useState<AppRole | null>(null);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -96,7 +99,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         .eq('user_id', userId);
 
       if (rolesData) {
-        setRoles(rolesData.map(r => r.role as AppRole));
+        const fetchedRoles = rolesData.map(r => r.role as AppRole);
+        setRoles(fetchedRoles);
+        // Set activeRole to first role by priority if not already set
+        setActiveRole(prev => {
+          if (prev && fetchedRoles.includes(prev)) return prev;
+          const priority: AppRole[] = ['super_admin', 'admin', 'diretor', 'gerente', 'coordenador', 'professor', 'aluno'];
+          return priority.find(r => fetchedRoles.includes(r)) ?? fetchedRoles[0] ?? null;
+        });
       }
     } catch (error) {
       console.error('Error fetching user data:', error);
@@ -136,6 +146,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }
 
   function hasRole(role: AppRole) {
+    // When activeRole is set, only report that single role as active
+    if (activeRole) return activeRole === role;
     return roles.includes(role);
   }
 
@@ -149,6 +161,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       session,
       profile,
       roles,
+      activeRole,
+      setActiveRole,
       loading,
       signIn,
       signUp,
