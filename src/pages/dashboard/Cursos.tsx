@@ -203,43 +203,62 @@ const Cursos = () => {
     return allUnits.filter(u => u.campus_id === formCampusId);
   }, [allUnits, formCampusId]);
 
-  // Director profiles: directors registered in the selected campus
+  // Helper: resolve set of campus IDs based on current form selections
+  const resolvedCampusIds = useMemo(() => {
+    if (formCampusId) return new Set([formCampusId]);
+    if (formInstitutionId) {
+      // Institution selected but no campus yet → use all campuses of the institution
+      return new Set(allCampuses.filter(c => c.institution_id === formInstitutionId).map(c => c.id));
+    }
+    return null; // No scope → show all
+  }, [formCampusId, formInstitutionId, allCampuses]);
+
+  // Director profiles: ONLY role='diretor', scoped by campus/institution when selected
   const directorProfiles = useMemo(() => {
     const directorIds = new Set(
       userRoles.filter(r => r.role === 'diretor').map(r => r.user_id)
     );
 
-    if (!formCampusId) return profiles.filter(p => directorIds.has(p.id));
-
-    // Get users linked to the selected campus
-    const campusUserIds = new Set(
-      allUserCampuses.filter(uc => uc.campus_id === formCampusId).map(uc => uc.user_id)
-    );
-    // Also include the campus director_user_id
-    const selectedCampus = allCampuses.find(c => c.id === formCampusId);
-    if (selectedCampus?.director_user_id) {
-      campusUserIds.add(selectedCampus.director_user_id);
+    if (!resolvedCampusIds) {
+      // No institution/campus selected → list all directors
+      return profiles.filter(p => directorIds.has(p.id));
     }
 
-    return profiles.filter(p => directorIds.has(p.id) && campusUserIds.has(p.id));
-  }, [profiles, userRoles, formCampusId, allUserCampuses, allCampuses]);
+    // Users linked to any of the resolved campuses (via user_campuses)
+    const scopedUserIds = new Set(
+      allUserCampuses.filter(uc => resolvedCampusIds.has(uc.campus_id)).map(uc => uc.user_id)
+    );
+    // Also include director_user_id directly set on campus records
+    allCampuses
+      .filter(c => resolvedCampusIds.has(c.id) && c.director_user_id)
+      .forEach(c => scopedUserIds.add(c.director_user_id!));
 
-  // Coordinator profiles: coordinators + gerentes registered in the selected campus
+    return profiles.filter(p => directorIds.has(p.id) && scopedUserIds.has(p.id));
+  }, [profiles, userRoles, resolvedCampusIds, allUserCampuses, allCampuses]);
+
+  // Coordinator profiles: roles 'coordenador' AND 'gerente', scoped by campus/institution
+  // Gerente assumes coordinator responsibility when no coordinator is assigned
   const coordinatorProfiles = useMemo(() => {
-    const allowedRoles = new Set(['coordenador', 'gerente']);
     const allowedIds = new Set(
-      userRoles.filter(r => allowedRoles.has(r.role)).map(r => r.user_id)
+      userRoles.filter(r => r.role === 'coordenador' || r.role === 'gerente').map(r => r.user_id)
     );
 
-    if (!formCampusId) return profiles.filter(p => allowedIds.has(p.id));
+    if (!resolvedCampusIds) {
+      // No institution/campus selected → list all coordinators + gerentes
+      return profiles.filter(p => allowedIds.has(p.id));
+    }
 
-    // Get users linked to the selected campus
-    const campusUserIds = new Set(
-      allUserCampuses.filter(uc => uc.campus_id === formCampusId).map(uc => uc.user_id)
+    // Users linked to any of the resolved campuses
+    const scopedUserIds = new Set(
+      allUserCampuses.filter(uc => resolvedCampusIds.has(uc.campus_id)).map(uc => uc.user_id)
     );
+    // Also include manager_user_id from units belonging to the selected campuses
+    allUnits
+      .filter(u => resolvedCampusIds.has(u.campus_id) && u.manager_user_id)
+      .forEach(u => scopedUserIds.add(u.manager_user_id!));
 
-    return profiles.filter(p => allowedIds.has(p.id) && campusUserIds.has(p.id));
-  }, [profiles, userRoles, formCampusId, allUserCampuses]);
+    return profiles.filter(p => allowedIds.has(p.id) && scopedUserIds.has(p.id));
+  }, [profiles, userRoles, resolvedCampusIds, allUserCampuses, allUnits]);
 
   // Helper maps for table display
   const unitMap = Object.fromEntries(allUnits.map(u => [u.id, u]));
@@ -596,8 +615,10 @@ const Cursos = () => {
               />
               <p className="text-xs text-muted-foreground mt-1">
                 {formCampusId
-                  ? 'Apenas diretores vinculados ao campus selecionado.'
-                  : 'Selecione um campus para filtrar os diretores disponíveis.'}
+                  ? `Diretores vinculados ao campus selecionado (${directorProfiles.length} disponível${directorProfiles.length !== 1 ? 'is' : ''}).`
+                  : formInstitutionId
+                    ? `Diretores da instituição selecionada (${directorProfiles.length} disponível${directorProfiles.length !== 1 ? 'is' : ''}).`
+                    : 'Listando todos os diretores cadastrados. Selecione uma instituição/campus para filtrar.'}
               </p>
             </div>
 
@@ -607,13 +628,15 @@ const Cursos = () => {
                 value={formCoordinatorId}
                 onValueChange={setFormCoordinatorId}
                 profiles={coordinatorProfiles}
-                placeholder="Buscar e selecionar coordenador..."
+                placeholder="Buscar e selecionar coordenador ou gerente..."
                 label="coordenador"
               />
               <p className="text-xs text-muted-foreground mt-1">
                 {formCampusId
-                  ? 'Coordenadores e Gerentes vinculados ao campus selecionado. Se não houver coordenador, o gerente assume.'
-                  : 'Selecione um campus para filtrar os coordenadores disponíveis.'}
+                  ? `Coordenadores e Gerentes vinculados ao campus selecionado (${coordinatorProfiles.length} disponível${coordinatorProfiles.length !== 1 ? 'is' : ''}). Gerente assume se não houver coordenador.`
+                  : formInstitutionId
+                    ? `Coordenadores e Gerentes da instituição selecionada (${coordinatorProfiles.length} disponível${coordinatorProfiles.length !== 1 ? 'is' : ''}).`
+                    : 'Listando todos os coordenadores e gerentes. Selecione uma instituição/campus para filtrar.'}
               </p>
             </div>
 
