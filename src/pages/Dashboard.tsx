@@ -1,5 +1,6 @@
 import { useEffect, lazy, Suspense } from 'react';
 import { useNavigate, Link, useLocation, Routes, Route } from 'react-router-dom';
+import ProfessorDashboard from '@/components/dashboard/ProfessorDashboard';
 import { useAuth } from '@/lib/auth';
 import { Button } from '@/components/ui/button';
 import { 
@@ -315,6 +316,11 @@ const Dashboard = () => {
 function DashboardHome() {
   const { profile, hasRole } = useAuth();
 
+  // Professor gets full real-data dashboard
+  if (hasRole('professor') && !hasRole('admin') && !hasRole('coordenador') && !hasRole('super_admin')) {
+    return <ProfessorDashboard />;
+  }
+
   return (
     <div className="max-w-6xl mx-auto animate-fade-in">
       <div className="mb-8">
@@ -325,57 +331,6 @@ function DashboardHome() {
           Bem-vindo ao painel de controle de frequência.
         </p>
       </div>
-
-      {/* Quick stats */}
-      <div className="grid sm:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
-        <StatCard 
-          label="Aulas Hoje" 
-          value="5" 
-          trend="+2 desde ontem"
-          color="primary"
-        />
-        <StatCard 
-          label="Presenças" 
-          value="156" 
-          trend="89% de frequência"
-          color="success"
-        />
-        <StatCard 
-          label="Faltas" 
-          value="19" 
-          trend="11% de ausência"
-          color="destructive"
-        />
-        <StatCard 
-          label="Pendentes" 
-          value="3" 
-          trend="Aguardando auditoria"
-          color="warning"
-        />
-      </div>
-
-      {/* Role-specific content */}
-      {hasRole('professor') && (
-        <div className="bg-card rounded-xl border border-border p-6 shadow-card">
-          <h2 className="text-xl font-semibold text-foreground mb-4">
-            Ações Rápidas
-          </h2>
-          <div className="grid sm:grid-cols-2 gap-4">
-            <QuickAction 
-              icon={Calendar}
-              title="Minhas Turmas"
-              description="Gerenciar planos de aula e critérios de notas"
-              href="/dashboard/minhas-turmas"
-            />
-            <QuickAction 
-              icon={FileText}
-              title="Boletim"
-              description="Lançar e consultar notas dos alunos"
-              href="/dashboard/boletim"
-            />
-          </div>
-        </div>
-      )}
 
       {(hasRole('admin') || hasRole('coordenador')) && (
         <div className="bg-card rounded-xl border border-border p-6 shadow-card">
@@ -414,32 +369,8 @@ function DashboardHome() {
   );
 }
 
-function StatCard({ 
-  label, 
-  value, 
-  trend, 
-  color 
-}: { 
-  label: string; 
-  value: string; 
-  trend: string;
-  color: 'primary' | 'success' | 'destructive' | 'warning';
-}) {
-  const colorClasses = {
-    primary: 'before:bg-primary',
-    success: 'before:bg-success',
-    destructive: 'before:bg-destructive',
-    warning: 'before:bg-warning',
-  };
 
-  return (
-    <div className={cn("stats-card", colorClasses[color])}>
-      <p className="text-sm text-muted-foreground mb-1">{label}</p>
-      <p className="text-3xl font-display font-bold text-foreground mb-2">{value}</p>
-      <p className="text-xs text-muted-foreground">{trend}</p>
-    </div>
-  );
-}
+
 
 function QuickAction({ 
   icon: Icon, 
