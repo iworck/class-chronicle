@@ -18,9 +18,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import {
-  Plus, Search, Pencil, Trash2, Loader2, UserCheck, Eye, Upload, FileText, ArrowRightLeft, XCircle, PauseCircle,
+  Plus, Search, Pencil, Trash2, Loader2, UserCheck, Eye, Upload, FileText, ArrowRightLeft, XCircle, PauseCircle, KeyRound, CheckCircle2,
 } from 'lucide-react';
-// ArrowRightLeft, XCircle, PauseCircle kept for course request dialogs
 import EnrollmentTab from '@/components/student/EnrollmentTab';
 import CourseLinksTab from '@/components/student/CourseLinksTab';
 
@@ -106,6 +105,12 @@ const Alunos = () => {
   const [courses, setCourses] = useState<Course[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
+
+  // Access management state
+  const [accessEmail, setAccessEmail] = useState('');
+  const [accessPassword, setAccessPassword] = useState('');
+  const [accessLoading, setAccessLoading] = useState(false);
+  const [studentUserId, setStudentUserId] = useState<string | null>(null);
 
   // Create/Edit dialog
   const [dialogOpen, setDialogOpen] = useState(false);
@@ -293,20 +298,78 @@ const Alunos = () => {
     setViewTab('dados');
     setViewDialogOpen(true);
     setViewLoading(true);
+    setAccessEmail('');
+    setAccessPassword('');
 
-    const [detailRes, docRes, reqRes] = await Promise.all([
+    const [detailRes, docRes, reqRes, studentRes] = await Promise.all([
       supabase.from('student_details').select('*').eq('student_id', student.id).maybeSingle(),
       supabase.from('student_documents').select('*').eq('student_id', student.id).order('created_at', { ascending: false }),
       supabase.from('student_course_requests').select('*').eq('student_id', student.id).order('created_at', { ascending: false }),
+      supabase.from('students').select('user_id').eq('id', student.id).single(),
     ]);
 
     setViewDetails((detailRes.data as StudentDetail | null) || null);
     setViewDocuments((docRes.data as StudentDocument[]) || []);
     setViewRequests((reqRes.data as CourseRequest[]) || []);
+    setStudentUserId((studentRes.data as any)?.user_id || null);
     setViewLoading(false);
   }
 
-  // Document upload
+  // Create student login access
+  async function handleCreateAccess() {
+    if (!viewStudent || !accessEmail.trim() || !accessPassword.trim()) {
+      toast({ title: 'Preencha email e senha', variant: 'destructive' });
+      return;
+    }
+    if (accessPassword.length < 6) {
+      toast({ title: 'Senha deve ter no mínimo 6 caracteres', variant: 'destructive' });
+      return;
+    }
+
+    setAccessLoading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('create-student-access', {
+        body: {
+          studentId: viewStudent.id,
+          email: accessEmail.trim(),
+          password: accessPassword,
+          studentName: viewStudent.name,
+        },
+      });
+
+      if (error || data?.error) {
+        toast({ title: 'Erro ao criar acesso', description: error?.message || data?.error, variant: 'destructive' });
+      } else {
+        toast({ title: 'Acesso criado com sucesso!', description: `Login: ${accessEmail.trim()}` });
+        setStudentUserId(data.userId);
+        setAccessEmail('');
+        setAccessPassword('');
+      }
+    } finally {
+      setAccessLoading(false);
+    }
+  }
+
+  // Remove student login access
+  async function handleRemoveAccess() {
+    if (!viewStudent || !studentUserId) return;
+    setAccessLoading(true);
+    try {
+      const { error } = await supabase.functions.invoke('remove-student-access', {
+        body: { studentId: viewStudent.id, userId: studentUserId },
+      });
+      if (error) {
+        toast({ title: 'Erro ao remover acesso', description: error.message, variant: 'destructive' });
+      } else {
+        toast({ title: 'Acesso removido' });
+        setStudentUserId(null);
+      }
+    } finally {
+      setAccessLoading(false);
+    }
+  }
+
+
   async function handleDocUpload(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files?.[0] || !viewStudent) return;
     const file = e.target.files[0];
@@ -700,12 +763,13 @@ const Alunos = () => {
             </div>
           ) : (
             <Tabs value={viewTab} onValueChange={setViewTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
+              <TabsList className="grid w-full grid-cols-6">
                 <TabsTrigger value="dados">Dados</TabsTrigger>
                 <TabsTrigger value="matricula">Matrícula</TabsTrigger>
-                <TabsTrigger value="documentos">Documentos</TabsTrigger>
+                <TabsTrigger value="documentos">Docs</TabsTrigger>
                 <TabsTrigger value="vinculo">Vínculo</TabsTrigger>
-                <TabsTrigger value="solicitacoes">Solicitações</TabsTrigger>
+                <TabsTrigger value="solicitacoes">Solicit.</TabsTrigger>
+                {canManage && <TabsTrigger value="acesso" className="gap-1"><KeyRound className="w-3 h-3" />Acesso</TabsTrigger>}
               </TabsList>
 
               <TabsContent value="dados" className="mt-4 space-y-4">
@@ -852,6 +916,76 @@ const Alunos = () => {
                   ))
                 )}
               </TabsContent>
+
+              {/* ACCESS TAB */}
+              {canManage && (
+                <TabsContent value="acesso" className="mt-4 space-y-4">
+                  <div className="p-4 rounded-lg border border-border bg-muted/30">
+                    <div className="flex items-center gap-2 mb-3">
+                      <KeyRound className="w-5 h-5 text-primary" />
+                      <h3 className="font-semibold text-foreground">Conta de Acesso do Aluno</h3>
+                    </div>
+
+                    {studentUserId ? (
+                      <div className="space-y-3">
+                        <div className="flex items-center gap-2 p-3 bg-accent/20 rounded-lg">
+                          <CheckCircle2 className="w-5 h-5 text-accent-foreground shrink-0" />
+                          <div>
+                            <p className="text-sm font-medium text-foreground">Acesso já configurado</p>
+                            <p className="text-xs text-muted-foreground">Este aluno possui uma conta de login ativa no Portal do Aluno.</p>
+                          </div>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Para redefinir a senha, remova o acesso e crie um novo com a nova senha.
+                        </p>
+                        <Button
+                          variant="destructive"
+                          size="sm"
+                          onClick={handleRemoveAccess}
+                          disabled={accessLoading}
+                        >
+                          {accessLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                          Remover Acesso
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        <p className="text-sm text-muted-foreground">
+                          Crie as credenciais de login para que o aluno possa acessar o Portal do Aluno (<strong>/aluno/login</strong>).
+                        </p>
+                        <div>
+                          <Label>Email de acesso *</Label>
+                          <Input
+                            type="email"
+                            value={accessEmail}
+                            onChange={e => setAccessEmail(e.target.value)}
+                            placeholder={viewDetails?.email || 'email@exemplo.com'}
+                          />
+                          <p className="text-xs text-muted-foreground mt-1">Sugestão: use o email cadastrado do aluno.</p>
+                        </div>
+                        <div>
+                          <Label>Senha inicial *</Label>
+                          <Input
+                            type="password"
+                            value={accessPassword}
+                            onChange={e => setAccessPassword(e.target.value)}
+                            placeholder="Mínimo 6 caracteres"
+                          />
+                        </div>
+                        <Button
+                          onClick={handleCreateAccess}
+                          disabled={accessLoading || !accessEmail.trim() || !accessPassword.trim()}
+                          size="sm"
+                        >
+                          {accessLoading && <Loader2 className="w-4 h-4 mr-2 animate-spin" />}
+                          <KeyRound className="w-4 h-4 mr-2" />
+                          Criar Acesso
+                        </Button>
+                      </div>
+                    )}
+                  </div>
+                </TabsContent>
+              )}
             </Tabs>
           )}
         </DialogContent>

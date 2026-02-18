@@ -1442,6 +1442,7 @@ export type Database = {
           id: string
           name: string
           status: Database["public"]["Enums"]["entity_status"]
+          user_id: string | null
         }
         Insert: {
           course_id?: string | null
@@ -1450,6 +1451,7 @@ export type Database = {
           id?: string
           name: string
           status?: Database["public"]["Enums"]["entity_status"]
+          user_id?: string | null
         }
         Update: {
           course_id?: string | null
@@ -1458,6 +1460,7 @@ export type Database = {
           id?: string
           name?: string
           status?: Database["public"]["Enums"]["entity_status"]
+          user_id?: string | null
         }
         Relationships: [
           {
