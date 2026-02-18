@@ -132,8 +132,6 @@ function SearchableUserSelect({
 const Cursos = () => {
   const { hasRole, user } = useAuth();
   const canManage = hasRole('super_admin') || hasRole('admin') || hasRole('diretor') || hasRole('gerente');
-  const isGerente = hasRole('gerente') && !hasRole('admin') && !hasRole('super_admin');
-  const isDiretor = hasRole('diretor') && !hasRole('admin') && !hasRole('super_admin');
 
   const [courses, setCourses] = useState<Course[]>([]);
   const [institutions, setInstitutions] = useState<Institution[]>([]);
@@ -265,7 +263,7 @@ const Cursos = () => {
     setFormInstitutionId('');
     setFormCampusId('');
     setFormUnitId('');
-    setFormDirectorId(isDiretor && user ? user.id : '');
+    setFormDirectorId('');
     setFormCoordinatorId('');
     setFormStatus('ATIVO');
     setDialogOpen(true);
@@ -289,14 +287,14 @@ const Cursos = () => {
     setFormInstitutionId(v === 'none' ? '' : v);
     setFormCampusId('');
     setFormUnitId('');
-    setFormDirectorId(isDiretor && user ? user.id : '');
+    setFormDirectorId('');
     setFormCoordinatorId('');
   }
 
   function handleCampusChange(v: string) {
     setFormCampusId(v === 'none' ? '' : v);
     setFormUnitId('');
-    setFormDirectorId(isDiretor && user ? user.id : '');
+    setFormDirectorId('');
     setFormCoordinatorId('');
   }
 
@@ -589,33 +587,18 @@ const Cursos = () => {
 
             <div>
               <Label>Diretor do Curso *</Label>
-              {isDiretor ? (
-                <>
-                  <Input
-                    value={profiles.find(p => p.id === user?.id)?.name || 'Você'}
-                    disabled
-                    className="bg-muted"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    Você será vinculado automaticamente como diretor deste curso.
-                  </p>
-                </>
-              ) : (
-                <>
-                  <SearchableUserSelect
-                    value={formDirectorId}
-                    onValueChange={setFormDirectorId}
-                    profiles={directorProfiles}
-                    placeholder="Buscar e selecionar diretor..."
-                    label="diretor"
-                  />
-                  <p className="text-xs text-muted-foreground mt-1">
-                    {formCampusId
-                      ? 'Apenas diretores vinculados ao campus selecionado.'
-                      : 'Selecione um campus para filtrar os diretores disponíveis.'}
-                  </p>
-                </>
-              )}
+              <SearchableUserSelect
+                value={formDirectorId}
+                onValueChange={setFormDirectorId}
+                profiles={directorProfiles}
+                placeholder="Buscar e selecionar diretor..."
+                label="diretor"
+              />
+              <p className="text-xs text-muted-foreground mt-1">
+                {formCampusId
+                  ? 'Apenas diretores vinculados ao campus selecionado.'
+                  : 'Selecione um campus para filtrar os diretores disponíveis.'}
+              </p>
             </div>
 
             <div>
