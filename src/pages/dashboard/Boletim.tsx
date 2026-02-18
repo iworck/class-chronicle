@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { Switch } from '@/components/ui/switch';
 import { toast } from '@/hooks/use-toast';
-import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye, Lock, History, Shield, GraduationCap, Building2, Users2, BarChart3, Bell } from 'lucide-react';
+import { Loader2, FileText, Save, Pencil, CheckCircle2, XCircle, Info, Plus, Trash2, Eye, Lock, History, Shield, GraduationCap, Building2, Users2, BarChart3, Bell, ListOrdered } from 'lucide-react';
 import { BoletimSummaryPanel } from '@/components/boletim/BoletimSummaryPanel';
 import { BoletimFilters } from '@/components/boletim/BoletimFilters';
 import { BoletimAlerts } from '@/components/boletim/BoletimAlerts';
@@ -24,6 +24,7 @@ import { BoletimGradeHistory } from '@/components/boletim/BoletimGradeHistory';
 import { BoletimPdfExport } from '@/components/boletim/BoletimPdfExport';
 import { BoletimClassComparison } from '@/components/boletim/BoletimClassComparison';
 import { BoletimTrendDashboard } from '@/components/boletim/BoletimTrendDashboard';
+import { BoletimBatchEntry } from '@/components/boletim/BoletimBatchEntry';
 
 interface ClassSubject {
   id: string;
@@ -127,6 +128,9 @@ const Boletim = () => {
 
   // Comparison dialog
   const [comparisonDialog, setComparisonDialog] = useState(false);
+
+  // Batch entry dialog
+  const [batchDialog, setBatchDialog] = useState(false);
 
   // Notification state
   const [sendingNotification, setSendingNotification] = useState(false);
@@ -672,7 +676,17 @@ const Boletim = () => {
     const existingGrades = getStudentGrades(enrollment.id);
 
     if (templateItems.length > 0) {
-      const rows: EditGradeRow[] = templateItems.map(t => {
+      // Only show leaf items (directly editable): children OR parents with no children
+      const leafItems = templateItems.filter(t => {
+        if (t.parent_item_id) return true; // child → directly editable
+        if (t.counts_in_final) {
+          const hasChildren = templateItems.some(c => c.parent_item_id === t.id);
+          return !hasChildren; // parent with no children → directly editable
+        }
+        return false;
+      });
+
+      const rows: EditGradeRow[] = leafItems.map(t => {
         const existing = existingGrades.find(g => g.grade_type.toUpperCase() === t.name.toUpperCase());
         if (existing) {
           return {
@@ -695,8 +709,8 @@ const Boletim = () => {
         };
       });
 
-      const templateNames = new Set(templateItems.map(t => t.name.toUpperCase()));
-      const extras = existingGrades.filter(g => !templateNames.has(g.grade_type.toUpperCase()));
+      const leafNames = new Set(leafItems.map(t => t.name.toUpperCase()));
+      const extras = existingGrades.filter(g => !leafNames.has(g.grade_type.toUpperCase()));
       for (const g of extras) {
         rows.push({
           id: g.id,
@@ -954,6 +968,18 @@ const Boletim = () => {
                 >
                   <History className="w-4 h-4 mr-2" />
                   Histórico
+                </Button>
+              )}
+              {/* Batch grade entry — professor + admin when boletim open */}
+              {canEditRole && !gradesClosed && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setBatchDialog(true)}
+                  className="border-primary/30 text-primary hover:bg-primary/10"
+                >
+                  <ListOrdered className="w-4 h-4 mr-2" />
+                  Lançar em Lote
                 </Button>
               )}
               <BoletimPdfExport
@@ -1643,8 +1669,32 @@ const Boletim = () => {
         open={comparisonDialog}
         onOpenChange={setComparisonDialog}
       />
+
+      {/* Batch Grade Entry Dialog */}
+      {selectedClassSubject && (
+        <BoletimBatchEntry
+          open={batchDialog}
+          onClose={() => setBatchDialog(false)}
+          classSubjectId={selectedClassSubject}
+          classSubjectLabel={currentCs ? classSubjectLabel(currentCs) : ''}
+          enrollments={enrollments as any}
+          templateItems={templateItems}
+          existingGrades={grades.map(g => ({
+            id: g.id,
+            enrollment_id: g.enrollment_id,
+            grade_type: g.grade_type,
+            grade_value: g.grade_value,
+          }))}
+          onSaved={() => {
+            setBatchDialog(false);
+            loadEnrollmentsAndGrades(selectedClassSubject);
+          }}
+          gradesClosed={gradesClosed}
+        />
+      )}
     </div>
   );
 };
 
 export default Boletim;
+
