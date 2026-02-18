@@ -39,10 +39,22 @@ interface Course {
   created_at: string;
 }
 
-interface UnitOption {
+interface Institution {
   id: string;
   name: string;
-  campus_name: string | null;
+}
+
+interface Campus {
+  id: string;
+  name: string;
+  institution_id: string;
+  director_user_id: string | null;
+}
+
+interface Unit {
+  id: string;
+  name: string;
+  campus_id: string;
   manager_user_id: string | null;
 }
 
@@ -124,11 +136,12 @@ const Cursos = () => {
   const isDiretor = hasRole('diretor') && !hasRole('admin') && !hasRole('super_admin');
 
   const [courses, setCourses] = useState<Course[]>([]);
-  const [units, setUnits] = useState<UnitOption[]>([]);
+  const [institutions, setInstitutions] = useState<Institution[]>([]);
+  const [allCampuses, setAllCampuses] = useState<Campus[]>([]);
+  const [allUnits, setAllUnits] = useState<Unit[]>([]);
   const [profiles, setProfiles] = useState<Profile[]>([]);
   const [userRoles, setUserRoles] = useState<UserRole[]>([]);
   const [userCampusIds, setUserCampusIds] = useState<string[]>([]);
-  const [campusDirectorMap, setCampusDirectorMap] = useState<Record<string, string | null>>({});
   const [allUserCampuses, setAllUserCampuses] = useState<{ user_id: string; campus_id: string }[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -136,6 +149,8 @@ const Cursos = () => {
   const [editing, setEditing] = useState<Course | null>(null);
 
   const [formName, setFormName] = useState('');
+  const [formInstitutionId, setFormInstitutionId] = useState('');
+  const [formCampusId, setFormCampusId] = useState('');
   const [formUnitId, setFormUnitId] = useState('');
   const [formDirectorId, setFormDirectorId] = useState('');
   const [formCoordinatorId, setFormCoordinatorId] = useState('');
@@ -148,12 +163,13 @@ const Cursos = () => {
 
   async function fetchAll() {
     setLoading(true);
-    const [courseRes, unitRes, profileRes, rolesRes, campusRes, allUcRes] = await Promise.all([
+    const [courseRes, instRes, campusRes, unitRes, profileRes, rolesRes, allUcRes] = await Promise.all([
       supabase.from('courses').select('*').order('name'),
-      supabase.from('units').select('id, name, manager_user_id, campuses(name)').eq('status', 'ATIVO').order('name'),
+      supabase.from('institutions').select('id, name').eq('status', 'ATIVO').order('name'),
+      supabase.from('campuses').select('id, name, institution_id, director_user_id').eq('status', 'ATIVO').order('name'),
+      supabase.from('units').select('id, name, campus_id, manager_user_id').eq('status', 'ATIVO').order('name'),
       supabase.from('profiles').select('id, name, email').eq('status', 'ATIVO').order('name'),
       supabase.from('user_roles').select('user_id, role'),
-      supabase.from('campuses').select('id, director_user_id').eq('status', 'ATIVO'),
       supabase.from('user_campuses').select('user_id, campus_id'),
     ]);
 
@@ -163,23 +179,13 @@ const Cursos = () => {
       setCourses((courseRes.data as Course[]) || []);
     }
 
-    const unitData = (unitRes.data || []).map((u: any) => ({
-      id: u.id,
-      name: u.name,
-      manager_user_id: u.manager_user_id,
-      campus_name: u.campuses?.name || null,
-    }));
-    setUnits(unitData);
+    setInstitutions((instRes.data as Institution[]) || []);
+    setAllCampuses((campusRes.data as Campus[]) || []);
+    setAllUnits((unitRes.data as Unit[]) || []);
     setProfiles((profileRes.data as Profile[]) || []);
     setUserRoles((rolesRes.data as UserRole[]) || []);
-
-    // Build campus director map
-    const cdMap: Record<string, string | null> = {};
-    (campusRes.data || []).forEach((c: any) => { cdMap[c.id] = c.director_user_id; });
-    setCampusDirectorMap(cdMap);
     setAllUserCampuses((allUcRes.data || []) as { user_id: string; campus_id: string }[]);
 
-    // Set current user's campuses
     if (user) {
       const myCampuses = (allUcRes.data || []).filter((uc: any) => uc.user_id === user.id).map((uc: any) => uc.campus_id);
       setUserCampusIds(myCampuses);
@@ -188,46 +194,77 @@ const Cursos = () => {
     setLoading(false);
   }
 
-  // Filter profiles by role — for gerente, only show directors from their campus
+  // Cascading filters for form selectors
+  const filteredCampuses = useMemo(() => {
+    if (!formInstitutionId) return [];
+    return allCampuses.filter(c => c.institution_id === formInstitutionId);
+  }, [allCampuses, formInstitutionId]);
+
+  const filteredUnits = useMemo(() => {
+    if (!formCampusId) return [];
+    return allUnits.filter(u => u.campus_id === formCampusId);
+  }, [allUnits, formCampusId]);
+
+  // Director profiles: directors registered in the selected campus
   const directorProfiles = useMemo(() => {
     const directorIds = new Set(
       userRoles.filter(r => r.role === 'diretor').map(r => r.user_id)
     );
-    let filtered = profiles.filter(p => directorIds.has(p.id));
-    if (isGerente && userCampusIds.length > 0) {
-      const campusDirectorIds = new Set(
-        userCampusIds
-          .map(cid => campusDirectorMap[cid])
-          .filter((did): did is string => !!did)
-      );
-      filtered = filtered.filter(p => campusDirectorIds.has(p.id));
-    }
-    return filtered;
-  }, [profiles, userRoles, isGerente, userCampusIds, campusDirectorMap]);
 
-  // For director/gerente: filter coordinators by their campus
+    if (!formCampusId) return profiles.filter(p => directorIds.has(p.id));
+
+    // Get users linked to the selected campus
+    const campusUserIds = new Set(
+      allUserCampuses.filter(uc => uc.campus_id === formCampusId).map(uc => uc.user_id)
+    );
+    // Also include the campus director_user_id
+    const selectedCampus = allCampuses.find(c => c.id === formCampusId);
+    if (selectedCampus?.director_user_id) {
+      campusUserIds.add(selectedCampus.director_user_id);
+    }
+
+    return profiles.filter(p => directorIds.has(p.id) && campusUserIds.has(p.id));
+  }, [profiles, userRoles, formCampusId, allUserCampuses, allCampuses]);
+
+  // Coordinator profiles: coordinators + gerentes registered in the selected campus
   const coordinatorProfiles = useMemo(() => {
-    const allowedRoles = new Set(['diretor', 'gerente', 'coordenador']);
+    const allowedRoles = new Set(['coordenador', 'gerente']);
     const allowedIds = new Set(
       userRoles.filter(r => allowedRoles.has(r.role)).map(r => r.user_id)
     );
-    let filtered = profiles.filter(p => allowedIds.has(p.id));
-    if ((isDiretor || isGerente) && userCampusIds.length > 0) {
-      const campusUserIds = new Set(
-        allUserCampuses
-          .filter(uc => userCampusIds.includes(uc.campus_id))
-          .map(uc => uc.user_id)
-      );
-      filtered = filtered.filter(p => campusUserIds.has(p.id));
-    }
-    return filtered;
-  }, [profiles, userRoles, isDiretor, isGerente, userCampusIds, allUserCampuses]);
+
+    if (!formCampusId) return profiles.filter(p => allowedIds.has(p.id));
+
+    // Get users linked to the selected campus
+    const campusUserIds = new Set(
+      allUserCampuses.filter(uc => uc.campus_id === formCampusId).map(uc => uc.user_id)
+    );
+
+    return profiles.filter(p => allowedIds.has(p.id) && campusUserIds.has(p.id));
+  }, [profiles, userRoles, formCampusId, allUserCampuses]);
+
+  // Helper maps for table display
+  const unitMap = Object.fromEntries(allUnits.map(u => [u.id, u]));
+  const campusMap = Object.fromEntries(allCampuses.map(c => [c.id, c]));
+  const institutionMap = Object.fromEntries(institutions.map(i => [i.id, i]));
+  const profileMap = Object.fromEntries(profiles.map(p => [p.id, p.name]));
+
+  // Resolve institution/campus from unit_id for editing
+  function resolveHierarchyFromUnit(unitId: string | null) {
+    if (!unitId) return { institutionId: '', campusId: '' };
+    const unit = unitMap[unitId];
+    if (!unit) return { institutionId: '', campusId: '' };
+    const campus = campusMap[unit.campus_id];
+    if (!campus) return { institutionId: '', campusId: unit.campus_id };
+    return { institutionId: campus.institution_id, campusId: unit.campus_id };
+  }
 
   function openCreate() {
     setEditing(null);
     setFormName('');
+    setFormInstitutionId('');
+    setFormCampusId('');
     setFormUnitId('');
-    // Auto-select director if user is a director
     setFormDirectorId(isDiretor && user ? user.id : '');
     setFormCoordinatorId('');
     setFormStatus('ATIVO');
@@ -237,11 +274,34 @@ const Cursos = () => {
   function openEdit(course: Course) {
     setEditing(course);
     setFormName(course.name);
+    const { institutionId, campusId } = resolveHierarchyFromUnit(course.unit_id);
+    setFormInstitutionId(institutionId);
+    setFormCampusId(campusId);
     setFormUnitId(course.unit_id || '');
     setFormDirectorId(course.director_user_id || '');
     setFormCoordinatorId(course.coordinator_user_id || '');
     setFormStatus(course.status);
     setDialogOpen(true);
+  }
+
+  // Reset dependent fields on cascade change
+  function handleInstitutionChange(v: string) {
+    setFormInstitutionId(v === 'none' ? '' : v);
+    setFormCampusId('');
+    setFormUnitId('');
+    setFormDirectorId(isDiretor && user ? user.id : '');
+    setFormCoordinatorId('');
+  }
+
+  function handleCampusChange(v: string) {
+    setFormCampusId(v === 'none' ? '' : v);
+    setFormUnitId('');
+    setFormDirectorId(isDiretor && user ? user.id : '');
+    setFormCoordinatorId('');
+  }
+
+  function handleUnitChange(v: string) {
+    setFormUnitId(v === 'none' ? '' : v);
   }
 
   async function handleSave() {
@@ -295,9 +355,6 @@ const Cursos = () => {
     }
   }
 
-  const unitMap = Object.fromEntries(units.map(u => [u.id, u]));
-  const profileMap = Object.fromEntries(profiles.map(p => [p.id, p.name]));
-
   function getResponsavel(course: Course): { name: string; role: string } {
     if (course.coordinator_user_id && profileMap[course.coordinator_user_id]) {
       return { name: profileMap[course.coordinator_user_id], role: 'Coordenador' };
@@ -312,6 +369,13 @@ const Cursos = () => {
       return { name: profileMap[course.director_user_id], role: 'Diretor' };
     }
     return { name: '—', role: '' };
+  }
+
+  function getCourseDisplayInfo(course: Course) {
+    const unit = course.unit_id ? unitMap[course.unit_id] : null;
+    const campus = unit ? campusMap[unit.campus_id] : null;
+    const institution = campus ? institutionMap[campus.institution_id] : null;
+    return { unit, campus, institution };
   }
 
   const filtered = courses.filter(
@@ -386,7 +450,7 @@ const Cursos = () => {
               <TableHeader>
                 <TableRow>
                   <TableHead>Nome</TableHead>
-                  <TableHead>Unidade</TableHead>
+                  <TableHead>Instituição / Campus / Unidade</TableHead>
                   <TableHead>Diretor</TableHead>
                   <TableHead>Coordenador</TableHead>
                   <TableHead>Responsável</TableHead>
@@ -396,13 +460,18 @@ const Cursos = () => {
               </TableHeader>
               <TableBody>
                 {filtered.map((course) => {
-                  const unit = course.unit_id ? unitMap[course.unit_id] : null;
+                  const { unit, campus, institution } = getCourseDisplayInfo(course);
                   const responsavel = getResponsavel(course);
+                  const locationParts = [
+                    institution?.name,
+                    campus?.name,
+                    unit?.name,
+                  ].filter(Boolean);
                   return (
                     <TableRow key={course.id}>
                       <TableCell className="font-medium">{course.name}</TableCell>
                       <TableCell className="text-sm text-muted-foreground">
-                        {unit ? `${unit.name}${unit.campus_name ? ` (${unit.campus_name})` : ''}` : '—'}
+                        {locationParts.length > 0 ? locationParts.join(' › ') : '—'}
                       </TableCell>
                       <TableCell className="text-sm text-muted-foreground">
                         {course.director_user_id ? (profileMap[course.director_user_id] || '—') : '—'}
@@ -456,7 +525,7 @@ const Cursos = () => {
 
       {/* Dialog: Create/Edit Course */}
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
-        <DialogContent className="max-w-lg">
+        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
             <DialogTitle>{editing ? 'Editar Curso' : 'Novo Curso'}</DialogTitle>
           </DialogHeader>
@@ -469,20 +538,55 @@ const Cursos = () => {
                 placeholder="Engenharia de Software"
               />
             </div>
+
+            {/* Cascading: Institution > Campus > Unit */}
             <div>
-              <Label>Unidade</Label>
-              <Select value={formUnitId || "none"} onValueChange={(v) => setFormUnitId(v === "none" ? "" : v)}>
-                <SelectTrigger><SelectValue placeholder="Selecione a unidade (opcional)" /></SelectTrigger>
+              <Label>Instituição</Label>
+              <Select value={formInstitutionId || "none"} onValueChange={handleInstitutionChange}>
+                <SelectTrigger><SelectValue placeholder="Selecione a instituição" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="none">Nenhuma</SelectItem>
-                  {units.map(u => (
-                    <SelectItem key={u.id} value={u.id}>
-                      {u.name} {u.campus_name ? `(${u.campus_name})` : ''}
-                    </SelectItem>
+                  {institutions.map(i => (
+                    <SelectItem key={i.id} value={i.id}>{i.name}</SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </div>
+
+            <div>
+              <Label>Campus</Label>
+              <Select
+                value={formCampusId || "none"}
+                onValueChange={handleCampusChange}
+                disabled={!formInstitutionId}
+              >
+                <SelectTrigger><SelectValue placeholder={formInstitutionId ? "Selecione o campus" : "Selecione a instituição primeiro"} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhum</SelectItem>
+                  {filteredCampuses.map(c => (
+                    <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label>Unidade</Label>
+              <Select
+                value={formUnitId || "none"}
+                onValueChange={handleUnitChange}
+                disabled={!formCampusId}
+              >
+                <SelectTrigger><SelectValue placeholder={formCampusId ? "Selecione a unidade" : "Selecione o campus primeiro"} /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="none">Nenhuma</SelectItem>
+                  {filteredUnits.map(u => (
+                    <SelectItem key={u.id} value={u.id}>{u.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
             <div>
               <Label>Diretor do Curso *</Label>
               {isDiretor ? (
@@ -506,11 +610,14 @@ const Cursos = () => {
                     label="diretor"
                   />
                   <p className="text-xs text-muted-foreground mt-1">
-                    Apenas usuários com a função de Diretor. Obrigatório para aprovação.
+                    {formCampusId
+                      ? 'Apenas diretores vinculados ao campus selecionado.'
+                      : 'Selecione um campus para filtrar os diretores disponíveis.'}
                   </p>
                 </>
               )}
             </div>
+
             <div>
               <Label>Coordenador do Curso</Label>
               <SearchableUserSelect
@@ -521,10 +628,9 @@ const Cursos = () => {
                 label="coordenador"
               />
               <p className="text-xs text-muted-foreground mt-1">
-                {(isDiretor || isGerente) 
-                  ? 'Apenas usuários vinculados ao seu campus. Se informado, será o responsável pela edição.'
-                  : 'Diretores, Gerentes e Coordenadores podem ser selecionados. Se informado, será o responsável pela edição.'
-                }
+                {formCampusId
+                  ? 'Coordenadores e Gerentes vinculados ao campus selecionado. Se não houver coordenador, o gerente assume.'
+                  : 'Selecione um campus para filtrar os coordenadores disponíveis.'}
               </p>
             </div>
 
