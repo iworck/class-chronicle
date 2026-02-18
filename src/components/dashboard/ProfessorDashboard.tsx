@@ -9,9 +9,10 @@ import {
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { cn } from '@/lib/utils';
-import { format, isToday, isPast, isFuture } from 'date-fns';
+import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import AttendanceSessionWizard from '@/components/dashboard/AttendanceSessionWizard';
+import ActiveSessionPanel from '@/components/dashboard/ActiveSessionPanel';
 
 interface ProfessorStats {
   totalSubjects: number;
@@ -44,6 +45,9 @@ export default function ProfessorDashboard() {
   const [loading, setLoading] = useState(true);
   const [wizardOpen, setWizardOpen] = useState(false);
   const [selectedScheduleItem, setSelectedScheduleItem] = useState<ScheduleItem | null>(null);
+  // Live session code state (passed from wizard to panel)
+  const [liveCode, setLiveCode] = useState<string | undefined>(undefined);
+  const [liveSessionId, setLiveSessionId] = useState<string | undefined>(undefined);
 
   const loadDashboard = useCallback(async () => {
     if (!user) return;
@@ -205,6 +209,14 @@ export default function ProfessorDashboard() {
         </h1>
         <p className="text-muted-foreground">Painel de controle — visão do professor</p>
       </div>
+
+      {/* Sessão Ativa */}
+      <ActiveSessionPanel
+        professorUserId={user!.id}
+        onSessionClosed={() => { setLiveCode(undefined); setLiveSessionId(undefined); loadDashboard(); }}
+        liveCode={liveCode}
+        liveSessionId={liveSessionId}
+      />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
@@ -375,7 +387,13 @@ export default function ProfessorDashboard() {
         <AttendanceSessionWizard
           open={wizardOpen}
           onClose={() => { setWizardOpen(false); setSelectedScheduleItem(null); }}
-          onSuccess={() => { setWizardOpen(false); setSelectedScheduleItem(null); loadDashboard(); }}
+          onSuccess={(code, sessionId) => {
+            setWizardOpen(false);
+            setSelectedScheduleItem(null);
+            setLiveCode(code);
+            setLiveSessionId(sessionId);
+            loadDashboard();
+          }}
           classSubjectId={selectedScheduleItem.classSubjectId}
           lessonTitle={selectedScheduleItem.title}
           lessonNumber={selectedScheduleItem.lessonNumber}
