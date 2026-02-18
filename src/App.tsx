@@ -12,6 +12,8 @@ import Presenca from "./pages/Presenca";
 import NotFound from "./pages/NotFound";
 import AlunoLogin from "./pages/aluno/Login";
 import AlunoDashboard from "./pages/aluno/Dashboard";
+import AlunoRecuperarSenha from "./pages/aluno/RecuperarSenha";
+import AlunoRedefinirSenha from "./pages/aluno/RedefinirSenha";
 
 const queryClient = new QueryClient();
 
@@ -31,6 +33,8 @@ const App = () => (
               {/* Rotas do Portal do Aluno */}
               <Route path="/aluno/login" element={<AlunoLogin />} />
               <Route path="/aluno/dashboard" element={<AlunoDashboard />} />
+              <Route path="/aluno/recuperar-senha" element={<AlunoRecuperarSenha />} />
+              <Route path="/aluno/redefinir-senha" element={<AlunoRedefinirSenha />} />
               {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
               <Route path="*" element={<NotFound />} />
             </Routes>
