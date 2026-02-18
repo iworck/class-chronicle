@@ -3,7 +3,7 @@ import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
 const corsHeaders = {
   "Access-Control-Allow-Origin": "*",
-  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type",
+  "Access-Control-Allow-Headers": "authorization, x-client-info, apikey, content-type, x-supabase-client-platform, x-supabase-client-platform-version, x-supabase-client-runtime, x-supabase-client-runtime-version",
 };
 
 serve(async (req) => {
@@ -28,14 +28,13 @@ serve(async (req) => {
       });
     }
 
-    // Use service role to create auth user
     const adminClient = createClient(
       Deno.env.get("SUPABASE_URL")!,
       Deno.env.get("SUPABASE_SERVICE_ROLE_KEY")!,
       { auth: { autoRefreshToken: false, persistSession: false } }
     );
 
-    // Check that the caller is staff (has a valid session with roles)
+    // Check that the caller is staff
     const authHeader = req.headers.get("Authorization");
     if (!authHeader) {
       return new Response(JSON.stringify({ error: "Não autorizado" }), {
@@ -44,14 +43,9 @@ serve(async (req) => {
       });
     }
 
-    const userClient = createClient(
-      Deno.env.get("SUPABASE_URL")!,
-      Deno.env.get("SUPABASE_ANON_KEY")!,
-      { global: { headers: { Authorization: authHeader } } }
-    );
-
-    const { data: { user: callerUser } } = await userClient.auth.getUser();
-    if (!callerUser) {
+    const token = authHeader.replace("Bearer ", "");
+    const { data: { user: callerUser }, error: authErr } = await adminClient.auth.getUser(token);
+    if (authErr || !callerUser) {
       return new Response(JSON.stringify({ error: "Não autorizado" }), {
         status: 401,
         headers: { ...corsHeaders, "Content-Type": "application/json" },
@@ -123,9 +117,6 @@ serve(async (req) => {
         headers: { ...corsHeaders, "Content-Type": "application/json" },
       });
     }
-
-    // The handle_new_user trigger will create a profile - we don't need to do that here.
-    // But we should ensure no user_roles are created for students.
 
     return new Response(JSON.stringify({ success: true, userId: newUserId }), {
       headers: { ...corsHeaders, "Content-Type": "application/json" },
