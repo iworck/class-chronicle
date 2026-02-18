@@ -1,0 +1,435 @@
+import { useState, useEffect, useCallback, useMemo } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useAuth } from '@/lib/auth';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Badge } from '@/components/ui/badge';
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from '@/components/ui/select';
+import { toast } from '@/hooks/use-toast';
+import {
+  Loader2, CalendarCheck, Search, Filter, Play, CheckCircle2, Clock,
+  ClipboardList, Users, ChevronDown, XCircle, AlertCircle,
+} from 'lucide-react';
+import { format, addDays, parseISO } from 'date-fns';
+import { ptBR } from 'date-fns/locale';
+import { cn } from '@/lib/utils';
+import AttendanceSessionWizard from '@/components/dashboard/AttendanceSessionWizard';
+import ManualAttendanceModal from '@/components/dashboard/ManualAttendanceModal';
+
+interface LessonEntry {
+  id: string;
+  class_subject_id: string;
+  entry_date: string;
+  title: string;
+  lesson_number: number | null;
+  entry_type: string;
+  exam_type: string | null;
+  objective: string | null;
+  className: string;
+  subjectName: string;
+  classId: string;
+  subjectId: string;
+  // Computed
+  sessionId: string | null;
+  sessionStatus: string | null;
+  lessonStatus: 'realizada' | 'hoje' | 'programada' | 'passada_sem_chamada';
+}
+
+const STATUS_CONFIG = {
+  realizada: { label: 'Realizada', color: 'bg-success/10 text-success border-success/30', icon: CheckCircle2 },
+  hoje: { label: 'Hoje', color: 'bg-primary/10 text-primary border-primary/30', icon: Play },
+  programada: { label: 'Programada', color: 'bg-muted text-muted-foreground border-border', icon: Clock },
+  passada_sem_chamada: { label: 'Sem chamada', color: 'bg-destructive/10 text-destructive border-destructive/30', icon: AlertCircle },
+};
+
+export default function Aulas() {
+  const { user } = useAuth();
+  const [loading, setLoading] = useState(true);
+  const [lessons, setLessons] = useState<LessonEntry[]>([]);
+
+  // Filters
+  const [search, setSearch] = useState('');
+  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterDateFrom, setFilterDateFrom] = useState('');
+  const [filterDateTo, setFilterDateTo] = useState('');
+  const [filterSubject, setFilterSubject] = useState('all');
+  const [showFilters, setShowFilters] = useState(false);
+
+  // Pagination
+  const [page, setPage] = useState(0);
+  const PAGE_SIZE = 20;
+
+  // Modals
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [manualOpen, setManualOpen] = useState(false);
+  const [selectedLesson, setSelectedLesson] = useState<LessonEntry | null>(null);
+  const [manualSessionId, setManualSessionId] = useState<string | null>(null);
+  const [liveCode, setLiveCode] = useState<string | undefined>();
+  const [liveSessionId, setLiveSessionId] = useState<string | undefined>();
+
+  const load = useCallback(async () => {
+    if (!user) return;
+    setLoading(true);
+
+    // 1. Load class_subjects for this professor
+    const { data: classSubjects } = await supabase
+      .from('class_subjects')
+      .select('id, class_id, subject_id')
+      .eq('professor_user_id', user.id)
+      .eq('status', 'ATIVO');
+
+    const csItems = classSubjects || [];
+    const csIds = csItems.map(c => c.id);
+    const classIds = [...new Set(csItems.map(c => c.class_id))];
+    const subjectIds = [...new Set(csItems.map(c => c.subject_id))];
+
+    if (csIds.length === 0) {
+      setLessons([]);
+      setLoading(false);
+      return;
+    }
+
+    // 2. Parallel: lesson entries, classes, subjects, sessions
+    const [entriesRes, classesRes, subjectsRes, sessionsRes] = await Promise.all([
+      supabase
+        .from('lesson_plan_entries')
+        .select('id, class_subject_id, entry_date, title, lesson_number, entry_type, exam_type, objective')
+        .in('class_subject_id', csIds)
+        .order('entry_date', { ascending: false }),
+      supabase.from('classes').select('id, code').in('id', classIds),
+      supabase.from('subjects').select('id, name').in('id', subjectIds),
+      supabase
+        .from('attendance_sessions')
+        .select('id, class_id, subject_id, status')
+        .eq('professor_user_id', user.id)
+        .in('subject_id', subjectIds),
+    ]);
+
+    const classMap = Object.fromEntries((classesRes.data || []).map((c: any) => [c.id, c.code]));
+    const subjectMap = Object.fromEntries((subjectsRes.data || []).map((s: any) => [s.id, s.name]));
+    const csMap = Object.fromEntries(csItems.map(c => [c.id, c]));
+    const sessions = sessionsRes.data || [];
+
+    const today = new Date().toISOString().split('T')[0];
+
+    const items: LessonEntry[] = (entriesRes.data || []).map((e: any) => {
+      const cs = csMap[e.class_subject_id];
+      // Find matching session (same class+subject)
+      const session = sessions.find(
+        (s: any) => s.class_id === cs?.class_id && s.subject_id === cs?.subject_id
+      ) as any;
+
+      const isToday = e.entry_date === today;
+      const isPast = e.entry_date < today;
+      const hasSession = !!session;
+
+      let lessonStatus: LessonEntry['lessonStatus'];
+      if (hasSession && (session.status === 'ENCERRADA' || session.status === 'AUDITORIA_FINALIZADA')) {
+        lessonStatus = 'realizada';
+      } else if (isToday) {
+        lessonStatus = 'hoje';
+      } else if (isPast && !hasSession) {
+        lessonStatus = 'passada_sem_chamada';
+      } else {
+        lessonStatus = 'programada';
+      }
+
+      return {
+        id: e.id,
+        class_subject_id: e.class_subject_id,
+        entry_date: e.entry_date,
+        title: e.title,
+        lesson_number: e.lesson_number,
+        entry_type: e.entry_type,
+        exam_type: e.exam_type,
+        objective: e.objective,
+        className: cs ? classMap[cs.class_id] || '—' : '—',
+        subjectName: cs ? subjectMap[cs.subject_id] || '—' : '—',
+        classId: cs?.class_id || '',
+        subjectId: cs?.subject_id || '',
+        sessionId: session?.id || null,
+        sessionStatus: session?.status || null,
+        lessonStatus,
+      };
+    });
+
+    setLessons(items);
+    setLoading(false);
+  }, [user]);
+
+  useEffect(() => { load(); }, [load]);
+
+  // Derived subject list for filter
+  const subjectOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    lessons.forEach(l => { if (l.subjectName && l.subjectName !== '—') map.set(l.subjectName, l.subjectName); });
+    return Array.from(map.keys()).sort();
+  }, [lessons]);
+
+  // Apply filters
+  const filtered = useMemo(() => {
+    let result = lessons;
+
+    if (search.trim()) {
+      const q = search.toLowerCase();
+      result = result.filter(l =>
+        l.title.toLowerCase().includes(q) ||
+        l.className.toLowerCase().includes(q) ||
+        l.subjectName.toLowerCase().includes(q)
+      );
+    }
+    if (filterStatus !== 'all') {
+      result = result.filter(l => l.lessonStatus === filterStatus);
+    }
+    if (filterSubject !== 'all') {
+      result = result.filter(l => l.subjectName === filterSubject);
+    }
+    if (filterDateFrom) {
+      result = result.filter(l => l.entry_date >= filterDateFrom);
+    }
+    if (filterDateTo) {
+      result = result.filter(l => l.entry_date <= filterDateTo);
+    }
+
+    return result;
+  }, [lessons, search, filterStatus, filterSubject, filterDateFrom, filterDateTo]);
+
+  const paged = filtered.slice(0, (page + 1) * PAGE_SIZE);
+  const hasMore = paged.length < filtered.length;
+
+  // Stats
+  const stats = useMemo(() => ({
+    total: lessons.length,
+    realizadas: lessons.filter(l => l.lessonStatus === 'realizada').length,
+    hoje: lessons.filter(l => l.lessonStatus === 'hoje').length,
+    semChamada: lessons.filter(l => l.lessonStatus === 'passada_sem_chamada').length,
+  }), [lessons]);
+
+  function openWizard(lesson: LessonEntry) {
+    setSelectedLesson(lesson);
+    setWizardOpen(true);
+  }
+
+  function openManual(sessionId: string) {
+    setManualSessionId(sessionId);
+    setManualOpen(true);
+  }
+
+  return (
+    <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
+      {/* Header */}
+      <div>
+        <h1 className="text-2xl font-display font-bold text-foreground">Aulas</h1>
+        <p className="text-sm text-muted-foreground mt-0.5">Histórico completo de aulas planejadas, realizadas e programadas</p>
+      </div>
+
+      {/* Stats */}
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {[
+          { label: 'Total de aulas', value: stats.total, color: 'text-foreground', bg: 'bg-muted/40' },
+          { label: 'Realizadas', value: stats.realizadas, color: 'text-success', bg: 'bg-success/10' },
+          { label: 'Hoje', value: stats.hoje, color: 'text-primary', bg: 'bg-primary/10' },
+          { label: 'Sem chamada', value: stats.semChamada, color: 'text-destructive', bg: 'bg-destructive/10' },
+        ].map(s => (
+          <div key={s.label} className={cn('rounded-xl border border-border p-4', s.bg)}>
+            <p className={cn('text-2xl font-display font-bold', s.color)}>{s.value}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{s.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {/* Search & Filter */}
+      <div className="bg-card rounded-xl border border-border p-4 space-y-3">
+        <div className="flex gap-2">
+          <div className="relative flex-1">
+            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+            <Input
+              placeholder="Buscar por conteúdo, turma ou disciplina..."
+              value={search}
+              onChange={e => { setSearch(e.target.value); setPage(0); }}
+              className="pl-9"
+            />
+          </div>
+          <Button variant="outline" size="icon" onClick={() => setShowFilters(p => !p)} className={cn(showFilters && 'border-primary text-primary')}>
+            <Filter className="w-4 h-4" />
+          </Button>
+        </div>
+
+        {showFilters && (
+          <div className="grid sm:grid-cols-4 gap-3 pt-1 border-t border-border">
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Situação</p>
+              <Select value={filterStatus} onValueChange={v => { setFilterStatus(v); setPage(0); }}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  <SelectItem value="realizada">Realizadas</SelectItem>
+                  <SelectItem value="hoje">Hoje</SelectItem>
+                  <SelectItem value="programada">Programadas</SelectItem>
+                  <SelectItem value="passada_sem_chamada">Sem chamada</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Disciplina</p>
+              <Select value={filterSubject} onValueChange={v => { setFilterSubject(v); setPage(0); }}>
+                <SelectTrigger className="h-8 text-xs">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todas</SelectItem>
+                  {subjectOptions.map(s => <SelectItem key={s} value={s}>{s}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Data inicial</p>
+              <Input type="date" value={filterDateFrom} onChange={e => { setFilterDateFrom(e.target.value); setPage(0); }} className="h-8 text-xs" />
+            </div>
+            <div>
+              <p className="text-xs text-muted-foreground mb-1">Data final</p>
+              <Input type="date" value={filterDateTo} onChange={e => { setFilterDateTo(e.target.value); setPage(0); }} className="h-8 text-xs" />
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* Lesson List */}
+      <div className="bg-card rounded-xl border border-border overflow-hidden">
+        {loading ? (
+          <div className="flex items-center justify-center py-16">
+            <Loader2 className="w-7 h-7 animate-spin text-primary" />
+          </div>
+        ) : filtered.length === 0 ? (
+          <div className="flex flex-col items-center justify-center py-16 text-muted-foreground">
+            <CalendarCheck className="w-12 h-12 mb-3 opacity-30" />
+            <p className="text-sm">Nenhuma aula encontrada com os filtros aplicados.</p>
+          </div>
+        ) : (
+          <>
+            <div className="divide-y divide-border">
+              {paged.map(lesson => {
+                const cfg = STATUS_CONFIG[lesson.lessonStatus];
+                const Icon = cfg.icon;
+                const dateObj = parseISO(lesson.entry_date + 'T12:00:00');
+
+                return (
+                  <div key={lesson.id} className={cn(
+                    'flex items-center gap-4 px-5 py-3.5 transition-colors hover:bg-muted/30',
+                    lesson.lessonStatus === 'hoje' && 'bg-primary/5 border-l-4 border-l-primary',
+                    lesson.lessonStatus === 'passada_sem_chamada' && 'bg-destructive/3',
+                  )}>
+                    {/* Date */}
+                    <div className="w-14 text-center shrink-0">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase">
+                        {format(dateObj, 'MMM', { locale: ptBR })}
+                      </p>
+                      <p className={cn('text-xl font-display font-bold', lesson.lessonStatus === 'hoje' ? 'text-primary' : 'text-foreground')}>
+                        {format(dateObj, 'd')}
+                      </p>
+                      <p className="text-[10px] text-muted-foreground">
+                        {format(dateObj, 'EEE', { locale: ptBR })}
+                      </p>
+                    </div>
+
+                    {/* Info */}
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="font-medium text-foreground text-sm truncate">
+                          {lesson.lesson_number ? `Aula ${lesson.lesson_number} — ` : ''}{lesson.title}
+                        </p>
+                        <Badge variant="outline" className={cn('text-xs shrink-0 flex items-center gap-1', cfg.color)}>
+                          <Icon className="w-3 h-3" />
+                          {cfg.label}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5">
+                        {lesson.className} · {lesson.subjectName}
+                      </p>
+                      {lesson.objective && (
+                        <p className="text-xs text-muted-foreground/70 mt-0.5 truncate">{lesson.objective}</p>
+                      )}
+                    </div>
+
+                    {/* Actions */}
+                    <div className="shrink-0 flex gap-2">
+                      {lesson.lessonStatus === 'hoje' && !lesson.sessionId && (
+                        <Button size="sm" className="h-7 text-xs gap-1" onClick={() => openWizard(lesson)}>
+                          <Play className="w-3 h-3" /> Abrir Chamada
+                        </Button>
+                      )}
+                      {lesson.lessonStatus === 'hoje' && lesson.sessionId && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-success text-success hover:bg-success/10" onClick={() => openManual(lesson.sessionId!)}>
+                          <Users className="w-3 h-3" /> Lançar Presença
+                        </Button>
+                      )}
+                      {lesson.lessonStatus === 'passada_sem_chamada' && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 text-muted-foreground" onClick={() => openWizard(lesson)}>
+                          <ClipboardList className="w-3 h-3" /> Lançar Retroativo
+                        </Button>
+                      )}
+                      {lesson.lessonStatus === 'realizada' && lesson.sessionId && (
+                        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground" onClick={() => openManual(lesson.sessionId!)}>
+                          <Users className="w-3 h-3" /> Ver / Editar Presença
+                        </Button>
+                      )}
+                      {lesson.lessonStatus === 'programada' && (
+                        <span className="text-xs text-muted-foreground px-2">
+                          {format(dateObj, "d 'de' MMM", { locale: ptBR })}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Load more */}
+            {hasMore && (
+              <div className="flex justify-center p-4 border-t border-border">
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => setPage(p => p + 1)}>
+                  <ChevronDown className="w-4 h-4" /> Carregar mais ({filtered.length - paged.length} restantes)
+                </Button>
+              </div>
+            )}
+
+            <div className="px-5 py-2.5 bg-muted/30 border-t border-border text-xs text-muted-foreground">
+              Exibindo {paged.length} de {filtered.length} aulas
+            </div>
+          </>
+        )}
+      </div>
+
+      {/* Wizard de abertura de chamada */}
+      {wizardOpen && selectedLesson && (
+        <AttendanceSessionWizard
+          open={wizardOpen}
+          onClose={() => { setWizardOpen(false); setSelectedLesson(null); }}
+          onSuccess={(code, sessionId) => {
+            setWizardOpen(false);
+            setSelectedLesson(null);
+            setLiveCode(code);
+            setLiveSessionId(sessionId);
+            load();
+          }}
+          classSubjectId={selectedLesson.class_subject_id}
+          lessonTitle={selectedLesson.title}
+          lessonNumber={selectedLesson.lesson_number}
+          professorUserId={user!.id}
+        />
+      )}
+
+      {/* Modal de presença manual */}
+      {manualOpen && manualSessionId && (
+        <ManualAttendanceModal
+          sessionId={manualSessionId}
+          onClose={() => { setManualOpen(false); setManualSessionId(null); load(); }}
+        />
+      )}
+    </div>
+  );
+}

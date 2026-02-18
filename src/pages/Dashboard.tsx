@@ -9,6 +9,7 @@ import {
   Users, 
   BookOpen, 
   Calendar,
+  CalendarCheck,
   Settings,
   LogOut,
   Building2,
@@ -36,6 +37,7 @@ import Boletim from '@/pages/dashboard/Boletim';
 import Permissoes from '@/pages/dashboard/Permissoes';
 import MinhasTurmas from '@/pages/dashboard/MinhasTurmas';
 import RevisaoCoordenador from '@/pages/dashboard/RevisaoCoordenador';
+import Aulas from '@/pages/dashboard/Aulas';
 
 const Dashboard = () => {
   const navigate = useNavigate();
@@ -123,6 +125,12 @@ const Dashboard = () => {
       icon: Calendar, 
       label: 'Minhas Turmas',
       path: '/dashboard/minhas-turmas',
+      roles: ['professor'] 
+    },
+    { 
+      icon: CalendarCheck, 
+      label: 'Aulas',
+      path: '/dashboard/aulas',
       roles: ['professor'] 
     },
     { 
@@ -299,6 +307,7 @@ const Dashboard = () => {
               <Route path="matrizes" element={<Matrizes />} />
               <Route path="turmas" element={<Turmas />} />
               <Route path="minhas-turmas" element={<MinhasTurmas />} />
+              <Route path="aulas" element={<Aulas />} />
               <Route path="revisao" element={<RevisaoCoordenador />} />
               <Route path="alunos" element={<Alunos />} />
               <Route path="boletim" element={<Boletim />} />
