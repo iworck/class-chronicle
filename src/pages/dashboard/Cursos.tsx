@@ -236,15 +236,15 @@ const Cursos = () => {
     return profiles.filter(p => directorIds.has(p.id) && scopedUserIds.has(p.id));
   }, [profiles, userRoles, resolvedCampusIds, allUserCampuses, allCampuses]);
 
-  // Coordinator profiles: roles 'coordenador' AND 'gerente', scoped by campus/institution
-  // Gerente assumes coordinator responsibility when no coordinator is assigned
+  // Coordinator profiles: roles 'diretor', 'gerente' AND 'coordenador', scoped by campus/institution
+  // Diretor/Gerente assume coordinator responsibility when no coordinator is assigned
   const coordinatorProfiles = useMemo(() => {
     const allowedIds = new Set(
-      userRoles.filter(r => r.role === 'coordenador' || r.role === 'gerente').map(r => r.user_id)
+      userRoles.filter(r => r.role === 'diretor' || r.role === 'gerente' || r.role === 'coordenador').map(r => r.user_id)
     );
 
     if (!resolvedCampusIds) {
-      // No institution/campus selected → list all coordinators + gerentes
+      // No institution/campus selected → list all directors + gerentes + coordinators
       return profiles.filter(p => allowedIds.has(p.id));
     }
 
@@ -252,13 +252,17 @@ const Cursos = () => {
     const scopedUserIds = new Set(
       allUserCampuses.filter(uc => resolvedCampusIds.has(uc.campus_id)).map(uc => uc.user_id)
     );
+    // Also include director_user_id directly set on campus records
+    allCampuses
+      .filter(c => resolvedCampusIds.has(c.id) && c.director_user_id)
+      .forEach(c => scopedUserIds.add(c.director_user_id!));
     // Also include manager_user_id from units belonging to the selected campuses
     allUnits
       .filter(u => resolvedCampusIds.has(u.campus_id) && u.manager_user_id)
       .forEach(u => scopedUserIds.add(u.manager_user_id!));
 
     return profiles.filter(p => allowedIds.has(p.id) && scopedUserIds.has(p.id));
-  }, [profiles, userRoles, resolvedCampusIds, allUserCampuses, allUnits]);
+  }, [profiles, userRoles, resolvedCampusIds, allUserCampuses, allUnits, allCampuses]);
 
   // Helper maps for table display
   const unitMap = Object.fromEntries(allUnits.map(u => [u.id, u]));
@@ -628,15 +632,15 @@ const Cursos = () => {
                 value={formCoordinatorId}
                 onValueChange={setFormCoordinatorId}
                 profiles={coordinatorProfiles}
-                placeholder="Buscar e selecionar coordenador ou gerente..."
+                placeholder="Buscar Diretor, Gerente ou Coordenador..."
                 label="coordenador"
               />
               <p className="text-xs text-muted-foreground mt-1">
                 {formCampusId
-                  ? `Coordenadores e Gerentes vinculados ao campus selecionado (${coordinatorProfiles.length} disponível${coordinatorProfiles.length !== 1 ? 'is' : ''}). Gerente assume se não houver coordenador.`
+                  ? `Diretores, Gerentes e Coordenadores do campus selecionado (${coordinatorProfiles.length} disponível${coordinatorProfiles.length !== 1 ? 'is' : ''}).`
                   : formInstitutionId
-                    ? `Coordenadores e Gerentes da instituição selecionada (${coordinatorProfiles.length} disponível${coordinatorProfiles.length !== 1 ? 'is' : ''}).`
-                    : 'Listando todos os coordenadores e gerentes. Selecione uma instituição/campus para filtrar.'}
+                    ? `Diretores, Gerentes e Coordenadores da instituição selecionada (${coordinatorProfiles.length} disponível${coordinatorProfiles.length !== 1 ? 'is' : ''}).`
+                    : 'Listando todos os Diretores, Gerentes e Coordenadores. Selecione uma instituição/campus para filtrar.'}
               </p>
             </div>
 
