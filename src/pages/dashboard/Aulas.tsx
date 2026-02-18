@@ -46,7 +46,8 @@ const STATUS_CONFIG = {
 };
 
 export default function Aulas() {
-  const { user } = useAuth();
+  const { user, effectiveUserId } = useAuth();
+  const targetUserId = effectiveUserId ?? user?.id;
   const [loading, setLoading] = useState(true);
   const [lessons, setLessons] = useState<LessonEntry[]>([]);
 
@@ -77,14 +78,14 @@ export default function Aulas() {
   const [hasOpenSession, setHasOpenSession] = useState(false);
 
   const load = useCallback(async () => {
-    if (!user) return;
+    if (!targetUserId) return;
     setLoading(true);
 
     // 1. Load class_subjects for this professor
     const { data: classSubjects } = await supabase
       .from('class_subjects')
       .select('id, class_id, subject_id')
-      .eq('professor_user_id', user.id)
+      .eq('professor_user_id', targetUserId)
       .eq('status', 'ATIVO');
 
     const csItems = classSubjects || [];
@@ -110,7 +111,7 @@ export default function Aulas() {
       supabase
         .from('attendance_sessions')
         .select('id, class_id, subject_id, status')
-        .eq('professor_user_id', user.id)
+        .eq('professor_user_id', targetUserId)
         .in('subject_id', subjectIds),
     ]);
 
@@ -177,7 +178,7 @@ export default function Aulas() {
 
     setLessons(items);
     setLoading(false);
-  }, [user]);
+  }, [targetUserId]);
 
   useEffect(() => { load(); }, [load]);
 

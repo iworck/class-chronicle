@@ -96,7 +96,7 @@ const EXAM_TYPE_LABELS: Record<string, string> = {
 };
 
 const MinhasTurmas = () => {
-  const { user } = useAuth();
+  const { user, effectiveUserId, impersonatedUser } = useAuth();
   const [loading, setLoading] = useState(true);
   const [classSubjects, setClassSubjects] = useState<ClassSubjectRow[]>([]);
   const [search, setSearch] = useState('');
@@ -148,16 +148,20 @@ const MinhasTurmas = () => {
   const [templateSaving, setTemplateSaving] = useState(false);
   const [templateLoading, setTemplateLoading] = useState(false);
 
+  // Use effectiveUserId so emulation works
+  const targetUserId = effectiveUserId ?? user?.id;
+
   useEffect(() => {
-    if (user) loadMyClasses();
-  }, [user]);
+    if (targetUserId) loadMyClasses();
+  }, [targetUserId]);
 
   async function loadMyClasses() {
+    if (!targetUserId) return;
     setLoading(true);
     const { data, error } = await supabase
       .from('class_subjects')
       .select('id, class_id, subject_id, professor_user_id, status, grades_closed, plan_status, ementa_override, bibliografia_basica, bibliografia_complementar, class:classes(id, code, period, course_id, status), subject:subjects(id, name, code, min_grade, min_attendance_pct, lesson_plan)')
-      .eq('professor_user_id', user!.id)
+      .eq('professor_user_id', targetUserId)
       .eq('status', 'ATIVO')
       .order('class_id');
 
@@ -180,7 +184,7 @@ const MinhasTurmas = () => {
     }
 
     // Load professor name
-    const { data: profile } = await supabase.from('profiles').select('name').eq('id', user!.id).single();
+    const { data: profile } = await supabase.from('profiles').select('name').eq('id', targetUserId).single();
     for (const item of items) {
       item.professor = { name: profile?.name || '—' };
     }
