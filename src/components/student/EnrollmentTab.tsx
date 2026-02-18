@@ -67,6 +67,7 @@ const ENROLLMENT_STATUS_MAP: Record<string, { label: string; variant: 'default' 
 const EnrollmentTab = ({ studentId, studentCourseId, canManage }: EnrollmentTabProps) => {
   const [loading, setLoading] = useState(true);
   const [enrollments, setEnrollments] = useState<SubjectEnrollment[]>([]);
+  const [statusFilter, setStatusFilter] = useState<string | null>(null);
   const [courses, setCourses] = useState<Course[]>([]);
   const [matrices, setMatrices] = useState<AcademicMatrix[]>([]);
   const [matrixSubjects, setMatrixSubjects] = useState<MatrixSubject[]>([]);
@@ -215,10 +216,16 @@ const EnrollmentTab = ({ studentId, studentCourseId, canManage }: EnrollmentTabP
     }
   }
 
+  // Filter enrollments by status
+  const filteredEnrollments = useMemo(() => {
+    if (!statusFilter) return enrollments;
+    return enrollments.filter(e => e.status === statusFilter);
+  }, [enrollments, statusFilter]);
+
   // Group enrollments by matrix + semester
   const groupedEnrollments = useMemo(() => {
     const groups: Record<string, { matrixCode: string; semester: number; items: SubjectEnrollment[] }> = {};
-    for (const e of enrollments) {
+    for (const e of filteredEnrollments) {
       const matrix = matrices.find(m => m.id === e.matrix_id);
       const key = `${e.matrix_id}_${e.semester}`;
       if (!groups[key]) {
@@ -231,7 +238,7 @@ const EnrollmentTab = ({ studentId, studentCourseId, canManage }: EnrollmentTabP
       groups[key].items.push(e);
     }
     return Object.values(groups).sort((a, b) => a.semester - b.semester);
-  }, [enrollments, matrices]);
+  }, [filteredEnrollments, matrices]);
 
   // Graduation progress
   const progressInfo = useMemo(() => {
@@ -282,6 +289,31 @@ const EnrollmentTab = ({ studentId, studentCourseId, canManage }: EnrollmentTabP
           <p className="text-xs text-muted-foreground mt-1 text-center">{progressInfo.pct}% concluído</p>
         </div>
       )}
+
+      {/* Status filter buttons */}
+      <div className="flex flex-wrap gap-2">
+        {[
+          { key: null, label: 'Todas' },
+          { key: 'CURSANDO', label: 'Cursando' },
+          { key: 'REPROVADO', label: 'Reprovado' },
+          { key: 'TRANCADO', label: 'Trancado' },
+          { key: 'APROVADO', label: 'Aprovado' },
+        ].map(f => (
+          <Button
+            key={String(f.key)}
+            variant={statusFilter === f.key ? 'default' : 'outline'}
+            size="sm"
+            onClick={() => setStatusFilter(f.key)}
+          >
+            {f.label}
+            {f.key && (
+              <span className="ml-1.5 text-xs opacity-70">
+                ({enrollments.filter(e => e.status === f.key).length})
+              </span>
+            )}
+          </Button>
+        ))}
+      </div>
 
       {/* Add enrollment button */}
       {canManage && !showForm && (

@@ -351,7 +351,9 @@ const CourseLinksTab = ({ studentId, canManage }: CourseLinksTabProps) => {
                   <div>
                     <span className="text-muted-foreground">Matriz: </span>
                     <span className="font-medium text-foreground">
-                      {link.matrix_id ? getName(matrices as any[], link.matrix_id) : '—'}
+                      {link.matrix_id
+                        ? matrices.find(m => m.id === link.matrix_id)?.code || '—'
+                        : '—'}
                     </span>
                   </div>
                   <div>
