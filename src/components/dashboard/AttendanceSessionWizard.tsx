@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSuccess: () => void;
+  onSuccess: (code: string, sessionId: string) => void;
   classSubjectId: string;
   lessonTitle: string;
   lessonNumber: number | null;
@@ -143,7 +143,8 @@ export default function AttendanceSessionWizard({
 
       setSessionCode(code);
       setSessionId(data.id);
-      setStep('aberta');
+      // Notify dashboard (closes wizard and shows ActiveSessionPanel)
+      onSuccess(code, data.id);
     } catch (err: any) {
       toast({ title: 'Erro ao abrir sessão', description: err.message, variant: 'destructive' });
       setStep(modalidade === 'presencial' ? (useGeo !== null ? 'geolocalizacao' : 'modalidade') : 'modalidade');
@@ -155,7 +156,7 @@ export default function AttendanceSessionWizard({
     if (!sessionId) return;
     await supabase.from('attendance_sessions').update({ status: 'ENCERRADA', closed_at: new Date().toISOString() }).eq('id', sessionId);
     toast({ title: 'Sessão encerrada com sucesso' });
-    onSuccess();
+    onSuccess(sessionCode, sessionId);
   }
 
   function copyCode() {
