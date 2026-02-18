@@ -9,7 +9,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Progress } from '@/components/ui/progress';
 import {
   GraduationCap, LogOut, BookOpen, CheckCircle2, XCircle, Clock,
-  TrendingUp, CalendarCheck, Award, Loader2, AlertTriangle,
+  TrendingUp, CalendarCheck, Award, Loader2, AlertTriangle, ListChecks,
 } from 'lucide-react';
 
 interface EnrollmentData {
@@ -36,6 +36,15 @@ interface CourseLink {
   linked_at: string;
 }
 
+interface SessionDetail {
+  session_id: string;
+  subject_id: string;
+  subject_name: string;
+  subject_code: string;
+  opened_at: string;
+  final_status: string;
+}
+
 const STATUS_MAP: Record<string, { label: string; color: string; icon: React.ReactNode }> = {
   CURSANDO: { label: 'Cursando', color: 'bg-primary/10 text-primary border-primary/20', icon: <Clock className="w-3 h-3" /> },
   APROVADO: { label: 'Aprovado', color: 'bg-accent/20 text-accent-foreground border-accent/30', icon: <CheckCircle2 className="w-3 h-3" /> },
@@ -43,11 +52,18 @@ const STATUS_MAP: Record<string, { label: string; color: string; icon: React.Rea
   TRANCADO: { label: 'Trancado', color: 'bg-muted text-muted-foreground border-border', icon: <AlertTriangle className="w-3 h-3" /> },
 };
 
+const ATT_STATUS_MAP: Record<string, { label: string; color: string }> = {
+  PRESENTE: { label: 'Presente', color: 'bg-accent/20 text-accent-foreground border-accent/30' },
+  FALTA: { label: 'Falta', color: 'bg-destructive/10 text-destructive border-destructive/20' },
+  JUSTIFICADO: { label: 'Justificado', color: 'bg-warning/10 text-warning-foreground border-warning/20' },
+};
+
 export default function AlunoDashboard() {
   const navigate = useNavigate();
   const { user, student, loading: authLoading, signOut } = useStudentAuth();
   const [enrollments, setEnrollments] = useState<EnrollmentData[]>([]);
   const [courseLinks, setCourseLinks] = useState<CourseLink[]>([]);
+  const [sessionDetails, setSessionDetails] = useState<SessionDetail[]>([]);
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -62,60 +78,75 @@ export default function AlunoDashboard() {
     if (!student) return;
     setLoading(true);
 
-    // Fetch enrollments with subject info
     const { data: enrollData } = await supabase
       .from('student_subject_enrollments')
       .select('id, subject_id, semester, status, subject:subjects(name, code, workload_hours, min_grade, min_attendance_pct)')
       .eq('student_id', student.id)
       .order('semester');
 
-    // Fetch grades
-    const { data: gradesData } = await supabase
-      .from('student_grades')
-      .select('enrollment_id, grade_type, grade_value, counts_in_final, weight')
-      .in('enrollment_id', (enrollData || []).map(e => e.id));
+    const subjectIds = (enrollData || []).map(e => e.subject_id);
+    const enrollIds = (enrollData || []).map(e => e.id);
 
-    // Fetch attendance stats per subject
-    const { data: attSessions } = await supabase
-      .from('attendance_sessions')
-      .select('id, subject_id, status')
-      .in('status', ['ENCERRADA', 'AUDITORIA_FINALIZADA'])
-      .in('subject_id', (enrollData || []).map(e => e.subject_id));
+    const [gradesRes, sessionsRes, linksRes] = await Promise.all([
+      supabase
+        .from('student_grades')
+        .select('enrollment_id, grade_type, grade_value, counts_in_final, weight')
+        .in('enrollment_id', enrollIds.length ? enrollIds : ['none']),
+      supabase
+        .from('attendance_sessions')
+        .select('id, subject_id, status, opened_at, subject:subjects(name, code)')
+        .in('status', ['ENCERRADA', 'AUDITORIA_FINALIZADA'])
+        .in('subject_id', subjectIds.length ? subjectIds : ['none'])
+        .order('opened_at', { ascending: false }),
+      supabase
+        .from('student_course_links')
+        .select('id, enrollment_status, linked_at, course:courses(name), matrix:academic_matrices(code)')
+        .eq('student_id', student.id)
+        .order('linked_at', { ascending: false }),
+    ]);
+
+    const attSessions = sessionsRes.data || [];
+    const sessionIds = attSessions.map(s => s.id);
 
     const { data: attRecords } = await supabase
       .from('attendance_records')
       .select('session_id, final_status')
       .eq('student_id', student.id)
-      .in('session_id', (attSessions || []).map(s => s.id));
+      .in('session_id', sessionIds.length ? sessionIds : ['none']);
 
-    // Build enrollment data
     const enriched: EnrollmentData[] = (enrollData || []).map(e => {
-      const subjectSessions = (attSessions || []).filter(s => s.subject_id === e.subject_id);
+      const subjectSessions = attSessions.filter(s => s.subject_id === e.subject_id);
       const subjectAttRecords = (attRecords || []).filter(r =>
         subjectSessions.some(s => s.id === r.session_id)
       );
       const presentCount = subjectAttRecords.filter(r => r.final_status === 'PRESENTE').length;
       const totalSessions = subjectSessions.length;
       const att_pct = totalSessions > 0 ? Math.round((presentCount / totalSessions) * 100) : null;
-
       return {
         ...e,
         subject: e.subject as any,
-        grades: (gradesData || []).filter(g => g.enrollment_id === e.id),
+        grades: (gradesRes.data || []).filter(g => g.enrollment_id === e.id),
         attendance_pct: att_pct,
       };
     });
 
     setEnrollments(enriched);
 
-    // Fetch course links
-    const { data: linksData } = await supabase
-      .from('student_course_links')
-      .select('id, enrollment_status, linked_at, course:courses(name), matrix:academic_matrices(code)')
-      .eq('student_id', student.id)
-      .order('linked_at', { ascending: false });
+    const details: SessionDetail[] = attSessions.map(s => {
+      const rec = (attRecords || []).find(r => r.session_id === s.id);
+      const subj = s.subject as any;
+      return {
+        session_id: s.id,
+        subject_id: s.subject_id,
+        subject_name: subj?.name || '—',
+        subject_code: subj?.code || '—',
+        opened_at: s.opened_at,
+        final_status: rec ? rec.final_status : 'FALTA',
+      };
+    });
 
-    setCourseLinks((linksData as any) || []);
+    setSessionDetails(details);
+    setCourseLinks((linksRes.data as any) || []);
     setLoading(false);
   }
 
@@ -226,22 +257,30 @@ export default function AlunoDashboard() {
 
         {/* Main tabs */}
         <Tabs defaultValue="disciplinas">
-          <TabsList className="w-full sm:w-auto">
-            <TabsTrigger value="disciplinas" className="gap-2">
-              <BookOpen className="w-4 h-4" />
-              Disciplinas
+          <TabsList className="w-full grid grid-cols-5 sm:w-auto sm:inline-flex">
+            <TabsTrigger value="disciplinas" className="gap-1 text-xs sm:text-sm sm:gap-2">
+              <BookOpen className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Disciplinas</span>
+              <span className="sm:hidden">Disc.</span>
             </TabsTrigger>
-            <TabsTrigger value="frequencia" className="gap-2">
-              <CalendarCheck className="w-4 h-4" />
-              Frequência
+            <TabsTrigger value="sessoes" className="gap-1 text-xs sm:text-sm sm:gap-2">
+              <ListChecks className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Presenças</span>
+              <span className="sm:hidden">Pres.</span>
             </TabsTrigger>
-            <TabsTrigger value="notas" className="gap-2">
-              <TrendingUp className="w-4 h-4" />
+            <TabsTrigger value="frequencia" className="gap-1 text-xs sm:text-sm sm:gap-2">
+              <CalendarCheck className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Frequência</span>
+              <span className="sm:hidden">Freq.</span>
+            </TabsTrigger>
+            <TabsTrigger value="notas" className="gap-1 text-xs sm:text-sm sm:gap-2">
+              <TrendingUp className="w-3 h-3 sm:w-4 sm:h-4" />
               Notas
             </TabsTrigger>
-            <TabsTrigger value="vinculos" className="gap-2">
-              <GraduationCap className="w-4 h-4" />
-              Cursos
+            <TabsTrigger value="vinculos" className="gap-1 text-xs sm:text-sm sm:gap-2">
+              <GraduationCap className="w-3 h-3 sm:w-4 sm:h-4" />
+              <span className="hidden sm:inline">Cursos</span>
+              <span className="sm:hidden">Curs.</span>
             </TabsTrigger>
           </TabsList>
 
@@ -270,7 +309,7 @@ export default function AlunoDashboard() {
                           {avg !== null && (
                             <div>
                               <p className="text-xs text-muted-foreground mb-1">Média</p>
-                              <p className={`text-lg font-bold ${avg >= e.subject.min_grade ? 'text-green-600' : 'text-red-500'}`}>
+                              <p className={`text-lg font-bold ${avg >= e.subject.min_grade ? 'text-primary' : 'text-destructive'}`}>
                                 {avg.toFixed(1)}
                               </p>
                               <p className="text-xs text-muted-foreground">Mín: {e.subject.min_grade}</p>
@@ -279,18 +318,80 @@ export default function AlunoDashboard() {
                           {e.attendance_pct !== null && (
                             <div>
                               <p className="text-xs text-muted-foreground mb-1">Frequência</p>
-                              <p className={`text-lg font-bold ${e.attendance_pct >= e.subject.min_attendance_pct ? 'text-green-600' : 'text-red-500'}`}>
+                              <p className={`text-lg font-bold ${e.attendance_pct >= e.subject.min_attendance_pct ? 'text-primary' : 'text-destructive'}`}>
                                 {e.attendance_pct}%
                               </p>
-                              <Progress
-                                value={e.attendance_pct}
-                                className="h-1.5 mt-1"
-                              />
+                              <Progress value={e.attendance_pct} className="h-1.5 mt-1" />
                               <p className="text-xs text-muted-foreground">Mín: {e.subject.min_attendance_pct}%</p>
                             </div>
                           )}
                         </div>
                       )}
+                    </CardContent>
+                  </Card>
+                );
+              })
+            )}
+          </TabsContent>
+
+          {/* SESSÕES DE PRESENÇA DETALHADAS */}
+          <TabsContent value="sessoes" className="mt-4 space-y-3">
+            {sessionDetails.length === 0 ? (
+              <Card><CardContent className="py-10 text-center text-muted-foreground">Nenhuma sessão de aula registrada ainda.</CardContent></Card>
+            ) : (
+              Array.from(new Set(sessionDetails.map(s => s.subject_id))).map(subjectId => {
+                const subjectSessions = sessionDetails.filter(s => s.subject_id === subjectId);
+                const subjectName = subjectSessions[0].subject_name;
+                const subjectCode = subjectSessions[0].subject_code;
+                const presentCount = subjectSessions.filter(s => s.final_status === 'PRESENTE').length;
+                const total = subjectSessions.length;
+
+                return (
+                  <Card key={subjectId} className="border-border">
+                    <CardHeader className="pb-2 pt-4">
+                      <div className="flex items-center justify-between flex-wrap gap-2">
+                        <CardTitle className="text-base">{subjectName}</CardTitle>
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs text-muted-foreground">{subjectCode}</span>
+                          <Badge variant="outline" className="text-xs">
+                            {presentCount}/{total} presenças
+                          </Badge>
+                        </div>
+                      </div>
+                    </CardHeader>
+                    <CardContent className="pt-0 space-y-1">
+                      {subjectSessions.map(session => {
+                        const dt = new Date(session.opened_at);
+                        const dateStr = dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' });
+                        const timeStr = dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+                        const attInfo = ATT_STATUS_MAP[session.final_status] || ATT_STATUS_MAP.FALTA;
+                        const isPresent = session.final_status === 'PRESENTE';
+                        const isJustified = session.final_status === 'JUSTIFICADO';
+
+                        return (
+                          <div
+                            key={session.session_id}
+                            className="flex items-center justify-between py-2 border-b border-border last:border-0"
+                          >
+                            <div className="flex items-center gap-3">
+                              {isPresent ? (
+                                <CheckCircle2 className="w-4 h-4 shrink-0 text-primary" />
+                              ) : isJustified ? (
+                                <AlertTriangle className="w-4 h-4 shrink-0 text-warning-foreground" />
+                              ) : (
+                                <XCircle className="w-4 h-4 shrink-0 text-destructive" />
+                              )}
+                              <div>
+                                <p className="text-sm font-medium text-foreground">{dateStr}</p>
+                                <p className="text-xs text-muted-foreground">{timeStr}</p>
+                              </div>
+                            </div>
+                            <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${attInfo.color}`}>
+                              {attInfo.label}
+                            </span>
+                          </div>
+                        );
+                      })}
                     </CardContent>
                   </Card>
                 );
@@ -312,7 +413,7 @@ export default function AlunoDashboard() {
                         <p className="text-xs text-muted-foreground">{e.subject.code}</p>
                       </div>
                       {e.attendance_pct !== null ? (
-                        <span className={`text-xl font-bold ${e.attendance_pct >= e.subject.min_attendance_pct ? 'text-green-600' : 'text-red-500'}`}>
+                        <span className={`text-xl font-bold ${e.attendance_pct >= e.subject.min_attendance_pct ? 'text-primary' : 'text-destructive'}`}>
                           {e.attendance_pct}%
                         </span>
                       ) : (
@@ -324,7 +425,7 @@ export default function AlunoDashboard() {
                         <Progress value={e.attendance_pct} className="h-2" />
                         <div className="flex justify-between text-xs text-muted-foreground mt-1">
                           <span>0%</span>
-                          <span className={e.attendance_pct < e.subject.min_attendance_pct ? 'text-red-500 font-medium' : 'text-muted-foreground'}>
+                          <span className={e.attendance_pct < e.subject.min_attendance_pct ? 'text-destructive font-medium' : 'text-muted-foreground'}>
                             Mín: {e.subject.min_attendance_pct}%
                           </span>
                           <span>100%</span>
@@ -350,7 +451,7 @@ export default function AlunoDashboard() {
                       <CardTitle className="text-base flex items-center justify-between">
                         <span>{e.subject.name}</span>
                         {avg !== null && (
-                          <span className={`text-xl font-bold ${avg >= e.subject.min_grade ? 'text-green-600' : 'text-red-500'}`}>
+                          <span className={`text-xl font-bold ${avg >= e.subject.min_grade ? 'text-primary' : 'text-destructive'}`}>
                             {avg.toFixed(1)}
                           </span>
                         )}
@@ -375,7 +476,7 @@ export default function AlunoDashboard() {
                           {avg !== null && (
                             <div className="flex items-center justify-between pt-2 mt-1">
                               <span className="text-sm font-medium text-muted-foreground">Média Final</span>
-                              <span className={`font-bold ${avg >= e.subject.min_grade ? 'text-green-600' : 'text-red-500'}`}>
+                              <span className={`font-bold ${avg >= e.subject.min_grade ? 'text-primary' : 'text-destructive'}`}>
                                 {avg.toFixed(1)} / {e.subject.min_grade}
                               </span>
                             </div>

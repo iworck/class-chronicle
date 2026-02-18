@@ -174,6 +174,12 @@ export default function AlunoLogin() {
               {loading && <Loader2 className="w-5 h-5 animate-spin mr-2" />}
               Entrar
             </Button>
+
+            <div className="text-center">
+              <Link to="/aluno/recuperar-senha" className="text-sm text-primary hover:underline">
+                Esqueceu sua senha?
+              </Link>
+            </div>
           </form>
 
           <div className="mt-8 p-4 rounded-lg bg-muted/50 border border-border">

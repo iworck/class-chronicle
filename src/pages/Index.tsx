@@ -30,13 +30,20 @@ const Index = () => {
               FrequênciaEDU
             </span>
           </div>
-          <div className="flex items-center gap-4">
+          <div className="flex items-center gap-2 sm:gap-4">
             <Button 
               variant="ghost" 
-              className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+              className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10 hidden sm:inline-flex"
               onClick={() => navigate('/presenca')}
             >
               Registrar Presença
+            </Button>
+            <Button 
+              variant="ghost" 
+              className="text-primary-foreground/80 hover:text-primary-foreground hover:bg-primary-foreground/10"
+              onClick={() => navigate('/aluno/login')}
+            >
+              Portal do Aluno
             </Button>
             <Button 
               variant="outline" 
@@ -263,6 +270,20 @@ const Index = () => {
               <GraduationCap className="w-5 h-5 text-sidebar-primary" />
             </div>
             <span className="font-display font-semibold">FrequênciaEDU</span>
+          </div>
+          <div className="flex items-center gap-6">
+            <button
+              onClick={() => navigate('/aluno/login')}
+              className="text-sm text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors underline-offset-2 hover:underline"
+            >
+              Portal do Aluno
+            </button>
+            <button
+              onClick={() => navigate('/auth')}
+              className="text-sm text-sidebar-foreground/70 hover:text-sidebar-foreground transition-colors underline-offset-2 hover:underline"
+            >
+              Acesso Institucional
+            </button>
           </div>
           <p className="text-sm text-sidebar-foreground/60">
             © 2026 FrequênciaEDU. Todos os direitos reservados.
