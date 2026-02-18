@@ -20,7 +20,9 @@ import { toast } from '@/hooks/use-toast';
 import {
   Plus, Search, Pencil, Trash2, Loader2, UserCheck, Eye, Upload, FileText, ArrowRightLeft, XCircle, PauseCircle,
 } from 'lucide-react';
+// ArrowRightLeft, XCircle, PauseCircle kept for course request dialogs
 import EnrollmentTab from '@/components/student/EnrollmentTab';
+import CourseLinksTab from '@/components/student/CourseLinksTab';
 
 interface Student {
   id: string;
@@ -810,43 +812,12 @@ const Alunos = () => {
                 )}
               </TabsContent>
 
-              <TabsContent value="vinculo" className="mt-4 space-y-4">
-                <div className="p-4 bg-muted/30 rounded-lg space-y-3">
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground">Curso Atual</span>
-                    <span className="text-sm text-muted-foreground">{viewStudent ? courseMap[viewStudent.course_id] || '—' : '—'}</span>
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground">Status da Matrícula</span>
-                    {viewDetails ? (
-                      <Badge variant={ENROLLMENT_STATUS_MAP[viewDetails.enrollment_status]?.variant || 'default'}>
-                        {ENROLLMENT_STATUS_MAP[viewDetails.enrollment_status]?.label || viewDetails.enrollment_status}
-                      </Badge>
-                    ) : (
-                      <Badge>Matriculado</Badge>
-                    )}
-                  </div>
-                  <div className="flex items-center justify-between">
-                    <span className="text-sm font-medium text-foreground">Status Geral</span>
-                    <Badge variant={viewStudent?.status === 'ATIVO' ? 'default' : 'secondary'}>{viewStudent?.status}</Badge>
-                  </div>
-                </div>
-
-                {canManage && viewStudent && (
-                  <div className="border-t border-border pt-4">
-                    <p className="text-sm font-medium text-foreground mb-3">Ações de Vínculo</p>
-                    <div className="grid grid-cols-3 gap-3">
-                      <Button variant="outline" size="sm" onClick={() => { setViewDialogOpen(false); openRequestDialog(viewStudent); setRequestType('TROCA'); }}>
-                        <ArrowRightLeft className="w-4 h-4 mr-2" /> Trocar Curso
-                      </Button>
-                      <Button variant="outline" size="sm" onClick={() => { setViewDialogOpen(false); openRequestDialog(viewStudent); setRequestType('TRANCAMENTO'); }}>
-                        <PauseCircle className="w-4 h-4 mr-2" /> Trancar
-                      </Button>
-                      <Button variant="outline" size="sm" className="text-destructive" onClick={() => { setViewDialogOpen(false); openRequestDialog(viewStudent); setRequestType('CANCELAMENTO'); }}>
-                        <XCircle className="w-4 h-4 mr-2" /> Cancelar
-                      </Button>
-                    </div>
-                  </div>
+              <TabsContent value="vinculo" className="mt-4">
+                {viewStudent && (
+                  <CourseLinksTab
+                    studentId={viewStudent.id}
+                    canManage={canManage}
+                  />
                 )}
               </TabsContent>
 

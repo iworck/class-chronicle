@@ -1071,6 +1071,94 @@ export type Database = {
           },
         ]
       }
+      student_course_links: {
+        Row: {
+          campus_id: string | null
+          course_id: string
+          created_at: string
+          enrollment_status: Database["public"]["Enums"]["enrollment_status"]
+          id: string
+          institution_id: string | null
+          linked_at: string
+          matrix_id: string | null
+          status: Database["public"]["Enums"]["entity_status"]
+          student_id: string
+          unit_id: string | null
+          updated_at: string
+        }
+        Insert: {
+          campus_id?: string | null
+          course_id: string
+          created_at?: string
+          enrollment_status?: Database["public"]["Enums"]["enrollment_status"]
+          id?: string
+          institution_id?: string | null
+          linked_at?: string
+          matrix_id?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+          student_id: string
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Update: {
+          campus_id?: string | null
+          course_id?: string
+          created_at?: string
+          enrollment_status?: Database["public"]["Enums"]["enrollment_status"]
+          id?: string
+          institution_id?: string | null
+          linked_at?: string
+          matrix_id?: string | null
+          status?: Database["public"]["Enums"]["entity_status"]
+          student_id?: string
+          unit_id?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "student_course_links_campus_id_fkey"
+            columns: ["campus_id"]
+            isOneToOne: false
+            referencedRelation: "campuses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_course_links_course_id_fkey"
+            columns: ["course_id"]
+            isOneToOne: false
+            referencedRelation: "courses"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_course_links_institution_id_fkey"
+            columns: ["institution_id"]
+            isOneToOne: false
+            referencedRelation: "institutions"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_course_links_matrix_id_fkey"
+            columns: ["matrix_id"]
+            isOneToOne: false
+            referencedRelation: "academic_matrices"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_course_links_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "student_course_links_unit_id_fkey"
+            columns: ["unit_id"]
+            isOneToOne: false
+            referencedRelation: "units"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       student_course_requests: {
         Row: {
           created_at: string
