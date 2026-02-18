@@ -322,10 +322,12 @@ export default function AttendanceSessionWizard({
                   )}
                 </div>
 
-                {/* Session ID */}
+                {/* Session ID curto */}
                 <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs space-y-1">
-                  <p className="text-muted-foreground font-medium">ID da Sessão</p>
-                  <p className="font-mono text-foreground break-all">{sessionId}</p>
+                  <p className="text-muted-foreground font-medium">ID da Aula</p>
+                  <p className="font-mono text-foreground text-lg font-bold tracking-widest">
+                    {sessionId.replace(/-/g, '').slice(0, 6).toUpperCase()}
+                  </p>
                 </div>
 
                 {/* Code */}
