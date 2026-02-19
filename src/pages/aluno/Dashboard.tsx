@@ -49,6 +49,8 @@ interface ClassSubjectPlan {
   ementa_override: string | null;
   plan_status: string;
   professor_user_id: string;
+  bibliografia_basica: string | null;
+  bibliografia_complementar: string | null;
   entries: LessonPlanEntry[];
 }
 
@@ -200,13 +202,12 @@ export default function AlunoDashboard() {
             .in('subject_id', subjectIds)
             .order('opened_at', { ascending: false })
         : Promise.resolve({ data: [] }),
-      // Fetch class_subjects with lesson_plan_entries for enrolled subjects
+      // Fetch class_subjects with lesson_plan_entries for enrolled subjects (sem filtro de plan_status)
       subjectIds.length > 0
         ? supabase
             .from('class_subjects')
-            .select('id, subject_id, ementa_override, plan_status, professor_user_id')
+            .select('id, subject_id, ementa_override, plan_status, professor_user_id, bibliografia_basica, bibliografia_complementar')
             .in('subject_id', subjectIds)
-            .eq('plan_status', 'APROVADO')
         : Promise.resolve({ data: [] }),
       // Fetch student's own tickets
       supabase
@@ -415,6 +416,21 @@ export default function AlunoDashboard() {
   const aprovados = enrollments.filter(e => e.status === 'APROVADO');
   const reprovados = enrollments.filter(e => e.status === 'REPROVADO');
 
+  // Disciplinas em risco: frequência abaixo do mínimo ou média abaixo do mínimo
+  const atRiskEnrollmentIds = new Set(
+    enrollments
+      .filter(e => {
+        const avg = calcAverage(e.grades);
+        const freqRisk = e.attendance_pct !== null && e.attendance_pct < e.subject.min_attendance_pct;
+        const gradeRisk = avg !== null && avg < e.subject.min_grade;
+        return freqRisk || gradeRisk;
+      })
+      .map(e => e.id)
+  );
+
+  // Tickets abertos (para badge)
+  const openTicketsCount = myTickets.filter((t: any) => t.status === 'ABERTO').length;
+
   const semesters = Array.from(new Set(enrollments.map(e => e.semester))).sort((a, b) => a - b);
   const courses = Array.from(new Set(courseLinks.map(c => c.course?.name).filter(Boolean)));
 
@@ -518,9 +534,14 @@ export default function AlunoDashboard() {
               <User className="w-3 h-3 sm:w-4 sm:h-4" />
               Perfil
             </TabsTrigger>
-            <TabsTrigger value="ticket" className="gap-1 text-xs sm:text-sm">
+            <TabsTrigger value="ticket" className="gap-1 text-xs sm:text-sm relative">
               <MessageSquarePlus className="w-3 h-3 sm:w-4 sm:h-4" />
               Suporte
+              {openTicketsCount > 0 && (
+                <span className="ml-1 inline-flex items-center justify-center w-4 h-4 rounded-full bg-destructive text-destructive-foreground text-[10px] font-bold">
+                  {openTicketsCount}
+                </span>
+              )}
             </TabsTrigger>
           </TabsList>
 
@@ -564,20 +585,26 @@ export default function AlunoDashboard() {
               filteredEnrollments.map(e => {
                 const avg = calcAverage(e.grades);
                 const st = STATUS_MAP[e.status] || STATUS_MAP.CURSANDO;
-                const isAttRisk = e.attendance_pct !== null && e.attendance_pct < e.subject.min_attendance_pct;
                 const activePanel = expandedPanel?.id === e.id ? expandedPanel.panel : null;
 
                 const togglePanel = (panel: string) => {
                   setExpandedPanel(activePanel === panel ? null : { id: e.id, panel });
                 };
 
+                const isAtRisk = atRiskEnrollmentIds.has(e.id);
+
                 return (
-                  <Card key={e.id} className={`border-border ${isAttRisk ? 'border-destructive/40' : ''}`}>
+                  <Card key={e.id} className={`border-2 ${isAtRisk ? 'border-destructive/50 bg-destructive/[0.02]' : 'border-border'}`}>
                     <CardContent className="pt-4 pb-3">
                       {/* Header */}
                       <div className="flex items-start justify-between gap-3 flex-wrap">
-                        <div className="min-w-0">
-                          <p className="font-semibold text-foreground truncate">{e.subject.name}</p>
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2">
+                            <p className="font-semibold text-foreground truncate">{e.subject.name}</p>
+                            {isAtRisk && (
+                              <ShieldAlert className="w-4 h-4 text-destructive shrink-0" />
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground">{e.subject.code} · {e.subject.workload_hours}h · {e.semester}º semestre</p>
                         </div>
                         <span className={`inline-flex items-center gap-1 px-2 py-1 rounded-full text-xs font-medium border ${st.color}`}>
@@ -597,7 +624,7 @@ export default function AlunoDashboard() {
                             Freq: {e.attendance_pct}%
                           </span>
                         )}
-                        {e.absencesRemaining !== null && e.absencesRemaining === 0 && (
+                        {isAtRisk && (
                           <span className="text-xs font-medium px-2 py-0.5 rounded-md border bg-destructive/10 text-destructive border-destructive/20 flex items-center gap-1">
                             <ShieldAlert className="w-3 h-3" /> Risco de reprovação
                           </span>
@@ -636,18 +663,16 @@ export default function AlunoDashboard() {
                           Média de Nota
                           {activePanel === 'notas' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
                         </Button>
-                        {e.classPlan && (
-                          <Button
-                            variant={activePanel === 'plano' ? 'default' : 'outline'}
-                            size="sm"
-                            className="h-7 text-xs gap-1"
-                            onClick={() => togglePanel('plano')}
-                          >
-                            <BookMarked className="w-3 h-3" />
-                            Plano de Aula
-                            {activePanel === 'plano' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-                          </Button>
-                        )}
+                        <Button
+                          variant={activePanel === 'plano' ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          onClick={() => togglePanel('plano')}
+                        >
+                          <BookMarked className="w-3 h-3" />
+                          Plano de Aula
+                          {activePanel === 'plano' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </Button>
                       </div>
 
                       {/* ── Panel: Presenças ── */}
@@ -768,72 +793,78 @@ export default function AlunoDashboard() {
                       )}
 
                       {/* ── Panel: Plano de Aula ── */}
-                      {activePanel === 'plano' && e.classPlan && (
+                      {activePanel === 'plano' && (
                         <div className="mt-3 space-y-3">
-                          {e.classPlan.ementa_override && (
-                            <div className="rounded-lg bg-muted/50 border border-border p-3">
-                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Ementa</p>
-                              <p className="text-sm text-foreground whitespace-pre-wrap">{e.classPlan.ementa_override}</p>
-                            </div>
-                          )}
-                          {(() => {
-                            const exams = e.classPlan!.entries.filter(en => en.entry_type === 'PROVA');
-                            if (!exams.length) return null;
-                            return (
-                              <div>
-                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-                                  <Calendar className="w-3 h-3" /> Datas de Avaliações
-                                </p>
-                                <div className="space-y-1">
-                                  {exams.map(exam => (
-                                    <div key={exam.id} className="flex items-center justify-between rounded-lg bg-destructive/5 border border-destructive/20 px-3 py-2">
-                                      <div>
-                                        <span className="text-sm font-medium text-foreground">{exam.title}</span>
-                                        {exam.exam_type && <span className="ml-2 text-xs text-muted-foreground">({exam.exam_type})</span>}
-                                      </div>
-                                      <span className="text-sm text-muted-foreground">
-                                        {new Date(exam.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                                      </span>
-                                    </div>
-                                  ))}
+                          {!e.classPlan ? (
+                            <p className="text-sm text-muted-foreground">Plano de aula não disponível para esta disciplina ainda.</p>
+                          ) : (
+                            <>
+                              {e.classPlan.ementa_override && (
+                                <div className="rounded-lg bg-muted/50 border border-border p-3">
+                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Ementa</p>
+                                  <p className="text-sm text-foreground whitespace-pre-wrap">{e.classPlan.ementa_override}</p>
                                 </div>
-                              </div>
-                            );
-                          })()}
-                          {(() => {
-                            const aulas = e.classPlan!.entries.filter(en => en.entry_type === 'AULA');
-                            if (!aulas.length) return null;
-                            return (
-                              <div>
-                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-                                  <BookOpen className="w-3 h-3" /> Cronograma de Aulas
-                                </p>
-                                <div className="space-y-2">
-                                  {aulas.map(aula => (
-                                    <div key={aula.id} className="rounded-lg border border-border bg-card p-3">
-                                      <div className="flex items-start justify-between gap-2 flex-wrap">
-                                        <div className="flex items-center gap-2">
-                                          {aula.lesson_number && (
-                                            <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5 font-medium">
-                                              Aula {aula.lesson_number}
-                                            </span>
-                                          )}
-                                          <span className="text-sm font-medium text-foreground">{aula.title}</span>
+                              )}
+                              {(() => {
+                                const exams = e.classPlan!.entries.filter(en => en.entry_type === 'PROVA');
+                                if (!exams.length) return null;
+                                return (
+                                  <div>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+                                      <Calendar className="w-3 h-3" /> Datas de Avaliações
+                                    </p>
+                                    <div className="space-y-1">
+                                      {exams.map(exam => (
+                                        <div key={exam.id} className="flex items-center justify-between rounded-lg bg-destructive/5 border border-destructive/20 px-3 py-2">
+                                          <div>
+                                            <span className="text-sm font-medium text-foreground">{exam.title}</span>
+                                            {exam.exam_type && <span className="ml-2 text-xs text-muted-foreground">({exam.exam_type})</span>}
+                                          </div>
+                                          <span className="text-sm text-muted-foreground">
+                                            {new Date(exam.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                          </span>
                                         </div>
-                                        <span className="text-xs text-muted-foreground shrink-0">
-                                          {new Date(aula.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                                        </span>
-                                      </div>
-                                      {aula.description && <p className="text-xs text-muted-foreground mt-1">{aula.description}</p>}
-                                      {aula.objective && <p className="text-xs text-muted-foreground mt-1"><span className="font-medium">Objetivo:</span> {aula.objective}</p>}
+                                      ))}
                                     </div>
-                                  ))}
-                                </div>
-                              </div>
-                            );
-                          })()}
-                          {e.classPlan.entries.length === 0 && (
-                            <p className="text-sm text-muted-foreground">Nenhuma aula cadastrada no plano ainda.</p>
+                                  </div>
+                                );
+                              })()}
+                              {(() => {
+                                const aulas = e.classPlan!.entries.filter(en => en.entry_type === 'AULA');
+                                if (!aulas.length) return null;
+                                return (
+                                  <div>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+                                      <BookOpen className="w-3 h-3" /> Cronograma de Aulas
+                                    </p>
+                                    <div className="space-y-2">
+                                      {aulas.map(aula => (
+                                        <div key={aula.id} className="rounded-lg border border-border bg-card p-3">
+                                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                                            <div className="flex items-center gap-2">
+                                              {aula.lesson_number && (
+                                                <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5 font-medium">
+                                                  Aula {aula.lesson_number}
+                                                </span>
+                                              )}
+                                              <span className="text-sm font-medium text-foreground">{aula.title}</span>
+                                            </div>
+                                            <span className="text-xs text-muted-foreground shrink-0">
+                                              {new Date(aula.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                            </span>
+                                          </div>
+                                          {aula.description && <p className="text-xs text-muted-foreground mt-1">{aula.description}</p>}
+                                          {aula.objective && <p className="text-xs text-muted-foreground mt-1"><span className="font-medium">Objetivo:</span> {aula.objective}</p>}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+                              {e.classPlan.entries.length === 0 && !e.classPlan.ementa_override && (
+                                <p className="text-sm text-muted-foreground">Nenhuma aula cadastrada no plano ainda.</p>
+                              )}
+                            </>
                           )}
                         </div>
                       )}
