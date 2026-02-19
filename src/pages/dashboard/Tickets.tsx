@@ -19,6 +19,7 @@ interface Ticket {
   response: string | null;
   responded_at: string | null;
   created_at: string;
+  student_id: string | null;
   student: { name: string; enrollment: string } | null;
 }
 
@@ -50,7 +51,7 @@ export default function Tickets() {
     setLoading(true);
     const { data, error } = await supabase
       .from('support_tickets')
-      .select('id, subject, message, status, response, responded_at, created_at, student:students(name, enrollment)')
+      .select('id, subject, message, status, response, responded_at, created_at, student_id, student:students(name, enrollment)')
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -77,6 +78,36 @@ export default function Tickets() {
       toast({ title: 'Erro ao salvar resposta', description: error.message, variant: 'destructive' });
     } else {
       toast({ title: 'Ticket atualizado!', description: 'Resposta salva com sucesso.' });
+
+      // Notificar aluno por e-mail em background
+      if (responseText.trim() && ticket.student) {
+        void (async () => {
+          try {
+            const { data: linkData } = await supabase
+              .from('student_course_links')
+              .select('institution_id')
+              .eq('student_id', (ticket as any).student_id || '')
+              .not('institution_id', 'is', null)
+              .limit(1)
+              .maybeSingle();
+            if (linkData?.institution_id) {
+              await supabase.functions.invoke('notify-ticket-response', {
+                body: {
+                  ticket_id: ticket.id,
+                  student_name: ticket.student?.name,
+                  subject: ticket.subject,
+                  response: responseText.trim(),
+                  new_status: newStatus,
+                  institution_id: linkData.institution_id,
+                },
+              });
+            }
+          } catch (err) {
+            console.error('Erro ao notificar aluno:', err);
+          }
+        })();
+      }
+
       setRespondingId(null);
       setResponseText('');
       fetchTickets();
