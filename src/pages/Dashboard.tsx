@@ -24,6 +24,7 @@ import {
   UserCheck,
   Shield,
   FileText,
+  MessageSquarePlus,
   ChevronRight,
   Loader2,
   Menu,
@@ -48,6 +49,7 @@ import Permissoes from '@/pages/dashboard/Permissoes';
 import MinhasTurmas from '@/pages/dashboard/MinhasTurmas';
 import RevisaoCoordenador from '@/pages/dashboard/RevisaoCoordenador';
 import Aulas from '@/pages/dashboard/Aulas';
+import Tickets from '@/pages/dashboard/Tickets';
 
 // Hierarchy levels: lower index = more privilege
 const ROLE_HIERARCHY: AppRole[] = ['super_admin', 'admin', 'diretor', 'gerente', 'coordenador', 'professor', 'aluno'];
@@ -150,6 +152,10 @@ const Dashboard = () => {
     { 
       icon: FileText, label: 'Boletim', path: '/dashboard/boletim',
       roles: ['professor', 'admin', 'coordenador', 'super_admin', 'gerente', 'diretor'],
+    },
+    { 
+      icon: MessageSquarePlus, label: 'Tickets', path: '/dashboard/tickets',
+      roles: ['admin', 'coordenador', 'gerente', 'diretor', 'super_admin'],
     },
     { 
       icon: FileText, label: 'Relatórios', path: '/dashboard/relatorios',
@@ -470,6 +476,7 @@ const Dashboard = () => {
               <Route path="revisao" element={<RevisaoCoordenador />} />
               <Route path="alunos" element={<Alunos />} />
               <Route path="boletim" element={<Boletim />} />
+              <Route path="tickets" element={<Tickets />} />
               <Route path="configuracoes" element={<Configuracoes />} />
               <Route path="permissoes" element={<Permissoes />} />
               <Route path="*" element={<div className="text-center py-16 text-muted-foreground">Página em construção</div>} />

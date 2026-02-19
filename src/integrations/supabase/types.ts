@@ -1519,6 +1519,53 @@ export type Database = {
           },
         ]
       }
+      support_tickets: {
+        Row: {
+          created_at: string
+          id: string
+          message: string
+          responded_at: string | null
+          responded_by_user_id: string | null
+          response: string | null
+          status: string
+          student_id: string
+          subject: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          message: string
+          responded_at?: string | null
+          responded_by_user_id?: string | null
+          response?: string | null
+          status?: string
+          student_id: string
+          subject: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          message?: string
+          responded_at?: string | null
+          responded_by_user_id?: string | null
+          response?: string | null
+          status?: string
+          student_id?: string
+          subject?: string
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "support_tickets_student_id_fkey"
+            columns: ["student_id"]
+            isOneToOne: false
+            referencedRelation: "students"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       units: {
         Row: {
           campus_id: string
