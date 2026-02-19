@@ -487,6 +487,9 @@ export default function AlunoDashboard() {
   const [calendarDate, setCalendarDate] = useState<Date>(new Date());
   const [calendarSelectedDay, setCalendarSelectedDay] = useState<string | null>(null);
 
+  // Notas tab filter
+  const [notasSubjectFilter, setNotasSubjectFilter] = useState<string>('all');
+
   useEffect(() => {
     if (!authLoading && !user) navigate('/aluno/login');
   }, [user, authLoading, navigate]);
@@ -1433,7 +1436,26 @@ export default function AlunoDashboard() {
             {enrollments.length === 0 ? (
               <Card><CardContent className="py-10 text-center text-muted-foreground">Nenhuma nota disponível.</CardContent></Card>
             ) : (
-              enrollments.map(e => {
+              <>
+                {/* Subject filter */}
+                <div className="flex flex-wrap items-center gap-2">
+                  <Select value={notasSubjectFilter} onValueChange={setNotasSubjectFilter}>
+                    <SelectTrigger className="w-56 h-8 text-xs">
+                      <SelectValue placeholder="Selecionar disciplina" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">Todas as disciplinas</SelectItem>
+                      {enrollments.map(en => (
+                        <SelectItem key={en.id} value={en.id}>{en.subject.name}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {notasSubjectFilter !== 'all' && (
+                    <span className="text-xs text-muted-foreground">1 de {enrollments.length} disciplinas</span>
+                  )}
+                </div>
+
+              {(notasSubjectFilter === 'all' ? enrollments : enrollments.filter(en => en.id === notasSubjectFilter)).map(e => {
                 const avg = calcAverage(e.grades, e.templateItems);
                 const topLevel = (e.templateItems || []).filter(t => t.counts_in_final && t.parent_item_id === null)
                   .sort((a, b) => a.order_index - b.order_index);
@@ -1636,7 +1658,8 @@ export default function AlunoDashboard() {
                     </CardContent>
                   </Card>
                 );
-              })
+              })}
+              </>
             )}
           </TabsContent>
 
