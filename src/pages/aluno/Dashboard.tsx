@@ -16,7 +16,7 @@ import {
   GraduationCap, LogOut, BookOpen, CheckCircle2, XCircle, Clock,
   TrendingUp, CalendarCheck, Award, Loader2, AlertTriangle, ListChecks,
   ShieldAlert, User, MessageSquarePlus, FileText, Building2, BookMarked,
-  ChevronDown, ChevronUp, Calendar,
+  ChevronDown, ChevronUp, Calendar, ChevronLeft, ChevronRight,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -794,79 +794,7 @@ export default function AlunoDashboard() {
 
                       {/* ── Panel: Plano de Aula ── */}
                       {activePanel === 'plano' && (
-                        <div className="mt-3 space-y-3">
-                          {!e.classPlan ? (
-                            <p className="text-sm text-muted-foreground">Plano de aula não disponível para esta disciplina ainda.</p>
-                          ) : (
-                            <>
-                              {e.classPlan.ementa_override && (
-                                <div className="rounded-lg bg-muted/50 border border-border p-3">
-                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Ementa</p>
-                                  <p className="text-sm text-foreground whitespace-pre-wrap">{e.classPlan.ementa_override}</p>
-                                </div>
-                              )}
-                              {(() => {
-                                const exams = e.classPlan!.entries.filter(en => en.entry_type === 'PROVA');
-                                if (!exams.length) return null;
-                                return (
-                                  <div>
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-                                      <Calendar className="w-3 h-3" /> Datas de Avaliações
-                                    </p>
-                                    <div className="space-y-1">
-                                      {exams.map(exam => (
-                                        <div key={exam.id} className="flex items-center justify-between rounded-lg bg-destructive/5 border border-destructive/20 px-3 py-2">
-                                          <div>
-                                            <span className="text-sm font-medium text-foreground">{exam.title}</span>
-                                            {exam.exam_type && <span className="ml-2 text-xs text-muted-foreground">({exam.exam_type})</span>}
-                                          </div>
-                                          <span className="text-sm text-muted-foreground">
-                                            {new Date(exam.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-                              {(() => {
-                                const aulas = e.classPlan!.entries.filter(en => en.entry_type === 'AULA');
-                                if (!aulas.length) return null;
-                                return (
-                                  <div>
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-                                      <BookOpen className="w-3 h-3" /> Cronograma de Aulas
-                                    </p>
-                                    <div className="space-y-2">
-                                      {aulas.map(aula => (
-                                        <div key={aula.id} className="rounded-lg border border-border bg-card p-3">
-                                          <div className="flex items-start justify-between gap-2 flex-wrap">
-                                            <div className="flex items-center gap-2">
-                                              {aula.lesson_number && (
-                                                <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5 font-medium">
-                                                  Aula {aula.lesson_number}
-                                                </span>
-                                              )}
-                                              <span className="text-sm font-medium text-foreground">{aula.title}</span>
-                                            </div>
-                                            <span className="text-xs text-muted-foreground shrink-0">
-                                              {new Date(aula.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                                            </span>
-                                          </div>
-                                          {aula.description && <p className="text-xs text-muted-foreground mt-1">{aula.description}</p>}
-                                          {aula.objective && <p className="text-xs text-muted-foreground mt-1"><span className="font-medium">Objetivo:</span> {aula.objective}</p>}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-                              {e.classPlan.entries.length === 0 && !e.classPlan.ementa_override && (
-                                <p className="text-sm text-muted-foreground">Nenhuma aula cadastrada no plano ainda.</p>
-                              )}
-                            </>
-                          )}
-                        </div>
+                        <LessonPlanPanel classPlan={e.classPlan} subjectName={e.subject.name} />
                       )}
                     </CardContent>
                   </Card>
@@ -1301,6 +1229,248 @@ function InfoField({ label, value }: { label: string; value: string | null | und
     <div>
       <p className="text-xs text-muted-foreground mb-0.5">{label}</p>
       <p className="text-sm font-medium text-foreground">{value || <span className="text-muted-foreground italic">Não informado</span>}</p>
+    </div>
+  );
+}
+
+// ─── Lesson Plan Panel with Calendar ─────────────────────────────────────────
+
+const PT_MONTHS = [
+  'Janeiro','Fevereiro','Março','Abril','Maio','Junho',
+  'Julho','Agosto','Setembro','Outubro','Novembro','Dezembro',
+];
+const PT_WEEKDAYS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
+
+function LessonPlanPanel({ classPlan, subjectName }: { classPlan: ClassSubjectPlan | null; subjectName: string }) {
+  const [selectedDay, setSelectedDay] = useState<string | null>(null);
+  const [calendarDate, setCalendarDate] = useState<Date>(() => {
+    if (classPlan?.entries?.length) {
+      const first = classPlan.entries[0].entry_date;
+      return new Date(first + 'T12:00:00');
+    }
+    return new Date();
+  });
+
+  if (!classPlan) {
+    return (
+      <div className="mt-3 rounded-lg border border-border bg-muted/20 p-4">
+        <p className="text-sm text-muted-foreground">Plano de aula não disponível para esta disciplina ainda.</p>
+      </div>
+    );
+  }
+
+  const allEntries = classPlan.entries;
+
+  // Build a map: "YYYY-MM-DD" -> entries[]
+  const entriesByDate: Record<string, LessonPlanEntry[]> = {};
+  allEntries.forEach(entry => {
+    const key = entry.entry_date;
+    if (!entriesByDate[key]) entriesByDate[key] = [];
+    entriesByDate[key].push(entry);
+  });
+
+  const year = calendarDate.getFullYear();
+  const month = calendarDate.getMonth();
+  const firstDay = new Date(year, month, 1).getDay();
+  const daysInMonth = new Date(year, month + 1, 0).getDate();
+
+  const prevMonth = () => setCalendarDate(new Date(year, month - 1, 1));
+  const nextMonth = () => setCalendarDate(new Date(year, month + 1, 1));
+
+  const selectedEntries = selectedDay ? (entriesByDate[selectedDay] || []) : [];
+
+  const today = new Date().toISOString().split('T')[0];
+
+  return (
+    <div className="mt-3 space-y-4">
+      {/* Ementa */}
+      {classPlan.ementa_override && (
+        <div className="rounded-lg bg-muted/50 border border-border p-3">
+          <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Ementa</p>
+          <p className="text-sm text-foreground whitespace-pre-wrap">{classPlan.ementa_override}</p>
+        </div>
+      )}
+
+      {/* Bibliografias */}
+      {(classPlan.bibliografia_basica || classPlan.bibliografia_complementar) && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {classPlan.bibliografia_basica && (
+            <div className="rounded-lg bg-muted/50 border border-border p-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Bibliografia Básica</p>
+              <p className="text-xs text-foreground whitespace-pre-wrap">{classPlan.bibliografia_basica}</p>
+            </div>
+          )}
+          {classPlan.bibliografia_complementar && (
+            <div className="rounded-lg bg-muted/50 border border-border p-3">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Bibliografia Complementar</p>
+              <p className="text-xs text-foreground whitespace-pre-wrap">{classPlan.bibliografia_complementar}</p>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* Legend */}
+      <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-primary inline-block" /> Aula</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-destructive inline-block" /> Avaliação</span>
+        <span className="flex items-center gap-1"><span className="w-3 h-3 rounded-sm bg-border border border-border inline-block" /> Sem atividade</span>
+      </div>
+
+      {/* Calendar */}
+      {allEntries.length === 0 ? (
+        <p className="text-sm text-muted-foreground">Nenhuma atividade cadastrada no plano ainda.</p>
+      ) : (
+        <div className="rounded-lg border border-border overflow-hidden">
+          {/* Month nav */}
+          <div className="flex items-center justify-between px-4 py-2 bg-muted/40 border-b border-border">
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={prevMonth}>
+              <ChevronLeft className="w-4 h-4" />
+            </Button>
+            <span className="text-sm font-semibold text-foreground">
+              {PT_MONTHS[month]} {year}
+            </span>
+            <Button variant="ghost" size="icon" className="h-7 w-7" onClick={nextMonth}>
+              <ChevronRight className="w-4 h-4" />
+            </Button>
+          </div>
+
+          {/* Weekday headers */}
+          <div className="grid grid-cols-7 border-b border-border">
+            {PT_WEEKDAYS.map(d => (
+              <div key={d} className="text-center text-xs font-medium text-muted-foreground py-1.5">
+                {d}
+              </div>
+            ))}
+          </div>
+
+          {/* Days grid */}
+          <div className="grid grid-cols-7">
+            {/* Empty cells before first day */}
+            {Array.from({ length: firstDay }).map((_, i) => (
+              <div key={`empty-${i}`} className="h-10 border-r border-b border-border/40 last:border-r-0 bg-muted/20" />
+            ))}
+            {Array.from({ length: daysInMonth }).map((_, i) => {
+              const day = i + 1;
+              const dateStr = `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+              const dayEntries = entriesByDate[dateStr] || [];
+              const hasExam = dayEntries.some(e => e.entry_type === 'PROVA' || e.entry_type === 'AVALIACAO');
+              const hasClass = dayEntries.some(e => e.entry_type === 'AULA');
+              const isToday = dateStr === today;
+              const isSelected = selectedDay === dateStr;
+              const hasActivity = dayEntries.length > 0;
+              const col = (firstDay + i) % 7;
+              const isLastCol = col === 6;
+
+              return (
+                <button
+                  key={dateStr}
+                  onClick={() => setSelectedDay(isSelected ? null : dateStr)}
+                  className={[
+                    'h-10 relative flex flex-col items-center justify-center border-b text-xs transition-colors',
+                    isLastCol ? 'border-r-0' : 'border-r border-border/40',
+                    'border-b border-border/40',
+                    isSelected ? 'bg-primary text-primary-foreground' :
+                    isToday ? 'bg-primary/10 font-bold' :
+                    hasActivity ? 'hover:bg-muted/60 cursor-pointer' : 'text-muted-foreground',
+                  ].join(' ')}
+                >
+                  <span className={isSelected ? 'text-primary-foreground' : isToday ? 'text-primary font-bold' : 'text-foreground'}>
+                    {day}
+                  </span>
+                  {hasActivity && !isSelected && (
+                    <div className="flex gap-0.5 mt-0.5">
+                      {hasClass && <span className="w-1.5 h-1.5 rounded-full bg-primary" />}
+                      {hasExam && <span className="w-1.5 h-1.5 rounded-full bg-destructive" />}
+                    </div>
+                  )}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      )}
+
+      {/* Selected day detail */}
+      {selectedDay && (
+        <div className="rounded-lg border border-border bg-card p-3 space-y-3">
+          <div className="flex items-center justify-between">
+            <p className="text-sm font-semibold text-foreground">
+              {new Date(selectedDay + 'T12:00:00').toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long', year: 'numeric' })}
+            </p>
+            <Button variant="ghost" size="sm" className="h-6 text-xs" onClick={() => setSelectedDay(null)}>Fechar</Button>
+          </div>
+          {selectedEntries.length === 0 ? (
+            <p className="text-sm text-muted-foreground">Nenhuma atividade neste dia.</p>
+          ) : (
+            selectedEntries.map(entry => (
+              <div key={entry.id} className={`rounded-lg border p-3 space-y-1 ${
+                entry.entry_type === 'PROVA' || entry.entry_type === 'AVALIACAO'
+                  ? 'border-destructive/30 bg-destructive/5'
+                  : 'border-primary/20 bg-primary/5'
+              }`}>
+                <div className="flex items-center gap-2 flex-wrap">
+                  {(entry.entry_type === 'PROVA' || entry.entry_type === 'AVALIACAO') ? (
+                    <span className="text-xs font-bold uppercase text-destructive bg-destructive/10 px-2 py-0.5 rounded-full">
+                      {entry.exam_type || 'Avaliação'}
+                    </span>
+                  ) : (
+                    entry.lesson_number && (
+                      <span className="text-xs font-bold text-primary bg-primary/10 px-2 py-0.5 rounded-full">
+                        Aula {entry.lesson_number}
+                      </span>
+                    )
+                  )}
+                  <span className="text-sm font-semibold text-foreground">{entry.title}</span>
+                </div>
+                {entry.description && (
+                  <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Descrição:</span> {entry.description}</p>
+                )}
+                {entry.objective && (
+                  <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Objetivo:</span> {entry.objective}</p>
+                )}
+                {entry.activities && (
+                  <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Atividades:</span> {entry.activities}</p>
+                )}
+                {entry.methodology && (
+                  <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Metodologia:</span> {entry.methodology}</p>
+                )}
+                {entry.resource && (
+                  <p className="text-xs text-muted-foreground"><span className="font-medium text-foreground">Recursos:</span> {entry.resource}</p>
+                )}
+              </div>
+            ))
+          )}
+        </div>
+      )}
+
+      {/* Upcoming evaluations quick list */}
+      {(() => {
+        const todayStr = new Date().toISOString().split('T')[0];
+        const upcoming = allEntries
+          .filter(e => (e.entry_type === 'PROVA' || e.entry_type === 'AVALIACAO') && e.entry_date >= todayStr)
+          .sort((a, b) => a.entry_date.localeCompare(b.entry_date));
+        if (!upcoming.length) return null;
+        return (
+          <div>
+            <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+              <Calendar className="w-3 h-3" /> Próximas Avaliações
+            </p>
+            <div className="space-y-1.5">
+              {upcoming.map(exam => (
+                <div key={exam.id} className="flex items-center justify-between rounded-lg bg-destructive/5 border border-destructive/20 px-3 py-2">
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-destructive uppercase">{exam.exam_type || 'Prova'}</span>
+                    <span className="text-sm font-medium text-foreground">{exam.title}</span>
+                  </div>
+                  <span className="text-xs text-muted-foreground shrink-0">
+                    {new Date(exam.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                  </span>
+                </div>
+              ))}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
