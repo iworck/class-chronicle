@@ -24,26 +24,21 @@ Deno.serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!
     );
 
-    const pdfPath = `lesson_plans/${class_subject_id}.pdf`;
+    const htmlPath = `lesson_plans/${class_subject_id}.html`;
 
-    // Check if cached PDF exists
-    const { data: existingFile, error: listError } = await supabase
+    // Check if cached HTML exists (bucket is public, use direct public URL)
+    const { data: existingFile } = await supabase
       .storage
       .from('lesson-plans')
-      .list('lesson_plans', { search: `${class_subject_id}.pdf` });
+      .list('lesson_plans', { search: `${class_subject_id}.html` });
 
-    if (!listError && existingFile && existingFile.length > 0) {
-      // Return signed URL for existing PDF
-      const { data: urlData } = await supabase
-        .storage
-        .from('lesson-plans')
-        .createSignedUrl(pdfPath, 3600);
+    const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+    const publicUrl = `${supabaseUrl}/storage/v1/object/public/lesson-plans/${htmlPath}`;
 
-      if (urlData?.signedUrl) {
-        return new Response(JSON.stringify({ url: urlData.signedUrl, cached: true }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
+    if (existingFile && existingFile.length > 0) {
+      return new Response(JSON.stringify({ url: publicUrl, cached: true }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
 
     // Fetch class_subject data
@@ -94,27 +89,15 @@ Deno.serve(async (req) => {
       allEntries,
     });
 
-    // Use browser rendering via fetch to html2pdf-like service
-    // Since we can't use jsPDF in edge functions, we'll generate a styled HTML and use CSS print
-    // We'll actually generate the PDF by calling Chromium via a public HTML-to-PDF endpoint
-    // For now we create a well-formatted HTML and save it, returning a URL
-
-    // Actually, let's generate the PDF content as an HTML blob stored in storage
-    // and return it as an HTML file with proper print CSS so browsers print it as PDF
+    // Upload HTML to storage and return public URL (bucket is public)
     const htmlBytes = new TextEncoder().encode(html);
 
-    const htmlPath = `lesson_plans/${class_subject_id}.html`;
     await supabase.storage.from('lesson-plans').upload(htmlPath, htmlBytes, {
       contentType: 'text/html; charset=utf-8',
       upsert: true,
     });
 
-    const { data: urlData } = await supabase
-      .storage
-      .from('lesson-plans')
-      .createSignedUrl(htmlPath, 3600 * 24); // 24 hours
-
-    return new Response(JSON.stringify({ url: urlData?.signedUrl, cached: false }), {
+    return new Response(JSON.stringify({ url: publicUrl, cached: false }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 

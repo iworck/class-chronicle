@@ -343,6 +343,12 @@ export default function AlunoDashboard() {
       toast({ title: 'Plano não disponível', description: 'Esta disciplina ainda não tem plano de aula cadastrado.', variant: 'destructive' });
       return;
     }
+    // Check if there's actual content (entries or ementa)
+    const hasContent = classPlan.entries.length > 0 || classPlan.ementa_override || classPlan.bibliografia_basica;
+    if (!hasContent) {
+      toast({ title: 'Plano incompleto', description: 'O professor ainda não preencheu o plano de aula desta disciplina.', variant: 'destructive' });
+      return;
+    }
     setPdfLoading(prev => ({ ...prev, [classPlan.id]: true }));
     try {
       const { data, error } = await supabase.functions.invoke('generate-lesson-plan-pdf', {
@@ -352,7 +358,15 @@ export default function AlunoDashboard() {
         toast({ title: 'Erro ao gerar plano', description: error?.message || 'Tente novamente.', variant: 'destructive' });
         return;
       }
-      window.open(data.url, '_blank');
+      // Use anchor element to avoid popup blockers
+      const a = document.createElement('a');
+      a.href = data.url;
+      a.target = '_blank';
+      a.rel = 'noopener noreferrer';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      toast({ title: data.cached ? 'Plano carregado!' : 'Plano gerado!', description: `Abrindo plano de aula de ${subjectName}...` });
     } catch (err: any) {
       toast({ title: 'Erro ao gerar plano', description: err.message, variant: 'destructive' });
     } finally {
