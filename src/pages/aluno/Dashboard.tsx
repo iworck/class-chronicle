@@ -12,6 +12,8 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
+import jsPDF from 'jspdf';
+import autoTable from 'jspdf-autotable';
 import {
   GraduationCap, LogOut, BookOpen, CheckCircle2, XCircle, Clock,
   TrendingUp, CalendarCheck, Award, Loader2, AlertTriangle, ListChecks,
@@ -54,6 +56,15 @@ interface ClassSubjectPlan {
   entries: LessonPlanEntry[];
 }
 
+interface GradeTemplateItem {
+  id: string;
+  name: string;
+  counts_in_final: boolean;
+  parent_item_id: string | null;
+  weight: number;
+  order_index: number;
+}
+
 interface EnrollmentData {
   id: string;
   subject_id: string;
@@ -67,6 +78,7 @@ interface EnrollmentData {
   absencesRemaining: number | null;
   maxAbsencesAllowed: number | null;
   classPlan: ClassSubjectPlan | null;
+  templateItems: GradeTemplateItem[];
 }
 
 interface CourseLink {
@@ -131,20 +143,266 @@ const PT_MONTHS = [
 ];
 const PT_WEEKDAYS = ['Dom','Seg','Ter','Qua','Qui','Sex','Sáb'];
 
-// ─── Grade average calculation ─────────────────────────────────────────────
+// ─── Grade average calculation (respects template hierarchy) ──────────────────
 
-function calcAverage(grades: EnrollmentData['grades']) {
-  const finals = grades.filter(g => g.counts_in_final);
-  if (!finals.length) return null;
-  // If all finals have equal weight, use simple arithmetic mean (N1+N2/2 style)
-  const allSameWeight = finals.every(g => g.weight === finals[0].weight);
-  if (allSameWeight) {
+function calcAverage(grades: EnrollmentData['grades'], templateItems?: GradeTemplateItem[]): number | null {
+  if (!templateItems || templateItems.length === 0) {
+    // Fallback: simple calc from stored grades
+    const finals = grades.filter(g => g.counts_in_final);
+    if (!finals.length) return null;
+    const allSameWeight = finals.every(g => g.weight === finals[0].weight);
+    if (allSameWeight) return finals.reduce((s, g) => s + g.grade_value, 0) / finals.length;
+    const totalWeight = finals.reduce((s, g) => s + g.weight, 0);
+    if (!totalWeight) return null;
+    return finals.reduce((s, g) => s + g.grade_value * g.weight, 0) / totalWeight;
+  }
+
+  // Template-based: top-level items that count in final (N1, N2, etc.)
+  const topLevelItems = templateItems.filter(t => t.counts_in_final && t.parent_item_id === null)
+    .sort((a, b) => a.order_index - b.order_index);
+
+  if (topLevelItems.length === 0) {
+    // All items are flat leaf nodes
+    const finals = grades.filter(g => g.counts_in_final);
+    if (!finals.length) return null;
     return finals.reduce((s, g) => s + g.grade_value, 0) / finals.length;
   }
-  // Otherwise weighted average
-  const totalWeight = finals.reduce((s, g) => s + g.weight, 0);
-  if (!totalWeight) return null;
-  return finals.reduce((s, g) => s + g.grade_value * g.weight, 0) / totalWeight;
+
+  let sum = 0;
+  let count = 0;
+
+  for (const parent of topLevelItems) {
+    const children = templateItems.filter(t => t.parent_item_id === parent.id);
+    if (children.length > 0) {
+      // Calculate parent value from children (weighted sum / total weight)
+      let childSum = 0;
+      let childWeightSum = 0;
+      let hasAnyChild = false;
+      for (const child of children) {
+        const g = grades.find(gr => gr.grade_type.toUpperCase() === child.name.toUpperCase());
+        if (g) {
+          childSum += g.grade_value * child.weight;
+          childWeightSum += child.weight;
+          hasAnyChild = true;
+        }
+      }
+      if (!hasAnyChild) continue;
+      sum += childWeightSum > 0 ? childSum / childWeightSum : 0;
+      count++;
+    } else {
+      // Leaf top-level item — look for stored grade
+      const g = grades.find(gr => gr.grade_type.toUpperCase() === parent.name.toUpperCase() && gr.counts_in_final);
+      if (g) {
+        sum += g.grade_value;
+        count++;
+      }
+    }
+  }
+
+  return count === 0 ? null : sum / count;
+}
+
+// ─── Helper: get formula string for display ───────────────────────────────────
+function calcFormulaString(grades: EnrollmentData['grades'], templateItems: GradeTemplateItem[]): string {
+  const topLevel = templateItems.filter(t => t.counts_in_final && t.parent_item_id === null)
+    .sort((a, b) => a.order_index - b.order_index);
+
+  if (topLevel.length === 0) {
+    const finals = grades.filter(g => g.counts_in_final);
+    if (finals.length < 2) return '';
+    return `(${finals.map(g => g.grade_value.toFixed(1)).join(' + ')}) / ${finals.length}`;
+  }
+
+  const parts: string[] = [];
+  for (const parent of topLevel) {
+    const children = templateItems.filter(t => t.parent_item_id === parent.id);
+    if (children.length > 0) {
+      let childWeightSum = 0;
+      let childValSum = 0;
+      for (const child of children) {
+        const g = grades.find(gr => gr.grade_type.toUpperCase() === child.name.toUpperCase());
+        if (g) { childValSum += g.grade_value * child.weight; childWeightSum += child.weight; }
+      }
+      if (childWeightSum > 0) parts.push((childValSum / childWeightSum).toFixed(2));
+    } else {
+      const g = grades.find(gr => gr.grade_type.toUpperCase() === parent.name.toUpperCase() && gr.counts_in_final);
+      if (g) parts.push(g.grade_value.toFixed(1));
+    }
+  }
+  if (parts.length < 2) return '';
+  return `(${parts.join(' + ')}) / ${parts.length}`;
+}
+
+// ─── Lesson Plan PDF Generator ────────────────────────────────────────────────
+
+function generateLessonPlanPdf(
+  classPlan: ClassSubjectPlan,
+  subjectName: string,
+  subjectCode: string,
+  classCode: string,
+  workloadHours: number,
+  minGrade: number,
+  minAttendancePct: number,
+) {
+  const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
+  const pageW = doc.internal.pageSize.getWidth();
+  const margin = 14;
+  const contentW = pageW - margin * 2;
+  let y = 20;
+  const today = new Date().toLocaleDateString('pt-BR');
+
+  // ── Header ──
+  doc.setFillColor(30, 64, 175);
+  doc.rect(0, 0, pageW, 30, 'F');
+  doc.setTextColor(255, 255, 255);
+  doc.setFontSize(16);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Plano de Ensino', margin, 13);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'normal');
+  doc.text(`${subjectName} · ${subjectCode} · Turma: ${classCode}`, margin, 21);
+  doc.setTextColor(200, 200, 220);
+  doc.setFontSize(8);
+  doc.text(`Gerado em ${today}`, pageW - margin, 26, { align: 'right' });
+
+  y = 40;
+
+  // ── Info boxes ──
+  doc.setTextColor(30, 30, 30);
+  const infoBoxW = contentW / 3;
+  const infos = [
+    { label: 'Carga Horária', value: `${workloadHours}h` },
+    { label: 'Nota Mínima', value: String(minGrade) },
+    { label: 'Frequência Mínima', value: `${minAttendancePct}%` },
+  ];
+  infos.forEach((info, i) => {
+    const bx = margin + i * infoBoxW;
+    doc.setFillColor(243, 244, 246);
+    doc.roundedRect(bx, y, infoBoxW - 4, 18, 2, 2, 'F');
+    doc.setFontSize(7);
+    doc.setTextColor(107, 114, 128);
+    doc.setFont('helvetica', 'normal');
+    doc.text(info.label.toUpperCase(), bx + 4, y + 6);
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.setTextColor(17, 24, 39);
+    doc.text(info.value, bx + 4, y + 14);
+  });
+  y += 26;
+
+  // ── Section helper ──
+  function addSection(title: string) {
+    if (y > 255) { doc.addPage(); y = 20; }
+    doc.setFillColor(30, 64, 175);
+    doc.rect(margin, y, contentW, 7, 'F');
+    doc.setTextColor(255, 255, 255);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(title.toUpperCase(), margin + 3, y + 5);
+    y += 10;
+    doc.setTextColor(30, 30, 30);
+  }
+
+  function addTextBlock(text: string) {
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(55, 65, 81);
+    const lines = doc.splitTextToSize(text, contentW - 4);
+    lines.forEach((line: string) => {
+      if (y > 275) { doc.addPage(); y = 20; }
+      doc.text(line, margin + 2, y);
+      y += 5;
+    });
+    y += 4;
+  }
+
+  // ── Ementa ──
+  if (classPlan.ementa_override) {
+    addSection('Ementa');
+    addTextBlock(classPlan.ementa_override);
+  }
+
+  // ── Bibliografias ──
+  if (classPlan.bibliografia_basica || classPlan.bibliografia_complementar) {
+    addSection('Bibliografias');
+    if (classPlan.bibliografia_basica) {
+      doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
+      doc.text('Básica:', margin + 2, y); y += 5;
+      addTextBlock(classPlan.bibliografia_basica);
+    }
+    if (classPlan.bibliografia_complementar) {
+      doc.setFontSize(8); doc.setFont('helvetica', 'bold'); doc.setTextColor(30, 30, 30);
+      doc.text('Complementar:', margin + 2, y); y += 5;
+      addTextBlock(classPlan.bibliografia_complementar);
+    }
+  }
+
+  // ── Avaliações ──
+  const provas = classPlan.entries.filter(e => e.entry_type === 'PROVA' || e.entry_type === 'AVALIACAO');
+  if (provas.length > 0) {
+    if (y > 200) { doc.addPage(); y = 20; }
+    addSection('Metodologia de Avaliação');
+    autoTable(doc, {
+      startY: y,
+      head: [['Tipo', 'Data', 'Título', 'Descrição']],
+      body: provas.map(e => [
+        e.exam_type || e.title || '—',
+        e.entry_date ? e.entry_date.split('-').reverse().join('/') : '—',
+        e.title || '—',
+        e.description || '—',
+      ]),
+      styles: { fontSize: 8, cellPadding: 2 },
+      headStyles: { fillColor: [30, 64, 175] },
+      columnStyles: { 0: { cellWidth: 30 }, 1: { cellWidth: 22 }, 2: { cellWidth: 40 } },
+      margin: { left: margin, right: margin },
+    });
+    y = (doc as any).lastAutoTable?.finalY + 6 || y + 10;
+  }
+
+  // ── Cronograma de Aulas ──
+  const aulas = classPlan.entries.filter(e => e.entry_type === 'AULA');
+  if (aulas.length > 0) {
+    if (y > 220) { doc.addPage(); y = 20; }
+    addSection('Cronograma de Aulas');
+    autoTable(doc, {
+      startY: y,
+      head: [['#', 'Data', 'Conteúdo', 'Objetivo', 'Atividades', 'Metodologia', 'Recursos']],
+      body: aulas.map(e => [
+        e.lesson_number ?? '—',
+        e.entry_date ? e.entry_date.split('-').reverse().join('/') : '—',
+        e.title || '—',
+        e.objective || '—',
+        e.activities || '—',
+        e.methodology || '—',
+        e.resource || '—',
+      ]),
+      styles: { fontSize: 7, cellPadding: 2, overflow: 'linebreak' },
+      headStyles: { fillColor: [30, 64, 175] },
+      columnStyles: {
+        0: { cellWidth: 8 },
+        1: { cellWidth: 20 },
+        2: { cellWidth: 35 },
+        3: { cellWidth: 28 },
+        4: { cellWidth: 28 },
+        5: { cellWidth: 28 },
+        6: { cellWidth: 25 },
+      },
+      margin: { left: margin, right: margin },
+    });
+  }
+
+  // ── Footer on all pages ──
+  const pageCount = doc.getNumberOfPages();
+  for (let i = 1; i <= pageCount; i++) {
+    doc.setPage(i);
+    doc.setFontSize(7);
+    doc.setTextColor(156, 163, 175);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Documento gerado automaticamente pelo sistema acadêmico', margin, 292);
+    doc.text(`Página ${i} de ${pageCount}`, pageW - margin, 292, { align: 'right' });
+  }
+
+  doc.save(`plano_de_ensino_${subjectCode}_${classCode}.pdf`);
 }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
@@ -244,15 +502,34 @@ export default function AlunoDashboard() {
     const classSubjectsData: any[] = classSubjectsRes.data || [];
 
     const classSubjectIds = classSubjectsData.map((cs: any) => cs.id);
-    let lessonEntriesData: any[] = [];
-    if (classSubjectIds.length > 0) {
-      const { data: entries } = await supabase
-        .from('lesson_plan_entries')
-        .select('id, class_subject_id, entry_type, entry_date, title, description, objective, activities, methodology, resource, lesson_number, exam_type')
-        .in('class_subject_id', classSubjectIds)
-        .order('entry_date');
-      lessonEntriesData = entries || [];
-    }
+
+    // Fetch lesson entries and grade template items in parallel
+    const [lessonEntriesRes, templateItemsRes, attRecordsRes] = await Promise.all([
+      classSubjectIds.length > 0
+        ? supabase
+            .from('lesson_plan_entries')
+            .select('id, class_subject_id, entry_type, entry_date, title, description, objective, activities, methodology, resource, lesson_number, exam_type')
+            .in('class_subject_id', classSubjectIds)
+            .order('entry_date')
+        : Promise.resolve({ data: [] }),
+      classSubjectIds.length > 0
+        ? supabase
+            .from('grade_template_items')
+            .select('id, class_subject_id, name, counts_in_final, parent_item_id, weight, order_index')
+            .in('class_subject_id', classSubjectIds)
+        : Promise.resolve({ data: [] }),
+      attSessionsData.length > 0
+        ? supabase
+            .from('attendance_records')
+            .select('session_id, final_status')
+            .eq('student_id', student.id)
+            .in('session_id', attSessionsData.map((s: any) => s.id))
+        : Promise.resolve({ data: [] }),
+    ]);
+
+    const lessonEntriesData: any[] = lessonEntriesRes.data || [];
+    const templateItemsData: any[] = templateItemsRes.data || [];
+    const attRecordsData: any[] = attRecordsRes.data || [];
 
     const classPlanBySubject: Record<string, ClassSubjectPlan> = {};
     classSubjectsData.forEach((cs: any) => {
@@ -264,16 +541,12 @@ export default function AlunoDashboard() {
       }
     });
 
-    const sessionIds = attSessionsData.map((s: any) => s.id);
-    let attRecordsData: any[] = [];
-    if (sessionIds.length > 0) {
-      const { data: ar } = await supabase
-        .from('attendance_records')
-        .select('session_id, final_status')
-        .eq('student_id', student.id)
-        .in('session_id', sessionIds);
-      attRecordsData = ar || [];
-    }
+    // Build template items by class_subject_id
+    const templateByClassSubject: Record<string, GradeTemplateItem[]> = {};
+    templateItemsData.forEach((t: any) => {
+      if (!templateByClassSubject[t.class_subject_id]) templateByClassSubject[t.class_subject_id] = [];
+      templateByClassSubject[t.class_subject_id].push(t);
+    });
 
     const details: SessionDetail[] = attSessionsData.map((s: any) => {
       const rec = attRecordsData.find((r: any) => r.session_id === s.id);
@@ -312,6 +585,11 @@ export default function AlunoDashboard() {
           ? Math.max(0, maxAbsencesAllowed - absencesSoFar)
           : null;
 
+        const classPlan = classPlanBySubject[e.subject_id] || null;
+        const templateItems: GradeTemplateItem[] = classPlan
+          ? templateByClassSubject[classPlan.id] || []
+          : [];
+
         return {
           ...e,
           subject: sub,
@@ -321,7 +599,8 @@ export default function AlunoDashboard() {
           presentCount,
           absencesRemaining,
           maxAbsencesAllowed,
-          classPlan: classPlanBySubject[e.subject_id] || null,
+          classPlan,
+          templateItems,
         };
       });
 
@@ -338,12 +617,12 @@ export default function AlunoDashboard() {
     navigate('/aluno/login');
   };
 
-  async function handleOpenLessonPlan(classPlan: ClassSubjectPlan | null, subjectName: string) {
+  function handleOpenLessonPlan(enrollment: EnrollmentData) {
+    const { classPlan } = enrollment;
     if (!classPlan) {
       toast({ title: 'Plano não disponível', description: 'Esta disciplina ainda não tem plano de aula cadastrado.', variant: 'destructive' });
       return;
     }
-    // Check if there's actual content (entries or ementa)
     const hasContent = classPlan.entries.length > 0 || classPlan.ementa_override || classPlan.bibliografia_basica;
     if (!hasContent) {
       toast({ title: 'Plano incompleto', description: 'O professor ainda não preencheu o plano de aula desta disciplina.', variant: 'destructive' });
@@ -351,26 +630,20 @@ export default function AlunoDashboard() {
     }
     setPdfLoading(prev => ({ ...prev, [classPlan.id]: true }));
     try {
-      const { data, error } = await supabase.functions.invoke('generate-lesson-plan-pdf', {
-        body: { class_subject_id: classPlan.id },
-      });
-      if (error || !data?.url) {
-        toast({ title: 'Erro ao gerar plano', description: error?.message || 'Tente novamente.', variant: 'destructive' });
-        return;
-      }
-      // Use anchor element to avoid popup blockers
-      const a = document.createElement('a');
-      a.href = data.url;
-      a.target = '_blank';
-      a.rel = 'noopener noreferrer';
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      toast({ title: data.cached ? 'Plano carregado!' : 'Plano gerado!', description: `Abrindo plano de aula de ${subjectName}...` });
+      generateLessonPlanPdf(
+        classPlan,
+        enrollment.subject.name,
+        enrollment.subject.code,
+        classPlan.id.slice(0, 8).toUpperCase(), // fallback code
+        enrollment.subject.workload_hours,
+        enrollment.subject.min_grade,
+        enrollment.subject.min_attendance_pct,
+      );
+      toast({ title: 'PDF gerado!', description: `Baixando plano de aula de ${enrollment.subject.name}...` });
     } catch (err: any) {
-      toast({ title: 'Erro ao gerar plano', description: err.message, variant: 'destructive' });
+      toast({ title: 'Erro ao gerar PDF', description: err.message, variant: 'destructive' });
     } finally {
-      setPdfLoading(prev => ({ ...prev, [classPlan?.id]: false }));
+      setPdfLoading(prev => ({ ...prev, [classPlan.id]: false }));
     }
   }
 
@@ -460,7 +733,7 @@ export default function AlunoDashboard() {
   const atRiskEnrollmentIds = new Set(
     enrollments
       .filter(e => {
-        const avg = calcAverage(e.grades);
+        const avg = calcAverage(e.grades, e.templateItems);
         const freqRisk = e.attendance_pct !== null && e.attendance_pct < e.subject.min_attendance_pct;
         const gradeRisk = avg !== null && avg < e.subject.min_grade;
         return freqRisk || gradeRisk;
@@ -634,7 +907,7 @@ export default function AlunoDashboard() {
               <Card><CardContent className="py-10 text-center text-muted-foreground">Nenhuma disciplina encontrada.</CardContent></Card>
             ) : (
               filteredEnrollments.map(e => {
-                const avg = calcAverage(e.grades);
+                const avg = calcAverage(e.grades, e.templateItems);
                 const st = STATUS_MAP[e.status] || STATUS_MAP.CURSANDO;
                 const activePanel = expandedPanel?.id === e.id ? expandedPanel.panel : null;
                 const togglePanel = (panel: string) => {
@@ -714,7 +987,7 @@ export default function AlunoDashboard() {
                           variant="outline"
                           size="sm"
                           className="h-7 text-xs gap-1"
-                          onClick={() => handleOpenLessonPlan(e.classPlan, e.subject.name)}
+                          onClick={() => handleOpenLessonPlan(e)}
                           disabled={pdfLoading[e.classPlan?.id || ''] || false}
                         >
                           {pdfLoading[e.classPlan?.id || ''] ? (
@@ -988,11 +1261,8 @@ export default function AlunoDashboard() {
               <Card><CardContent className="py-10 text-center text-muted-foreground">Nenhuma nota disponível.</CardContent></Card>
             ) : (
               enrollments.map(e => {
-                const avg = calcAverage(e.grades);
-                const finals = e.grades.filter(g => g.counts_in_final);
-                const formula = finals.length >= 2
-                  ? `(${finals.map(g => g.grade_value.toFixed(1)).join(' + ')}) / ${finals.length}`
-                  : '';
+                const avg = calcAverage(e.grades, e.templateItems);
+                const formula = calcFormulaString(e.grades, e.templateItems);
                 return (
                   <Card key={e.id} className="border-border">
                     <CardHeader className="pb-2 pt-4">
@@ -1013,7 +1283,7 @@ export default function AlunoDashboard() {
                         <p className="text-sm text-muted-foreground">Notas não lançadas ainda.</p>
                       ) : (
                         <div className="space-y-1">
-                          {finals.map((g, i) => (
+                          {e.grades.filter(g => g.counts_in_final).map((g, i) => (
                             <div key={i} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
                               <span className="text-sm text-foreground font-medium">{g.grade_type}</span>
                               <span className={`font-semibold ${g.grade_value >= e.subject.min_grade ? 'text-foreground' : 'text-destructive'}`}>
