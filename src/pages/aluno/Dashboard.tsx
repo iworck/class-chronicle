@@ -1084,69 +1084,120 @@ export default function AlunoDashboard() {
                       )}
 
                       {/* ── Panel: Média de Nota ── */}
-                      {activePanel === 'notas' && (
-                        <div className="mt-3 rounded-lg border border-border bg-muted/20 p-3 space-y-2">
-                          {e.grades.length === 0 ? (
-                            <p className="text-sm text-muted-foreground">Notas não lançadas ainda.</p>
-                          ) : (
-                            <>
-                              {/* Final grades */}
-                              {e.grades.filter(g => g.counts_in_final).length > 0 && (
-                                <div className="space-y-1">
-                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Notas Finais</p>
-                                  {e.grades.filter(g => g.counts_in_final).map((g, i) => (
-                                    <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/60 last:border-0">
-                                      <span className="text-sm text-foreground">{g.grade_type}</span>
-                                      <span className={`font-semibold ${g.grade_value >= e.subject.min_grade ? 'text-foreground' : 'text-destructive'}`}>
-                                        {g.grade_value.toFixed(1)}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              {/* Non-final grades */}
-                              {e.grades.filter(g => !g.counts_in_final).length > 0 && (
-                                <div className="space-y-1">
-                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Notas Complementares</p>
-                                  {e.grades.filter(g => !g.counts_in_final).map((g, i) => (
-                                    <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/60 last:border-0">
-                                      <div>
-                                        <span className="text-sm text-foreground">{g.grade_type}</span>
-                                        <span className="ml-2 text-xs text-muted-foreground">(não conta na média)</span>
-                                      </div>
-                                      <span className="font-semibold text-muted-foreground">
-                                        {g.grade_value.toFixed(1)}
-                                      </span>
-                                    </div>
-                                  ))}
-                                </div>
-                              )}
-                              {/* Average */}
-                              {avg !== null && (() => {
-                                const finals = e.grades.filter(g => g.counts_in_final);
-                                const formula = finals.length === 2
-                                  ? `(${finals.map(g => g.grade_value.toFixed(1)).join(' + ')}) / 2`
-                                  : finals.length > 0
-                                  ? finals.map(g => g.grade_value.toFixed(1)).join(' + ') + ` / ${finals.length}`
-                                  : '';
-                                return (
-                                  <div className="flex flex-col gap-1 pt-2 border-t border-border">
-                                    {formula && (
-                                      <p className="text-xs text-muted-foreground text-right">{formula} = {avg.toFixed(2)}</p>
-                                    )}
-                                    <div className="flex items-center justify-between">
-                                      <span className="text-sm font-semibold text-muted-foreground">Média Final</span>
-                                      <span className={`text-xl font-bold ${avg >= e.subject.min_grade ? 'text-primary' : 'text-destructive'}`}>
-                                        {avg.toFixed(2)} <span className="text-xs font-normal text-muted-foreground">/ {e.subject.min_grade}</span>
-                                      </span>
+                      {activePanel === 'notas' && (() => {
+                        const topLevel = (e.templateItems || []).filter(t => t.counts_in_final && t.parent_item_id === null)
+                          .sort((a, b) => a.order_index - b.order_index);
+                        const hasTemplate = topLevel.length > 0;
+                        return (
+                          <div className="mt-3 rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+                            {e.grades.length === 0 && !hasTemplate ? (
+                              <p className="text-sm text-muted-foreground">Notas não lançadas ainda.</p>
+                            ) : (
+                              <>
+                                {/* Hierarchical formula */}
+                                {hasTemplate && (
+                                  <div className="bg-muted/50 rounded-lg p-3 space-y-3">
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fórmula de Cálculo</p>
+                                    {topLevel.map(parent => {
+                                      const children = (e.templateItems || []).filter(t => t.parent_item_id === parent.id)
+                                        .sort((a, b) => a.order_index - b.order_index);
+                                      let parentVal: number | null = null;
+                                      if (children.length > 0) {
+                                        let cSum = 0, cW = 0;
+                                        for (const child of children) {
+                                          const g = e.grades.find(gr => gr.grade_type.toUpperCase() === child.name.toUpperCase());
+                                          if (g) { cSum += g.grade_value * child.weight; cW += child.weight; }
+                                        }
+                                        if (cW > 0) parentVal = cSum / cW;
+                                      } else {
+                                        const g = e.grades.find(gr => gr.grade_type.toUpperCase() === parent.name.toUpperCase() && gr.counts_in_final);
+                                        if (g) parentVal = g.grade_value;
+                                      }
+                                      return (
+                                        <div key={parent.id} className="space-y-1">
+                                          <div className="flex items-center justify-between">
+                                            <span className="text-sm font-bold text-foreground">{parent.name}</span>
+                                            {parentVal !== null && (
+                                              <span className={`text-sm font-bold ${parentVal >= e.subject.min_grade ? 'text-primary' : 'text-destructive'}`}>
+                                                {parentVal.toFixed(2)}
+                                              </span>
+                                            )}
+                                          </div>
+                                          {children.length > 0 && (
+                                            <div className="ml-3 space-y-0.5">
+                                              {children.map(child => {
+                                                const g = e.grades.find(gr => gr.grade_type.toUpperCase() === child.name.toUpperCase());
+                                                return (
+                                                  <div key={child.id} className="flex items-center justify-between text-xs">
+                                                    <span className="text-muted-foreground">
+                                                      {child.name} <span className="text-muted-foreground/70">× peso {child.weight}</span>
+                                                    </span>
+                                                    <span className={`font-medium ${g ? 'text-foreground' : 'text-muted-foreground/50'}`}>
+                                                      {g ? g.grade_value.toFixed(1) : '—'}
+                                                    </span>
+                                                  </div>
+                                                );
+                                              })}
+                                              <p className="text-[11px] text-muted-foreground/80 pt-0.5">
+                                                {parent.name} = {children.map(c => c.name).join(' + ')}
+                                              </p>
+                                            </div>
+                                          )}
+                                        </div>
+                                      );
+                                    })}
+                                    <div className="pt-2 border-t border-border/60">
+                                      <p className="text-xs font-semibold text-foreground">
+                                        MÉDIA = ({topLevel.map(p => p.name).join(' + ')}) / {topLevel.length}
+                                      </p>
                                     </div>
                                   </div>
-                                );
-                              })()}
-                            </>
-                          )}
-                        </div>
-                      )}
+                                )}
+
+                                {/* Flat grades fallback */}
+                                {!hasTemplate && e.grades.length > 0 && (
+                                  <div className="space-y-1">
+                                    {e.grades.filter(g => g.counts_in_final).map((g, i) => (
+                                      <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/60 last:border-0">
+                                        <span className="text-sm text-foreground">{g.grade_type}</span>
+                                        <span className={`font-semibold ${g.grade_value >= e.subject.min_grade ? 'text-foreground' : 'text-destructive'}`}>
+                                          {g.grade_value.toFixed(1)}
+                                        </span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Non-final grades */}
+                                {e.grades.filter(g => !g.counts_in_final).length > 0 && (
+                                  <div className="space-y-1">
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Notas Complementares</p>
+                                    {e.grades.filter(g => !g.counts_in_final).map((g, i) => (
+                                      <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/60 last:border-0">
+                                        <div>
+                                          <span className="text-sm text-foreground">{g.grade_type}</span>
+                                          <span className="ml-2 text-xs text-muted-foreground">(não conta na média)</span>
+                                        </div>
+                                        <span className="font-semibold text-muted-foreground">{g.grade_value.toFixed(1)}</span>
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+
+                                {/* Average */}
+                                {avg !== null && (
+                                  <div className="flex items-center justify-between pt-2 border-t border-border">
+                                    <span className="text-sm font-semibold text-muted-foreground">Média Final</span>
+                                    <span className={`text-xl font-bold ${avg >= e.subject.min_grade ? 'text-primary' : 'text-destructive'}`}>
+                                      {avg.toFixed(2)} <span className="text-xs font-normal text-muted-foreground">/ {e.subject.min_grade}</span>
+                                    </span>
+                                  </div>
+                                )}
+                              </>
+                            )}
+                          </div>
+                        );
+                      })()}
                     </CardContent>
                   </Card>
                 );
