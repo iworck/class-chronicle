@@ -139,9 +139,13 @@ export default function AlunoDashboard() {
 
   // Expanded discipline plan
   const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
+  // Expanded detail panel per enrollment (presencas | frequencia | notas | plano)
+  const [expandedPanel, setExpandedPanel] = useState<{ id: string; panel: string } | null>(null);
 
-  // Semester filter
+  // Filters
   const [semesterFilter, setSemesterFilter] = useState<string>('all');
+  const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [courseFilter, setCourseFilter] = useState<string>('all');
 
   // Ticket form
   const [ticketSubject, setTicketSubject] = useState('');
@@ -332,11 +336,16 @@ export default function AlunoDashboard() {
     }
     if (!student) return;
     setSendingTicket(true);
-    const { error } = await supabase.from('support_tickets').insert({
-      student_id: student.id,
-      subject: ticketSubject,
-      message: ticketMessage.trim(),
-    });
+    const { data: insertedTicket, error } = await supabase
+      .from('support_tickets')
+      .insert({
+        student_id: student.id,
+        subject: ticketSubject,
+        message: ticketMessage.trim(),
+      })
+      .select('id')
+      .single();
+
     if (error) {
       toast({ title: 'Erro ao enviar solicitação', description: error.message, variant: 'destructive' });
     } else {
@@ -346,6 +355,30 @@ export default function AlunoDashboard() {
       });
       setTicketSubject('');
       setTicketMessage('');
+
+      // Busca o institution_id do estudante via course link
+      const { data: linkData } = await supabase
+        .from('student_course_links')
+        .select('institution_id')
+        .eq('student_id', student.id)
+        .not('institution_id', 'is', null)
+        .limit(1)
+        .maybeSingle();
+
+      // Dispara notificação por e-mail em background (não bloqueia)
+      if (insertedTicket?.id && linkData?.institution_id) {
+        supabase.functions.invoke('notify-new-ticket', {
+          body: {
+            ticket_id: insertedTicket.id,
+            student_name: student.name,
+            student_enrollment: student.enrollment,
+            subject: ticketSubject,
+            message: ticketMessage.trim(),
+            institution_id: linkData.institution_id,
+          },
+        }).catch(console.error);
+      }
+
       // Refresh tickets list
       const { data } = await supabase
         .from('support_tickets')
@@ -383,9 +416,13 @@ export default function AlunoDashboard() {
   const reprovados = enrollments.filter(e => e.status === 'REPROVADO');
 
   const semesters = Array.from(new Set(enrollments.map(e => e.semester))).sort((a, b) => a - b);
-  const filteredEnrollments = semesterFilter === 'all'
-    ? enrollments
-    : enrollments.filter(e => e.semester === Number(semesterFilter));
+  const courses = Array.from(new Set(courseLinks.map(c => c.course?.name).filter(Boolean)));
+
+  const filteredEnrollments = enrollments.filter(e => {
+    if (semesterFilter !== 'all' && e.semester !== Number(semesterFilter)) return false;
+    if (statusFilter !== 'all' && e.status !== statusFilter) return false;
+    return true;
+  });
 
   return (
     <div className="min-h-screen bg-background">
@@ -489,23 +526,37 @@ export default function AlunoDashboard() {
 
           {/* ── DISCIPLINAS ──────────────────────────────── */}
           <TabsContent value="disciplinas" className="mt-4 space-y-3">
-            {/* Semester filter */}
-            {semesters.length > 1 && (
-              <div className="flex items-center gap-2">
-                <Label className="text-sm text-muted-foreground shrink-0">Filtrar por semestre:</Label>
+            {/* Filters */}
+            <div className="flex flex-wrap items-center gap-2">
+              {semesters.length > 1 && (
                 <Select value={semesterFilter} onValueChange={setSemesterFilter}>
-                  <SelectTrigger className="w-40">
-                    <SelectValue />
+                  <SelectTrigger className="w-36 h-8 text-xs">
+                    <SelectValue placeholder="Semestre" />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="all">Todos</SelectItem>
+                    <SelectItem value="all">Todos os semestres</SelectItem>
                     {semesters.map(s => (
                       <SelectItem key={s} value={String(s)}>{s}º semestre</SelectItem>
                     ))}
                   </SelectContent>
                 </Select>
-              </div>
-            )}
+              )}
+              <Select value={statusFilter} onValueChange={setStatusFilter}>
+                <SelectTrigger className="w-36 h-8 text-xs">
+                  <SelectValue placeholder="Status" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">Todos os status</SelectItem>
+                  <SelectItem value="CURSANDO">Cursando</SelectItem>
+                  <SelectItem value="APROVADO">Aprovado</SelectItem>
+                  <SelectItem value="REPROVADO">Reprovado</SelectItem>
+                  <SelectItem value="TRANCADO">Trancado</SelectItem>
+                </SelectContent>
+              </Select>
+              {filteredEnrollments.length !== enrollments.length && (
+                <span className="text-xs text-muted-foreground">{filteredEnrollments.length} de {enrollments.length} disciplinas</span>
+              )}
+            </div>
 
             {filteredEnrollments.length === 0 ? (
               <Card><CardContent className="py-10 text-center text-muted-foreground">Nenhuma disciplina encontrada.</CardContent></Card>
@@ -514,10 +565,16 @@ export default function AlunoDashboard() {
                 const avg = calcAverage(e.grades);
                 const st = STATUS_MAP[e.status] || STATUS_MAP.CURSANDO;
                 const isAttRisk = e.attendance_pct !== null && e.attendance_pct < e.subject.min_attendance_pct;
+                const activePanel = expandedPanel?.id === e.id ? expandedPanel.panel : null;
+
+                const togglePanel = (panel: string) => {
+                  setExpandedPanel(activePanel === panel ? null : { id: e.id, panel });
+                };
 
                 return (
                   <Card key={e.id} className={`border-border ${isAttRisk ? 'border-destructive/40' : ''}`}>
-                    <CardContent className="pt-4 pb-4">
+                    <CardContent className="pt-4 pb-3">
+                      {/* Header */}
                       <div className="flex items-start justify-between gap-3 flex-wrap">
                         <div className="min-w-0">
                           <p className="font-semibold text-foreground truncate">{e.subject.name}</p>
@@ -528,144 +585,255 @@ export default function AlunoDashboard() {
                         </span>
                       </div>
 
-                      {(avg !== null || e.attendance_pct !== null) && (
-                        <div className="mt-3 grid grid-cols-2 gap-3">
-                          {avg !== null && (
-                            <div>
-                              <p className="text-xs text-muted-foreground mb-1">Média</p>
-                              <p className={`text-lg font-bold ${avg >= e.subject.min_grade ? 'text-primary' : 'text-destructive'}`}>
-                                {avg.toFixed(1)}
-                              </p>
-                              <p className="text-xs text-muted-foreground">Mín: {e.subject.min_grade}</p>
-                            </div>
-                          )}
-                          {e.attendance_pct !== null && (
-                            <div>
-                              <p className="text-xs text-muted-foreground mb-1">Frequência</p>
-                              <p className={`text-lg font-bold ${e.attendance_pct >= e.subject.min_attendance_pct ? 'text-primary' : 'text-destructive'}`}>
-                                {e.attendance_pct}%
-                              </p>
-                              <Progress value={e.attendance_pct} className="h-1.5 mt-1" />
-                              <p className="text-xs text-muted-foreground">Mín: {e.subject.min_attendance_pct}%</p>
-                            </div>
-                          )}
-                        </div>
-                      )}
+                      {/* Quick summary badges */}
+                      <div className="mt-2 flex flex-wrap gap-2">
+                        {avg !== null && (
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-md border ${avg >= e.subject.min_grade ? 'bg-primary/10 text-primary border-primary/20' : 'bg-destructive/10 text-destructive border-destructive/20'}`}>
+                            Média: {avg.toFixed(1)}
+                          </span>
+                        )}
+                        {e.attendance_pct !== null && (
+                          <span className={`text-xs font-medium px-2 py-0.5 rounded-md border ${e.attendance_pct >= e.subject.min_attendance_pct ? 'bg-primary/10 text-primary border-primary/20' : 'bg-destructive/10 text-destructive border-destructive/20'}`}>
+                            Freq: {e.attendance_pct}%
+                          </span>
+                        )}
+                        {e.absencesRemaining !== null && e.absencesRemaining === 0 && (
+                          <span className="text-xs font-medium px-2 py-0.5 rounded-md border bg-destructive/10 text-destructive border-destructive/20 flex items-center gap-1">
+                            <ShieldAlert className="w-3 h-3" /> Risco de reprovação
+                          </span>
+                        )}
+                      </div>
 
-                      {/* Risk indicator */}
-                      {e.totalSessions > 0 && e.absencesRemaining !== null && (
-                        <div className={`mt-3 flex items-center gap-2 rounded-lg px-3 py-2 text-sm ${
-                          e.absencesRemaining === 0
-                            ? 'bg-destructive/10 text-destructive border border-destructive/20'
-                            : e.absencesRemaining <= 2
-                            ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20'
-                            : 'bg-muted text-muted-foreground border border-border'
-                        }`}>
-                          <ShieldAlert className="w-4 h-4 shrink-0" />
-                          {e.absencesRemaining === 0 ? (
-                            <span className="font-medium">Nenhuma falta restante — risco de reprovação por frequência!</span>
-                          ) : (
-                            <span>
-                              Pode faltar mais <strong>{e.absencesRemaining} {e.absencesRemaining === 1 ? 'vez' : 'vezes'}</strong> sem ser reprovado por frequência.
-                            </span>
-                          )}
-                        </div>
-                      )}
-
-                      {/* Plano de Aula */}
-                      {e.classPlan && (
-                        <div className="mt-3 border-t border-border pt-3">
-                          <button
-                            className="flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors w-full text-left"
-                            onClick={() => setExpandedPlan(expandedPlan === e.id ? null : e.id)}
+                      {/* Action buttons */}
+                      <div className="mt-3 pt-3 border-t border-border flex flex-wrap gap-1.5">
+                        <Button
+                          variant={activePanel === 'presencas' ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          onClick={() => togglePanel('presencas')}
+                        >
+                          <ListChecks className="w-3 h-3" />
+                          Presenças
+                          {activePanel === 'presencas' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </Button>
+                        <Button
+                          variant={activePanel === 'frequencia' ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          onClick={() => togglePanel('frequencia')}
+                        >
+                          <CalendarCheck className="w-3 h-3" />
+                          Frequência
+                          {activePanel === 'frequencia' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </Button>
+                        <Button
+                          variant={activePanel === 'notas' ? 'default' : 'outline'}
+                          size="sm"
+                          className="h-7 text-xs gap-1"
+                          onClick={() => togglePanel('notas')}
+                        >
+                          <TrendingUp className="w-3 h-3" />
+                          Média de Nota
+                          {activePanel === 'notas' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                        </Button>
+                        {e.classPlan && (
+                          <Button
+                            variant={activePanel === 'plano' ? 'default' : 'outline'}
+                            size="sm"
+                            className="h-7 text-xs gap-1"
+                            onClick={() => togglePanel('plano')}
                           >
-                            <BookMarked className="w-4 h-4 shrink-0" />
-                            <span>Plano de Aula</span>
-                            {expandedPlan === e.id ? (
-                              <ChevronUp className="w-4 h-4 ml-auto" />
-                            ) : (
-                              <ChevronDown className="w-4 h-4 ml-auto" />
-                            )}
-                          </button>
+                            <BookMarked className="w-3 h-3" />
+                            Plano de Aula
+                            {activePanel === 'plano' ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                          </Button>
+                        )}
+                      </div>
 
-                          {expandedPlan === e.id && (
-                            <div className="mt-3 space-y-4">
-                              {/* Ementa */}
-                              {e.classPlan.ementa_override && (
-                                <div className="rounded-lg bg-muted/50 p-3">
-                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Ementa</p>
-                                  <p className="text-sm text-foreground whitespace-pre-wrap">{e.classPlan.ementa_override}</p>
+                      {/* ── Panel: Presenças ── */}
+                      {activePanel === 'presencas' && (() => {
+                        const subjectSessions = sessionDetails.filter(s => s.subject_id === e.subject_id);
+                        if (subjectSessions.length === 0) return (
+                          <p className="mt-3 text-sm text-muted-foreground">Nenhuma aula registrada ainda.</p>
+                        );
+                        return (
+                          <div className="mt-3 rounded-lg border border-border bg-muted/20 p-3 space-y-1">
+                            {subjectSessions.map(session => {
+                              const dt = new Date(session.opened_at);
+                              const attInfo = ATT_STATUS_MAP[session.final_status] || ATT_STATUS_MAP.FALTA;
+                              const isPresent = session.final_status === 'PRESENTE';
+                              return (
+                                <div key={session.session_id} className="flex items-center justify-between py-1.5 border-b border-border/60 last:border-0">
+                                  <div className="flex items-center gap-2">
+                                    {isPresent
+                                      ? <CheckCircle2 className="w-3.5 h-3.5 text-primary" />
+                                      : session.final_status === 'JUSTIFICADO'
+                                      ? <AlertTriangle className="w-3.5 h-3.5 text-muted-foreground" />
+                                      : <XCircle className="w-3.5 h-3.5 text-destructive" />}
+                                    <span className="text-xs text-foreground">
+                                      {dt.toLocaleDateString('pt-BR', { day: '2-digit', month: '2-digit', year: 'numeric' })}
+                                    </span>
+                                    <span className="text-xs text-muted-foreground">
+                                      {dt.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+                                    </span>
+                                  </div>
+                                  <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${attInfo.color}`}>
+                                    {attInfo.label}
+                                  </span>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        );
+                      })()}
+
+                      {/* ── Panel: Frequência ── */}
+                      {activePanel === 'frequencia' && (
+                        <div className="mt-3 rounded-lg border border-border bg-muted/20 p-3 space-y-3">
+                          {e.attendance_pct !== null ? (
+                            <>
+                              <div className="flex items-center justify-between">
+                                <span className="text-sm text-muted-foreground">Frequência atual</span>
+                                <span className={`text-xl font-bold ${e.attendance_pct >= e.subject.min_attendance_pct ? 'text-primary' : 'text-destructive'}`}>
+                                  {e.attendance_pct}%
+                                </span>
+                              </div>
+                              <Progress value={e.attendance_pct} className="h-2" />
+                              <div className="grid grid-cols-3 gap-2 text-center">
+                                <div className="rounded bg-muted p-2">
+                                  <p className="text-sm font-bold text-foreground">{e.totalSessions}</p>
+                                  <p className="text-xs text-muted-foreground">Aulas</p>
+                                </div>
+                                <div className="rounded bg-muted p-2">
+                                  <p className="text-sm font-bold text-primary">{e.presentCount}</p>
+                                  <p className="text-xs text-muted-foreground">Presenças</p>
+                                </div>
+                                <div className="rounded bg-muted p-2">
+                                  <p className="text-sm font-bold text-foreground">{e.totalSessions - e.presentCount}</p>
+                                  <p className="text-xs text-muted-foreground">Faltas</p>
+                                </div>
+                              </div>
+                              {e.absencesRemaining !== null && (
+                                <div className={`flex items-center gap-2 rounded-lg px-3 py-2 text-xs ${
+                                  e.absencesRemaining === 0
+                                    ? 'bg-destructive/10 text-destructive border border-destructive/20'
+                                    : e.absencesRemaining <= 2
+                                    ? 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border border-amber-500/20'
+                                    : 'bg-muted text-muted-foreground border border-border'
+                                }`}>
+                                  <ShieldAlert className="w-3.5 h-3.5 shrink-0" />
+                                  {e.absencesRemaining === 0
+                                    ? 'Nenhuma falta restante — risco de reprovação!'
+                                    : `Pode faltar mais ${e.absencesRemaining} ${e.absencesRemaining === 1 ? 'vez' : 'vezes'} (mín: ${e.subject.min_attendance_pct}%)`}
                                 </div>
                               )}
+                            </>
+                          ) : (
+                            <p className="text-sm text-muted-foreground">Sem sessões registradas ainda.</p>
+                          )}
+                        </div>
+                      )}
 
-                              {/* Provas */}
-                              {(() => {
-                                const exams = e.classPlan.entries.filter(en => en.entry_type === 'PROVA');
-                                if (!exams.length) return null;
-                                return (
+                      {/* ── Panel: Média de Nota ── */}
+                      {activePanel === 'notas' && (
+                        <div className="mt-3 rounded-lg border border-border bg-muted/20 p-3 space-y-2">
+                          {e.grades.length === 0 ? (
+                            <p className="text-sm text-muted-foreground">Notas não lançadas ainda.</p>
+                          ) : (
+                            <>
+                              {e.grades.map((g, i) => (
+                                <div key={i} className="flex items-center justify-between py-1.5 border-b border-border/60 last:border-0">
                                   <div>
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-                                      <Calendar className="w-3 h-3" /> Datas de Avaliações
-                                    </p>
-                                    <div className="space-y-1">
-                                      {exams.map(exam => (
-                                        <div key={exam.id} className="flex items-center justify-between rounded-lg bg-destructive/5 border border-destructive/20 px-3 py-2">
-                                          <div>
-                                            <span className="text-sm font-medium text-foreground">{exam.title}</span>
-                                            {exam.exam_type && <span className="ml-2 text-xs text-muted-foreground">({exam.exam_type})</span>}
-                                          </div>
-                                          <span className="text-sm text-muted-foreground">
-                                            {new Date(exam.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                                          </span>
-                                        </div>
-                                      ))}
-                                    </div>
+                                    <span className="text-sm text-foreground">{g.grade_type}</span>
+                                    {!g.counts_in_final && (
+                                      <span className="ml-2 text-xs text-muted-foreground">(não conta)</span>
+                                    )}
                                   </div>
-                                );
-                              })()}
-
-                              {/* Cronograma de Aulas */}
-                              {(() => {
-                                const aulas = e.classPlan.entries.filter(en => en.entry_type === 'AULA');
-                                if (!aulas.length) return null;
-                                return (
-                                  <div>
-                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
-                                      <BookOpen className="w-3 h-3" /> Cronograma de Aulas
-                                    </p>
-                                    <div className="space-y-2">
-                                      {aulas.map(aula => (
-                                        <div key={aula.id} className="rounded-lg border border-border bg-card p-3">
-                                          <div className="flex items-start justify-between gap-2 flex-wrap">
-                                            <div className="flex items-center gap-2">
-                                              {aula.lesson_number && (
-                                                <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5 font-medium">
-                                                  Aula {aula.lesson_number}
-                                                </span>
-                                              )}
-                                              <span className="text-sm font-medium text-foreground">{aula.title}</span>
-                                            </div>
-                                            <span className="text-xs text-muted-foreground shrink-0">
-                                              {new Date(aula.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
-                                            </span>
-                                          </div>
-                                          {aula.description && (
-                                            <p className="text-xs text-muted-foreground mt-1">{aula.description}</p>
-                                          )}
-                                          {aula.objective && (
-                                            <p className="text-xs text-muted-foreground mt-1"><span className="font-medium">Objetivo:</span> {aula.objective}</p>
-                                          )}
-                                        </div>
-                                      ))}
-                                    </div>
-                                  </div>
-                                );
-                              })()}
-
-                              {e.classPlan.entries.length === 0 && (
-                                <p className="text-sm text-muted-foreground">Nenhuma aula cadastrada no plano ainda.</p>
+                                  <span className={`font-semibold ${g.grade_value >= e.subject.min_grade ? 'text-foreground' : 'text-destructive'}`}>
+                                    {g.grade_value.toFixed(1)}
+                                  </span>
+                                </div>
+                              ))}
+                              {avg !== null && (
+                                <div className="flex items-center justify-between pt-2">
+                                  <span className="text-sm font-semibold text-muted-foreground">Média Final</span>
+                                  <span className={`text-xl font-bold ${avg >= e.subject.min_grade ? 'text-primary' : 'text-destructive'}`}>
+                                    {avg.toFixed(1)} <span className="text-xs font-normal">/ {e.subject.min_grade}</span>
+                                  </span>
+                                </div>
                               )}
+                            </>
+                          )}
+                        </div>
+                      )}
+
+                      {/* ── Panel: Plano de Aula ── */}
+                      {activePanel === 'plano' && e.classPlan && (
+                        <div className="mt-3 space-y-3">
+                          {e.classPlan.ementa_override && (
+                            <div className="rounded-lg bg-muted/50 border border-border p-3">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Ementa</p>
+                              <p className="text-sm text-foreground whitespace-pre-wrap">{e.classPlan.ementa_override}</p>
                             </div>
+                          )}
+                          {(() => {
+                            const exams = e.classPlan!.entries.filter(en => en.entry_type === 'PROVA');
+                            if (!exams.length) return null;
+                            return (
+                              <div>
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+                                  <Calendar className="w-3 h-3" /> Datas de Avaliações
+                                </p>
+                                <div className="space-y-1">
+                                  {exams.map(exam => (
+                                    <div key={exam.id} className="flex items-center justify-between rounded-lg bg-destructive/5 border border-destructive/20 px-3 py-2">
+                                      <div>
+                                        <span className="text-sm font-medium text-foreground">{exam.title}</span>
+                                        {exam.exam_type && <span className="ml-2 text-xs text-muted-foreground">({exam.exam_type})</span>}
+                                      </div>
+                                      <span className="text-sm text-muted-foreground">
+                                        {new Date(exam.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                      </span>
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          {(() => {
+                            const aulas = e.classPlan!.entries.filter(en => en.entry_type === 'AULA');
+                            if (!aulas.length) return null;
+                            return (
+                              <div>
+                                <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+                                  <BookOpen className="w-3 h-3" /> Cronograma de Aulas
+                                </p>
+                                <div className="space-y-2">
+                                  {aulas.map(aula => (
+                                    <div key={aula.id} className="rounded-lg border border-border bg-card p-3">
+                                      <div className="flex items-start justify-between gap-2 flex-wrap">
+                                        <div className="flex items-center gap-2">
+                                          {aula.lesson_number && (
+                                            <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5 font-medium">
+                                              Aula {aula.lesson_number}
+                                            </span>
+                                          )}
+                                          <span className="text-sm font-medium text-foreground">{aula.title}</span>
+                                        </div>
+                                        <span className="text-xs text-muted-foreground shrink-0">
+                                          {new Date(aula.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                        </span>
+                                      </div>
+                                      {aula.description && <p className="text-xs text-muted-foreground mt-1">{aula.description}</p>}
+                                      {aula.objective && <p className="text-xs text-muted-foreground mt-1"><span className="font-medium">Objetivo:</span> {aula.objective}</p>}
+                                    </div>
+                                  ))}
+                                </div>
+                              </div>
+                            );
+                          })()}
+                          {e.classPlan.entries.length === 0 && (
+                            <p className="text-sm text-muted-foreground">Nenhuma aula cadastrada no plano ainda.</p>
                           )}
                         </div>
                       )}

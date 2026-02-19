@@ -5,10 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Textarea } from '@/components/ui/textarea';
+import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
 import { useToast } from '@/hooks/use-toast';
-import { Loader2, MessageSquare, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp } from 'lucide-react';
+import { Loader2, MessageSquare, CheckCircle2, Clock, AlertCircle, ChevronDown, ChevronUp, Search, X } from 'lucide-react';
 
 interface Ticket {
   id: string;
@@ -34,6 +35,7 @@ export default function Tickets() {
   const [tickets, setTickets] = useState<Ticket[]>([]);
   const [loading, setLoading] = useState(true);
   const [statusFilter, setStatusFilter] = useState<string>('all');
+  const [searchQuery, setSearchQuery] = useState('');
   const [expandedId, setExpandedId] = useState<string | null>(null);
   const [respondingId, setRespondingId] = useState<string | null>(null);
   const [responseText, setResponseText] = useState('');
@@ -82,7 +84,17 @@ export default function Tickets() {
     setSaving(false);
   }
 
-  const filtered = statusFilter === 'all' ? tickets : tickets.filter(t => t.status === statusFilter);
+  const filtered = tickets.filter(t => {
+    if (statusFilter !== 'all' && t.status !== statusFilter) return false;
+    if (searchQuery.trim()) {
+      const q = searchQuery.toLowerCase();
+      const matchName = t.student?.name?.toLowerCase().includes(q);
+      const matchEnrollment = t.student?.enrollment?.toLowerCase().includes(q);
+      const matchSubject = t.subject.toLowerCase().includes(q);
+      if (!matchName && !matchEnrollment && !matchSubject) return false;
+    }
+    return true;
+  });
 
   const counts = {
     all: tickets.length,
@@ -118,6 +130,46 @@ export default function Tickets() {
           </Card>
         ))}
       </div>
+
+      {/* Search + Status filter */}
+      <div className="flex flex-col sm:flex-row gap-3">
+        <div className="relative flex-1">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            placeholder="Buscar por aluno, matrícula ou assunto..."
+            value={searchQuery}
+            onChange={e => setSearchQuery(e.target.value)}
+            className="pl-9 pr-9"
+          />
+          {searchQuery && (
+            <button
+              onClick={() => setSearchQuery('')}
+              className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <Select value={statusFilter} onValueChange={setStatusFilter}>
+          <SelectTrigger className="w-full sm:w-48">
+            <SelectValue placeholder="Filtrar por status" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="all">Todos ({counts.all})</SelectItem>
+            <SelectItem value="ABERTO">Abertos ({counts.ABERTO})</SelectItem>
+            <SelectItem value="EM_ATENDIMENTO">Em Atendimento ({counts.EM_ATENDIMENTO})</SelectItem>
+            <SelectItem value="RESOLVIDO">Resolvidos ({counts.RESOLVIDO})</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* Results count */}
+      {(searchQuery || statusFilter !== 'all') && (
+        <p className="text-xs text-muted-foreground">
+          {filtered.length} {filtered.length === 1 ? 'ticket encontrado' : 'tickets encontrados'}
+          {searchQuery && <span> para "<strong>{searchQuery}</strong>"</span>}
+        </p>
+      )}
 
       {/* Ticket list */}
       {loading ? (
