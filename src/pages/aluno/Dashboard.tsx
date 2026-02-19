@@ -369,7 +369,7 @@ function generateLessonPlanPdf(
       if (y > 200) { doc.addPage(); y = 20; }
       addSection('Fórmula de Cálculo');
 
-      const formulaRows: string[][] = [];
+      const formulaRows: any[][] = [];
       const parentNames: string[] = [];
 
       for (const parent of topLevel) {
