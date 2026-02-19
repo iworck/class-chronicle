@@ -15,7 +15,8 @@ import { useToast } from '@/hooks/use-toast';
 import {
   GraduationCap, LogOut, BookOpen, CheckCircle2, XCircle, Clock,
   TrendingUp, CalendarCheck, Award, Loader2, AlertTriangle, ListChecks,
-  ShieldAlert, User, MessageSquarePlus, FileText, Building2,
+  ShieldAlert, User, MessageSquarePlus, FileText, Building2, BookMarked,
+  ChevronDown, ChevronUp, Calendar,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -26,6 +27,29 @@ interface Subject {
   workload_hours: number;
   min_grade: number;
   min_attendance_pct: number;
+}
+
+interface LessonPlanEntry {
+  id: string;
+  entry_type: string;
+  entry_date: string;
+  title: string;
+  description: string | null;
+  objective: string | null;
+  activities: string | null;
+  methodology: string | null;
+  resource: string | null;
+  lesson_number: number | null;
+  exam_type: string | null;
+}
+
+interface ClassSubjectPlan {
+  id: string;
+  subject_id: string;
+  ementa_override: string | null;
+  plan_status: string;
+  professor_user_id: string;
+  entries: LessonPlanEntry[];
 }
 
 interface EnrollmentData {
@@ -40,6 +64,7 @@ interface EnrollmentData {
   presentCount: number;
   absencesRemaining: number | null;
   maxAbsencesAllowed: number | null;
+  classPlan: ClassSubjectPlan | null;
 }
 
 interface CourseLink {
@@ -109,7 +134,11 @@ export default function AlunoDashboard() {
   const [courseLinks, setCourseLinks] = useState<CourseLink[]>([]);
   const [sessionDetails, setSessionDetails] = useState<SessionDetail[]>([]);
   const [studentDetails, setStudentDetails] = useState<StudentDetails | null>(null);
+  const [myTickets, setMyTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+
+  // Expanded discipline plan
+  const [expandedPlan, setExpandedPlan] = useState<string | null>(null);
 
   // Semester filter
   const [semesterFilter, setSemesterFilter] = useState<string>('all');
@@ -142,7 +171,7 @@ export default function AlunoDashboard() {
     const enrollIds = (enrollData || []).map(e => e.id);
 
     // Fetch all data in parallel — skip empty arrays to avoid uuid errors
-    const [linksRes, detailsRes, gradesRes, attSessionsRes] = await Promise.all([
+    const [linksRes, detailsRes, gradesRes, attSessionsRes, classSubjectsRes, ticketsRes] = await Promise.all([
       supabase
         .from('student_course_links')
         .select('id, enrollment_status, linked_at, course:courses(name), matrix:academic_matrices(code)')
@@ -167,10 +196,48 @@ export default function AlunoDashboard() {
             .in('subject_id', subjectIds)
             .order('opened_at', { ascending: false })
         : Promise.resolve({ data: [] }),
+      // Fetch class_subjects with lesson_plan_entries for enrolled subjects
+      subjectIds.length > 0
+        ? supabase
+            .from('class_subjects')
+            .select('id, subject_id, ementa_override, plan_status, professor_user_id')
+            .in('subject_id', subjectIds)
+            .eq('plan_status', 'APROVADO')
+        : Promise.resolve({ data: [] }),
+      // Fetch student's own tickets
+      supabase
+        .from('support_tickets')
+        .select('id, subject, message, status, response, responded_at, created_at')
+        .eq('student_id', student.id)
+        .order('created_at', { ascending: false }),
     ]);
 
     const gradesData = gradesRes.data || [];
     const attSessionsData = attSessionsRes.data || [];
+    const classSubjectsData: any[] = classSubjectsRes.data || [];
+
+    // Fetch lesson plan entries for found class subjects
+    const classSubjectIds = classSubjectsData.map((cs: any) => cs.id);
+    let lessonEntriesData: any[] = [];
+    if (classSubjectIds.length > 0) {
+      const { data: entries } = await supabase
+        .from('lesson_plan_entries')
+        .select('id, class_subject_id, entry_type, entry_date, title, description, objective, activities, methodology, resource, lesson_number, exam_type')
+        .in('class_subject_id', classSubjectIds)
+        .order('entry_date');
+      lessonEntriesData = entries || [];
+    }
+
+    // Build class plan map keyed by subject_id
+    const classPlanBySubject: Record<string, ClassSubjectPlan> = {};
+    classSubjectsData.forEach((cs: any) => {
+      if (!classPlanBySubject[cs.subject_id]) {
+        classPlanBySubject[cs.subject_id] = {
+          ...cs,
+          entries: lessonEntriesData.filter((e: any) => e.class_subject_id === cs.id),
+        };
+      }
+    });
 
     const sessionIds = attSessionsData.map((s: any) => s.id);
 
@@ -233,6 +300,7 @@ export default function AlunoDashboard() {
           presentCount,
           absencesRemaining,
           maxAbsencesAllowed,
+          classPlan: classPlanBySubject[e.subject_id] || null,
         };
       });
 
@@ -240,6 +308,7 @@ export default function AlunoDashboard() {
     setSessionDetails(details);
     setCourseLinks((linksRes.data as any) || []);
     setStudentDetails(detailsRes.data || null);
+    setMyTickets((ticketsRes.data as any) || []);
     setLoading(false);
   }
 
@@ -261,15 +330,30 @@ export default function AlunoDashboard() {
       toast({ title: 'Preencha todos os campos', variant: 'destructive' });
       return;
     }
+    if (!student) return;
     setSendingTicket(true);
-    // Simulate sending — in production, call an edge function or insert into a tickets table
-    await new Promise(r => setTimeout(r, 1200));
-    toast({
-      title: 'Solicitação enviada!',
-      description: 'A coordenação foi notificada e entrará em contato em breve.',
+    const { error } = await supabase.from('support_tickets').insert({
+      student_id: student.id,
+      subject: ticketSubject,
+      message: ticketMessage.trim(),
     });
-    setTicketSubject('');
-    setTicketMessage('');
+    if (error) {
+      toast({ title: 'Erro ao enviar solicitação', description: error.message, variant: 'destructive' });
+    } else {
+      toast({
+        title: 'Solicitação enviada!',
+        description: 'A coordenação foi notificada e entrará em contato em breve.',
+      });
+      setTicketSubject('');
+      setTicketMessage('');
+      // Refresh tickets list
+      const { data } = await supabase
+        .from('support_tickets')
+        .select('id, subject, message, status, response, responded_at, created_at')
+        .eq('student_id', student.id)
+        .order('created_at', { ascending: false });
+      setMyTickets((data as any) || []);
+    }
     setSendingTicket(false);
   }
 
@@ -484,6 +568,104 @@ export default function AlunoDashboard() {
                             <span>
                               Pode faltar mais <strong>{e.absencesRemaining} {e.absencesRemaining === 1 ? 'vez' : 'vezes'}</strong> sem ser reprovado por frequência.
                             </span>
+                          )}
+                        </div>
+                      )}
+
+                      {/* Plano de Aula */}
+                      {e.classPlan && (
+                        <div className="mt-3 border-t border-border pt-3">
+                          <button
+                            className="flex items-center gap-2 text-sm font-medium text-primary hover:text-primary/80 transition-colors w-full text-left"
+                            onClick={() => setExpandedPlan(expandedPlan === e.id ? null : e.id)}
+                          >
+                            <BookMarked className="w-4 h-4 shrink-0" />
+                            <span>Plano de Aula</span>
+                            {expandedPlan === e.id ? (
+                              <ChevronUp className="w-4 h-4 ml-auto" />
+                            ) : (
+                              <ChevronDown className="w-4 h-4 ml-auto" />
+                            )}
+                          </button>
+
+                          {expandedPlan === e.id && (
+                            <div className="mt-3 space-y-4">
+                              {/* Ementa */}
+                              {e.classPlan.ementa_override && (
+                                <div className="rounded-lg bg-muted/50 p-3">
+                                  <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-1">Ementa</p>
+                                  <p className="text-sm text-foreground whitespace-pre-wrap">{e.classPlan.ementa_override}</p>
+                                </div>
+                              )}
+
+                              {/* Provas */}
+                              {(() => {
+                                const exams = e.classPlan.entries.filter(en => en.entry_type === 'PROVA');
+                                if (!exams.length) return null;
+                                return (
+                                  <div>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+                                      <Calendar className="w-3 h-3" /> Datas de Avaliações
+                                    </p>
+                                    <div className="space-y-1">
+                                      {exams.map(exam => (
+                                        <div key={exam.id} className="flex items-center justify-between rounded-lg bg-destructive/5 border border-destructive/20 px-3 py-2">
+                                          <div>
+                                            <span className="text-sm font-medium text-foreground">{exam.title}</span>
+                                            {exam.exam_type && <span className="ml-2 text-xs text-muted-foreground">({exam.exam_type})</span>}
+                                          </div>
+                                          <span className="text-sm text-muted-foreground">
+                                            {new Date(exam.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                          </span>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {/* Cronograma de Aulas */}
+                              {(() => {
+                                const aulas = e.classPlan.entries.filter(en => en.entry_type === 'AULA');
+                                if (!aulas.length) return null;
+                                return (
+                                  <div>
+                                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide mb-2 flex items-center gap-1">
+                                      <BookOpen className="w-3 h-3" /> Cronograma de Aulas
+                                    </p>
+                                    <div className="space-y-2">
+                                      {aulas.map(aula => (
+                                        <div key={aula.id} className="rounded-lg border border-border bg-card p-3">
+                                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                                            <div className="flex items-center gap-2">
+                                              {aula.lesson_number && (
+                                                <span className="text-xs bg-primary/10 text-primary rounded-full px-2 py-0.5 font-medium">
+                                                  Aula {aula.lesson_number}
+                                                </span>
+                                              )}
+                                              <span className="text-sm font-medium text-foreground">{aula.title}</span>
+                                            </div>
+                                            <span className="text-xs text-muted-foreground shrink-0">
+                                              {new Date(aula.entry_date + 'T12:00:00').toLocaleDateString('pt-BR')}
+                                            </span>
+                                          </div>
+                                          {aula.description && (
+                                            <p className="text-xs text-muted-foreground mt-1">{aula.description}</p>
+                                          )}
+                                          {aula.objective && (
+                                            <p className="text-xs text-muted-foreground mt-1"><span className="font-medium">Objetivo:</span> {aula.objective}</p>
+                                          )}
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                );
+                              })()}
+
+                              {e.classPlan.entries.length === 0 && (
+                                <p className="text-sm text-muted-foreground">Nenhuma aula cadastrada no plano ainda.</p>
+                              )}
+                            </div>
                           )}
                         </div>
                       )}
@@ -839,6 +1021,51 @@ export default function AlunoDashboard() {
                 </Button>
               </CardContent>
             </Card>
+
+            {/* My tickets history */}
+            {myTickets.length > 0 && (
+              <Card className="border-border">
+                <CardHeader className="pb-2 pt-4">
+                  <CardTitle className="text-base flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-primary" />
+                    Minhas Solicitações
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  {myTickets.map((ticket: any) => {
+                    const statusColors: Record<string, string> = {
+                      ABERTO: 'bg-destructive/10 text-destructive border-destructive/20',
+                      EM_ATENDIMENTO: 'bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-500/20',
+                      RESOLVIDO: 'bg-primary/10 text-primary border-primary/20',
+                    };
+                    const statusLabels: Record<string, string> = {
+                      ABERTO: 'Aberto',
+                      EM_ATENDIMENTO: 'Em Atendimento',
+                      RESOLVIDO: 'Resolvido',
+                    };
+                    return (
+                      <div key={ticket.id} className="rounded-lg border border-border p-3 space-y-2">
+                        <div className="flex items-center justify-between gap-2 flex-wrap">
+                          <span className="font-medium text-sm text-foreground">{ticket.subject}</span>
+                          <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium border ${statusColors[ticket.status] || ''}`}>
+                            {statusLabels[ticket.status] || ticket.status}
+                          </span>
+                        </div>
+                        <p className="text-xs text-muted-foreground">
+                          Enviado em {new Date(ticket.created_at).toLocaleDateString('pt-BR')}
+                        </p>
+                        {ticket.response && (
+                          <div className="rounded bg-primary/5 border border-primary/20 p-2">
+                            <p className="text-xs font-medium text-primary mb-1">Resposta da coordenação:</p>
+                            <p className="text-xs text-foreground">{ticket.response}</p>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </CardContent>
+              </Card>
+            )}
 
             {/* Info cards */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
