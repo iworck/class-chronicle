@@ -1262,7 +1262,10 @@ export default function AlunoDashboard() {
             ) : (
               enrollments.map(e => {
                 const avg = calcAverage(e.grades, e.templateItems);
-                const formula = calcFormulaString(e.grades, e.templateItems);
+                const topLevel = (e.templateItems || []).filter(t => t.counts_in_final && t.parent_item_id === null)
+                  .sort((a, b) => a.order_index - b.order_index);
+                const hasTemplate = topLevel.length > 0;
+
                 return (
                   <Card key={e.id} className="border-border">
                     <CardHeader className="pb-2 pt-4">
@@ -1279,38 +1282,110 @@ export default function AlunoDashboard() {
                       </CardTitle>
                     </CardHeader>
                     <CardContent className="pt-0">
-                      {e.grades.length === 0 ? (
+                      {e.grades.length === 0 && !hasTemplate ? (
                         <p className="text-sm text-muted-foreground">Notas não lançadas ainda.</p>
                       ) : (
-                        <div className="space-y-1">
-                          {e.grades.filter(g => g.counts_in_final).map((g, i) => (
-                            <div key={i} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
-                              <span className="text-sm text-foreground font-medium">{g.grade_type}</span>
-                              <span className={`font-semibold ${g.grade_value >= e.subject.min_grade ? 'text-foreground' : 'text-destructive'}`}>
-                                {g.grade_value.toFixed(1)}
-                              </span>
-                            </div>
-                          ))}
-                          {e.grades.filter(g => !g.counts_in_final).map((g, i) => (
-                            <div key={`nc-${i}`} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
-                              <div>
-                                <span className="text-sm text-muted-foreground">{g.grade_type}</span>
-                                <span className="ml-2 text-xs text-muted-foreground">(não conta)</span>
+                        <div className="space-y-4">
+                          {/* Hierarchical formula display */}
+                          {hasTemplate && (
+                            <div className="bg-muted/50 rounded-lg p-3 space-y-3">
+                              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fórmula de Cálculo</p>
+                              {topLevel.map(parent => {
+                                const children = (e.templateItems || []).filter(t => t.parent_item_id === parent.id)
+                                  .sort((a, b) => a.order_index - b.order_index);
+                                // Calculate parent value
+                                let parentVal: number | null = null;
+                                if (children.length > 0) {
+                                  let cSum = 0, cW = 0;
+                                  for (const child of children) {
+                                    const g = e.grades.find(gr => gr.grade_type.toUpperCase() === child.name.toUpperCase());
+                                    if (g) { cSum += g.grade_value * child.weight; cW += child.weight; }
+                                  }
+                                  if (cW > 0) parentVal = cSum / cW;
+                                } else {
+                                  const g = e.grades.find(gr => gr.grade_type.toUpperCase() === parent.name.toUpperCase() && gr.counts_in_final);
+                                  if (g) parentVal = g.grade_value;
+                                }
+
+                                return (
+                                  <div key={parent.id} className="space-y-1">
+                                    <div className="flex items-center justify-between">
+                                      <span className="text-sm font-bold text-foreground">{parent.name}</span>
+                                      {parentVal !== null && (
+                                        <span className={`text-sm font-bold ${parentVal >= e.subject.min_grade ? 'text-primary' : 'text-destructive'}`}>
+                                          {parentVal.toFixed(2)}
+                                        </span>
+                                      )}
+                                    </div>
+                                    {children.length > 0 && (
+                                      <div className="ml-3 space-y-0.5">
+                                        {children.map(child => {
+                                          const g = e.grades.find(gr => gr.grade_type.toUpperCase() === child.name.toUpperCase());
+                                          return (
+                                            <div key={child.id} className="flex items-center justify-between text-xs">
+                                              <span className="text-muted-foreground">
+                                                {child.name} <span className="text-muted-foreground/70">× peso {child.weight}</span>
+                                              </span>
+                                              <span className={`font-medium ${g ? 'text-foreground' : 'text-muted-foreground/50'}`}>
+                                                {g ? g.grade_value.toFixed(1) : '—'}
+                                              </span>
+                                            </div>
+                                          );
+                                        })}
+                                        {/* Show parent formula */}
+                                        <p className="text-[11px] text-muted-foreground/80 pt-0.5">
+                                          {parent.name} = {children.map(c => c.name).join(' + ')}
+                                        </p>
+                                      </div>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                              {/* Final formula */}
+                              <div className="pt-2 border-t border-border/60">
+                                <p className="text-xs font-semibold text-foreground">
+                                  MÉDIA = ({topLevel.map(p => p.name).join(' + ')}) / {topLevel.length}
+                                </p>
                               </div>
-                              <span className="font-semibold text-muted-foreground">{g.grade_value.toFixed(1)}</span>
                             </div>
-                          ))}
+                          )}
+
+                          {/* Flat grades when no template */}
+                          {!hasTemplate && e.grades.length > 0 && (
+                            <div className="space-y-1">
+                              {e.grades.filter(g => g.counts_in_final).map((g, i) => (
+                                <div key={i} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+                                  <span className="text-sm text-foreground font-medium">{g.grade_type}</span>
+                                  <span className={`font-semibold ${g.grade_value >= e.subject.min_grade ? 'text-foreground' : 'text-destructive'}`}>
+                                    {g.grade_value.toFixed(1)}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Non-final grades */}
+                          {e.grades.filter(g => !g.counts_in_final).length > 0 && (
+                            <div className="space-y-1">
+                              {e.grades.filter(g => !g.counts_in_final).map((g, i) => (
+                                <div key={`nc-${i}`} className="flex items-center justify-between py-1.5 border-b border-border last:border-0">
+                                  <div>
+                                    <span className="text-sm text-muted-foreground">{g.grade_type}</span>
+                                    <span className="ml-2 text-xs text-muted-foreground">(não conta)</span>
+                                  </div>
+                                  <span className="font-semibold text-muted-foreground">{g.grade_value.toFixed(1)}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Average result */}
                           {avg !== null && (
-                            <div className="pt-2 mt-1 border-t border-border space-y-1">
-                              {formula && (
-                                <p className="text-xs text-muted-foreground text-right">{formula} = {avg.toFixed(2)}</p>
-                              )}
-                              <div className="flex items-center justify-between">
-                                <span className="text-sm font-medium text-muted-foreground">Média Final</span>
-                                <span className={`font-bold ${avg >= e.subject.min_grade ? 'text-primary' : 'text-destructive'}`}>
-                                  {avg.toFixed(2)} / {e.subject.min_grade}
-                                </span>
-                              </div>
+                            <div className="flex items-center justify-between pt-2 border-t border-border">
+                              <span className="text-sm font-semibold text-muted-foreground">Média Final</span>
+                              <span className={`text-xl font-bold ${avg >= e.subject.min_grade ? 'text-primary' : 'text-destructive'}`}>
+                                {avg.toFixed(2)} <span className="text-xs font-normal text-muted-foreground">/ {e.subject.min_grade}</span>
+                              </span>
                             </div>
                           )}
                         </div>
