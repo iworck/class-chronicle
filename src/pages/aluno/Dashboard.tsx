@@ -243,6 +243,7 @@ function generateLessonPlanPdf(
   workloadHours: number,
   minGrade: number,
   minAttendancePct: number,
+  templateItems?: GradeTemplateItem[],
 ) {
   const doc = new jsPDF({ orientation: 'portrait', format: 'a4' });
   const pageW = doc.internal.pageSize.getWidth();
@@ -357,6 +358,54 @@ function generateLessonPlanPdf(
       margin: { left: margin, right: margin },
     });
     y = (doc as any).lastAutoTable?.finalY + 6 || y + 10;
+  }
+
+  // ── Fórmula de Cálculo (Grade Template) ──
+  if (templateItems && templateItems.length > 0) {
+    const topLevel = templateItems.filter(t => t.counts_in_final && t.parent_item_id === null)
+      .sort((a, b) => a.order_index - b.order_index);
+
+    if (topLevel.length > 0) {
+      if (y > 200) { doc.addPage(); y = 20; }
+      addSection('Fórmula de Cálculo');
+
+      const formulaRows: string[][] = [];
+      const parentNames: string[] = [];
+
+      for (const parent of topLevel) {
+        parentNames.push(parent.name);
+        const children = templateItems.filter(t => t.parent_item_id === parent.id)
+          .sort((a, b) => a.order_index - b.order_index);
+
+        // Add parent header row
+        formulaRows.push([{ content: parent.name, colSpan: 2, styles: { fontStyle: 'bold', fillColor: [229, 231, 235] } } as any]);
+
+        if (children.length > 0) {
+          for (const child of children) {
+            formulaRows.push([`    ${child.name}`, `× peso ${child.weight}`]);
+          }
+          formulaRows.push([{ content: `${parent.name} = ${children.map(c => c.name).join(' + ')}`, colSpan: 2, styles: { fontStyle: 'italic', textColor: [107, 114, 128] } } as any]);
+        }
+      }
+
+      autoTable(doc, {
+        startY: y,
+        body: formulaRows,
+        theme: 'plain',
+        styles: { fontSize: 9, cellPadding: 2 },
+        columnStyles: { 0: { cellWidth: 100 } },
+        margin: { left: margin, right: margin },
+      });
+      y = (doc as any).lastAutoTable?.finalY + 4 || y + 10;
+
+      // Final formula
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(30, 64, 175);
+      doc.text(`MÉDIA = (${parentNames.join(' + ')}) / ${parentNames.length}`, margin + 2, y);
+      doc.setTextColor(30, 30, 30);
+      y += 8;
+    }
   }
 
   // ── Cronograma de Aulas ──
@@ -638,6 +687,7 @@ export default function AlunoDashboard() {
         enrollment.subject.workload_hours,
         enrollment.subject.min_grade,
         enrollment.subject.min_attendance_pct,
+        enrollment.templateItems,
       );
       toast({ title: 'PDF gerado!', description: `Baixando plano de aula de ${enrollment.subject.name}...` });
     } catch (err: any) {
