@@ -9,9 +9,12 @@ import {
 } from '@/components/ui/select';
 import { toast } from '@/hooks/use-toast';
 import {
+  Dialog, DialogContent, DialogHeader, DialogTitle,
+} from '@/components/ui/dialog';
+import {
   Loader2, CalendarCheck, Search, Filter, Play, CheckCircle2, Clock,
   ClipboardList, Users, ChevronDown, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown,
-  GraduationCap,
+  GraduationCap, Eye, Copy,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -32,9 +35,16 @@ interface LessonEntry {
   subjectName: string;
   classId: string;
   subjectId: string;
-  // Computed
+  // Session details
   sessionId: string | null;
   sessionStatus: string | null;
+  sessionOpenedAt: string | null;
+  sessionClosedAt: string | null;
+  sessionEntryCodeHash: string | null;
+  sessionCloseTokenHash: string | null;
+  sessionPublicToken: string | null;
+  professorName: string | null;
+  // Computed
   lessonStatus: 'realizada' | 'hoje' | 'programada' | 'passada_sem_chamada';
 }
 
@@ -73,6 +83,7 @@ export default function Aulas() {
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
   const [liveCode, setLiveCode] = useState<string | undefined>();
   const [liveSessionId, setLiveSessionId] = useState<string | undefined>();
+  const [viewLesson, setViewLesson] = useState<LessonEntry | null>(null);
 
   // Active sessions (to block simultaneous opens)
   const [hasOpenSession, setHasOpenSession] = useState(false);
@@ -100,7 +111,7 @@ export default function Aulas() {
     }
 
     // 2. Parallel: lesson entries, classes, subjects, sessions
-    const [entriesRes, classesRes, subjectsRes, sessionsRes] = await Promise.all([
+    const [entriesRes, classesRes, subjectsRes, sessionsRes, profileRes] = await Promise.all([
       supabase
         .from('lesson_plan_entries')
         .select('id, class_subject_id, entry_date, title, lesson_number, entry_type, exam_type, objective')
@@ -110,15 +121,17 @@ export default function Aulas() {
       supabase.from('subjects').select('id, name').in('id', subjectIds),
       supabase
         .from('attendance_sessions')
-        .select('id, class_id, subject_id, status, lesson_entry_id')
+        .select('id, class_id, subject_id, status, lesson_entry_id, opened_at, closed_at, entry_code_hash, close_token_hash, public_token')
         .eq('professor_user_id', targetUserId)
         .in('subject_id', subjectIds),
+      supabase.from('profiles').select('id, name').eq('id', targetUserId).single(),
     ]);
 
     const classMap = Object.fromEntries((classesRes.data || []).map((c: any) => [c.id, c.code]));
     const subjectMap = Object.fromEntries((subjectsRes.data || []).map((s: any) => [s.id, s.name]));
     const csMap = Object.fromEntries(csItems.map(c => [c.id, c]));
     const sessions = sessionsRes.data || [];
+    const professorName = profileRes.data?.name || null;
 
     // Check if professor has any currently open session
     const openSession = sessions.find((s: any) => s.status === 'ABERTA');
@@ -175,6 +188,12 @@ export default function Aulas() {
         subjectId: cs?.subject_id || '',
         sessionId: session?.id || null,
         sessionStatus: session?.status || null,
+        sessionOpenedAt: session?.opened_at || null,
+        sessionClosedAt: session?.closed_at || null,
+        sessionEntryCodeHash: session?.entry_code_hash || null,
+        sessionCloseTokenHash: session?.close_token_hash || null,
+        sessionPublicToken: session?.public_token || null,
+        professorName,
         lessonStatus,
       };
     });
@@ -439,6 +458,12 @@ export default function Aulas() {
 
                     {/* Actions */}
                     <div className="shrink-0 flex gap-2">
+                      {/* View details button */}
+                      {lesson.sessionId && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setViewLesson(lesson)}>
+                          <Eye className="w-3 h-3" /> Ver
+                        </Button>
+                      )}
                       {/* Only non-exam entries can open attendance */}
                       {!isExam && lesson.lessonStatus === 'hoje' && !lesson.sessionId && (
                         <Button
@@ -520,6 +545,149 @@ export default function Aulas() {
           onClose={() => { setManualOpen(false); setManualSessionId(null); load(); }}
         />
       )}
+
+      {/* Modal de detalhes da aula */}
+      <Dialog open={!!viewLesson} onOpenChange={(open) => { if (!open) setViewLesson(null); }}>
+        <DialogContent className="max-w-lg">
+          {viewLesson && (() => {
+            const sessionId6 = viewLesson.sessionId ? viewLesson.sessionId.replace(/-/g, '').substring(0, 6).toUpperCase() : '—';
+            const copyToClipboard = (text: string) => {
+              navigator.clipboard.writeText(text);
+              toast({ title: 'Copiado!', description: 'Valor copiado para a área de transferência.' });
+            };
+
+            return (
+              <>
+                <DialogHeader>
+                  <DialogTitle className="text-lg">
+                    {viewLesson.lesson_number ? `Aula ${viewLesson.lesson_number}` : 'Aula'} — {viewLesson.title}
+                  </DialogTitle>
+                </DialogHeader>
+
+                <div className="space-y-4">
+                  {/* Data da Aula */}
+                  <div className="rounded-lg border border-border p-3 bg-muted/30 space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Informações da Aula</p>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Data da Aula</p>
+                        <p className="font-medium text-foreground">
+                          {format(parseISO(viewLesson.entry_date + 'T12:00:00'), "dd/MM/yyyy (EEEE)", { locale: ptBR })}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Nº no Plano</p>
+                        <p className="font-medium text-foreground">{viewLesson.lesson_number || '—'}</p>
+                      </div>
+                    </div>
+                    {viewLesson.objective && (
+                      <div>
+                        <p className="text-xs text-muted-foreground">Objetivo</p>
+                        <p className="text-sm text-foreground">{viewLesson.objective}</p>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Turma / Matéria / Professor */}
+                  <div className="rounded-lg border border-border p-3 bg-muted/30 space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Turma & Disciplina</p>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground">ID da Turma</p>
+                        <div className="flex items-center gap-1">
+                          <p className="font-mono font-medium text-foreground">{viewLesson.className}</p>
+                          <button onClick={() => copyToClipboard(viewLesson.className)} className="text-muted-foreground hover:text-foreground transition-colors">
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Matéria</p>
+                        <p className="font-medium text-foreground">{viewLesson.subjectName}</p>
+                      </div>
+                      <div className="col-span-2">
+                        <p className="text-xs text-muted-foreground">Professor</p>
+                        <p className="font-medium text-foreground">{viewLesson.professorName || '—'}</p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Sessão de Chamada */}
+                  <div className="rounded-lg border border-border p-3 bg-muted/30 space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Sessão de Chamada</p>
+                    <div className="grid grid-cols-2 gap-2 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Senha da Aula (ID)</p>
+                        <div className="flex items-center gap-1">
+                          <p className="font-mono font-bold text-primary text-base">{sessionId6}</p>
+                          <button onClick={() => copyToClipboard(sessionId6)} className="text-muted-foreground hover:text-foreground transition-colors">
+                            <Copy className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Status</p>
+                        <Badge variant="outline" className={cn('text-xs',
+                          viewLesson.sessionStatus === 'ABERTA' ? 'border-primary text-primary' :
+                          viewLesson.sessionStatus === 'ENCERRADA' ? 'border-success text-success' :
+                          'border-muted-foreground text-muted-foreground'
+                        )}>
+                          {viewLesson.sessionStatus || '—'}
+                        </Badge>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Abertura</p>
+                        <p className="font-medium text-foreground">
+                          {viewLesson.sessionOpenedAt
+                            ? format(new Date(viewLesson.sessionOpenedAt), "dd/MM/yyyy HH:mm:ss", { locale: ptBR })
+                            : '—'}
+                        </p>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Fechamento</p>
+                        <p className="font-medium text-foreground">
+                          {viewLesson.sessionClosedAt
+                            ? format(new Date(viewLesson.sessionClosedAt), "dd/MM/yyyy HH:mm:ss", { locale: ptBR })
+                            : '—'}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Hashes */}
+                  <div className="rounded-lg border border-border p-3 bg-muted/30 space-y-2">
+                    <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Hashes de Segurança</p>
+                    <div className="space-y-2 text-sm">
+                      <div>
+                        <p className="text-xs text-muted-foreground">Hash de Abertura (entry_code)</p>
+                        <div className="flex items-center gap-1">
+                          <p className="font-mono text-xs text-foreground break-all">{viewLesson.sessionEntryCodeHash || '—'}</p>
+                          {viewLesson.sessionEntryCodeHash && (
+                            <button onClick={() => copyToClipboard(viewLesson.sessionEntryCodeHash!)} className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                      <div>
+                        <p className="text-xs text-muted-foreground">Hash de Fechamento (close_token)</p>
+                        <div className="flex items-center gap-1">
+                          <p className="font-mono text-xs text-foreground break-all">{viewLesson.sessionCloseTokenHash || '—'}</p>
+                          {viewLesson.sessionCloseTokenHash && (
+                            <button onClick={() => copyToClipboard(viewLesson.sessionCloseTokenHash!)} className="text-muted-foreground hover:text-foreground transition-colors shrink-0">
+                              <Copy className="w-3 h-3" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+              </>
+            );
+          })()}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
