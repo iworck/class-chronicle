@@ -8,8 +8,9 @@ import { Textarea } from '@/components/ui/textarea';
 import { toast } from '@/hooks/use-toast';
 import {
   Loader2, CheckCircle2, XCircle, Clock, Save, ShieldCheck, Camera, FileSignature,
-  ChevronDown, ChevronUp, MapPin, Smartphone, Globe,
+  ChevronDown, ChevronUp, MapPin, Smartphone, Globe, CheckSquare,
 } from 'lucide-react';
+import { Checkbox } from '@/components/ui/checkbox';
 import { format } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
@@ -41,7 +42,9 @@ interface Props {
   lessonDate: string;
   className: string;
   subjectName: string;
+  sessionStatus?: string;
   onClose: () => void;
+  onReviewComplete?: () => void;
 }
 
 const STATUS_LABELS: Record<string, { label: string; color: string; icon: React.ElementType }> = {
@@ -56,7 +59,8 @@ const SOURCE_LABELS: Record<string, string> = {
   MANUAL_COORD: 'Manual (Coordenador)',
 };
 
-export default function ReviewAttendanceModal({ sessionId, lessonTitle, lessonDate, className, subjectName, onClose }: Props) {
+export default function ReviewAttendanceModal({ sessionId, lessonTitle, lessonDate, className, subjectName, sessionStatus, onClose, onReviewComplete }: Props) {
+  const [markingComplete, setMarkingComplete] = useState(false);
   const { user } = useAuth();
   const [records, setRecords] = useState<AttendanceRecord[]>([]);
   const [loading, setLoading] = useState(true);
@@ -427,6 +431,44 @@ export default function ReviewAttendanceModal({ sessionId, lessonTitle, lessonDa
                 );
               })}
             </div>
+
+            {/* Review complete checkbox */}
+            {sessionStatus !== 'AUDITORIA_FINALIZADA' && (
+              <div className="flex items-center gap-3 pt-3 border-t border-border bg-success/5 rounded-lg p-3">
+                <Checkbox
+                  id="review-complete"
+                  disabled={markingComplete || hasChanges}
+                  onCheckedChange={async (checked) => {
+                    if (!checked) return;
+                    setMarkingComplete(true);
+                    const { error } = await supabase
+                      .from('attendance_sessions')
+                      .update({ status: 'AUDITORIA_FINALIZADA' as any })
+                      .eq('id', sessionId);
+                    setMarkingComplete(false);
+                    if (error) {
+                      toast({ title: 'Erro ao finalizar revisão', description: error.message, variant: 'destructive' });
+                    } else {
+                      toast({ title: '✅ Revisão concluída', description: 'Esta aula foi marcada como finalizada.' });
+                      onReviewComplete?.();
+                      onClose();
+                    }
+                  }}
+                />
+                <label htmlFor="review-complete" className="text-sm font-medium text-foreground cursor-pointer select-none">
+                  Marcar revisão como concluída
+                </label>
+                {markingComplete && <Loader2 className="w-4 h-4 animate-spin text-primary" />}
+                {hasChanges && <span className="text-xs text-muted-foreground ml-auto">Salve as alterações primeiro</span>}
+              </div>
+            )}
+
+            {sessionStatus === 'AUDITORIA_FINALIZADA' && (
+              <div className="flex items-center gap-2 pt-3 border-t border-border text-success text-sm">
+                <CheckSquare className="w-4 h-4" />
+                <span className="font-medium">Revisão já concluída</span>
+              </div>
+            )}
 
             {/* Footer */}
             <div className="flex justify-between items-center pt-3 border-t border-border gap-2">

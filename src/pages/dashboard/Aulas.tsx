@@ -47,11 +47,12 @@ interface LessonEntry {
   sessionPublicToken: string | null;
   professorName: string | null;
   // Computed
-  lessonStatus: 'realizada' | 'hoje' | 'programada' | 'passada_sem_chamada';
+  lessonStatus: 'realizada' | 'hoje' | 'programada' | 'passada_sem_chamada' | 'finalizada';
 }
 
 const STATUS_CONFIG = {
   realizada: { label: 'Realizada', color: 'bg-success/10 text-success border-success/30', icon: CheckCircle2 },
+  finalizada: { label: 'Finalizada', color: 'bg-primary/10 text-primary border-primary/30', icon: ShieldCheck },
   hoje: { label: 'Hoje', color: 'bg-primary/10 text-primary border-primary/30', icon: Play },
   programada: { label: 'Programada', color: 'bg-muted text-muted-foreground border-border', icon: Clock },
   passada_sem_chamada: { label: 'Sem chamada', color: 'bg-destructive/10 text-destructive border-destructive/30', icon: AlertCircle },
@@ -68,7 +69,7 @@ export default function Aulas() {
 
   // Filters
   const [search, setSearch] = useState('');
-  const [filterStatus, setFilterStatus] = useState<string>('all');
+  const [filterStatus, setFilterStatus] = useState<string>('pendentes');
   const [filterDateFrom, setFilterDateFrom] = useState('');
   const [filterDateTo, setFilterDateTo] = useState('');
   const [filterSubject, setFilterSubject] = useState('all');
@@ -152,20 +153,22 @@ export default function Aulas() {
           && (s.status === 'ABERTA') // Only match legacy open sessions, not closed ones
       ) as any;
 
+      const isExam = e.entry_type === 'AVALIACAO';
       const isToday = e.entry_date === today;
       const isPast = e.entry_date < today;
-      const isExam = e.entry_type === 'AVALIACAO';
-      const hasClosedSession = !!session && (session.status === 'ENCERRADA' || session.status === 'AUDITORIA_FINALIZADA');
+      const hasClosedSession = !!session && (session.status === 'ENCERRADA');
+      const isAuditFinalized = !!session && session.status === 'AUDITORIA_FINALIZADA';
 
       let lessonStatus: LessonEntry['lessonStatus'];
 
-      // Exams in the future/today → always 'programada' (they're not classes with attendance)
-      if (isExam && !isPast) {
+      if (isAuditFinalized) {
+        lessonStatus = 'finalizada';
+      } else if (isExam && !isPast) {
         lessonStatus = 'programada';
       } else if (isExam && isPast && hasClosedSession) {
         lessonStatus = 'realizada';
       } else if (isExam && isPast) {
-        lessonStatus = 'programada'; // past exam without session still "programada"
+        lessonStatus = 'programada';
       } else if (hasClosedSession) {
         lessonStatus = 'realizada';
       } else if (isToday) {
@@ -226,7 +229,9 @@ export default function Aulas() {
         l.subjectName.toLowerCase().includes(q)
       );
     }
-    if (filterStatus !== 'all') {
+    if (filterStatus === 'pendentes') {
+      result = result.filter(l => l.lessonStatus !== 'finalizada');
+    } else if (filterStatus !== 'all') {
       result = result.filter(l => l.lessonStatus === filterStatus);
     }
     if (filterSubject !== 'all') {
@@ -255,6 +260,7 @@ export default function Aulas() {
   const stats = useMemo(() => ({
     total: lessons.length,
     realizadas: lessons.filter(l => l.lessonStatus === 'realizada').length,
+    finalizadas: lessons.filter(l => l.lessonStatus === 'finalizada').length,
     hoje: lessons.filter(l => l.lessonStatus === 'hoje').length,
     semChamada: lessons.filter(l => l.lessonStatus === 'passada_sem_chamada').length,
   }), [lessons]);
@@ -296,10 +302,11 @@ export default function Aulas() {
       )}
 
       {/* Stats */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-5 gap-3">
         {[
           { label: 'Total de aulas', value: stats.total, color: 'text-foreground', bg: 'bg-muted/40' },
           { label: 'Realizadas', value: stats.realizadas, color: 'text-success', bg: 'bg-success/10' },
+          { label: 'Finalizadas', value: stats.finalizadas, color: 'text-primary', bg: 'bg-primary/10' },
           { label: 'Hoje', value: stats.hoje, color: 'text-primary', bg: 'bg-primary/10' },
           { label: 'Sem chamada', value: stats.semChamada, color: 'text-destructive', bg: 'bg-destructive/10' },
         ].map(s => (
@@ -345,8 +352,10 @@ export default function Aulas() {
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
+                  <SelectItem value="pendentes">Pendentes (sem finalizadas)</SelectItem>
                   <SelectItem value="all">Todas</SelectItem>
                   <SelectItem value="realizada">Realizadas</SelectItem>
+                  <SelectItem value="finalizada">Finalizadas</SelectItem>
                   <SelectItem value="hoje">Hoje</SelectItem>
                   <SelectItem value="programada">Programadas</SelectItem>
                   <SelectItem value="passada_sem_chamada">Sem chamada</SelectItem>
@@ -574,7 +583,9 @@ export default function Aulas() {
           lessonDate={reviewLesson.entry_date}
           className={reviewLesson.className}
           subjectName={reviewLesson.subjectName}
+          sessionStatus={reviewLesson.sessionStatus || undefined}
           onClose={() => { setReviewLesson(null); load(); }}
+          onReviewComplete={() => { load(); }}
         />
       )}
 
