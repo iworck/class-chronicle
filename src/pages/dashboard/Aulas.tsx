@@ -320,7 +320,7 @@ export default function Aulas() {
 
       // 2. Log the deletion for audit
       const { error: logErr } = await supabase
-        .from('attendance_session_deletions' as any)
+        .from('attendance_session_deletions')
         .insert({
           session_id: deleteLesson.sessionId,
           class_id: deleteLesson.classId,
