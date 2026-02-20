@@ -54,7 +54,7 @@ export default function ProfessorDashboard() {
   const [showAllSchedule, setShowAllSchedule] = useState(false);
   const [liveCode, setLiveCode] = useState<string | undefined>(undefined);
   const [liveSessionId, setLiveSessionId] = useState<string | undefined>(undefined);
-  const [liveCloseToken, setLiveCloseToken] = useState<string | undefined>(undefined);
+  
 
   const loadDashboard = useCallback(async () => {
     if (!user) return;
@@ -222,10 +222,9 @@ export default function ProfessorDashboard() {
       {/* Sessão Ativa */}
       <ActiveSessionPanel
         professorUserId={user!.id}
-        onSessionClosed={() => { setLiveCode(undefined); setLiveSessionId(undefined); setLiveCloseToken(undefined); loadDashboard(); }}
+        onSessionClosed={() => { setLiveCode(undefined); setLiveSessionId(undefined); loadDashboard(); }}
         liveCode={liveCode}
         liveSessionId={liveSessionId}
-        liveCloseToken={liveCloseToken}
       />
 
       {/* Painel de Revisão de Presença + Fingerprints Duplicados */}
@@ -384,12 +383,11 @@ export default function ProfessorDashboard() {
         <AttendanceSessionWizard
           open={wizardOpen}
           onClose={() => { setWizardOpen(false); setSelectedScheduleItem(null); }}
-          onSuccess={(code, sessionId, closeToken) => {
+          onSuccess={(code, sessionId) => {
             setWizardOpen(false);
             setSelectedScheduleItem(null);
             setLiveCode(code);
             setLiveSessionId(sessionId);
-            setLiveCloseToken(closeToken);
             loadDashboard();
           }}
           classSubjectId={selectedScheduleItem.classSubjectId}
