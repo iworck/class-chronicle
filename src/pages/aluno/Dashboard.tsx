@@ -19,6 +19,7 @@ import {
   TrendingUp, CalendarCheck, Award, Loader2, AlertTriangle, ListChecks,
   ShieldAlert, User, MessageSquarePlus, FileText, Building2, BookMarked,
   ChevronDown, ChevronUp, Calendar, ChevronLeft, ChevronRight, Download,
+  PlayCircle, Bell, Megaphone,
 } from 'lucide-react';
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -468,6 +469,10 @@ export default function AlunoDashboard() {
   const [myTickets, setMyTickets] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
+  // Today's classes & open sessions
+  const [todayLessons, setTodayLessons] = useState<{ entry: LessonPlanEntry; subjectName: string; subjectCode: string; classCode: string; classId: string; hasOpenSession: boolean }[]>([]);
+  const [openSessionsMap, setOpenSessionsMap] = useState<Record<string, { classCode: string }>>({});
+
   // Expanded detail panel per enrollment (presencas | frequencia | notas | plano)
   const [expandedPanel, setExpandedPanel] = useState<{ id: string; panel: string } | null>(null);
 
@@ -661,6 +666,72 @@ export default function AlunoDashboard() {
     setCourseLinks((linksRes.data as any) || []);
     setStudentDetails(detailsRes.data || null);
     setMyTickets((ticketsRes.data as any) || []);
+
+    // Fetch today's lessons and open sessions
+    const todayStr = new Date().toISOString().split('T')[0];
+    const todayEntries = lessonEntriesData.filter((e: any) => e.entry_date === todayStr);
+
+    // Get class_students to find student's classes
+    const { data: studentClasses } = await supabase
+      .from('class_students')
+      .select('class_id, classes:classes(id, code)')
+      .eq('student_id', student.id)
+      .eq('status', 'ATIVO');
+
+    const studentClassIds = (studentClasses || []).map((sc: any) => sc.class_id);
+    const classCodeMap: Record<string, string> = {};
+    (studentClasses || []).forEach((sc: any) => {
+      if (sc.classes) classCodeMap[sc.class_id] = sc.classes.code;
+    });
+
+    // Find open sessions for student's classes
+    let openSessions: any[] = [];
+    if (studentClassIds.length > 0) {
+      const { data: openSess } = await supabase
+        .from('attendance_sessions')
+        .select('id, class_id, subject_id')
+        .in('class_id', studentClassIds)
+        .eq('status', 'ABERTA');
+      openSessions = openSess || [];
+    }
+
+    const openSessionsBySubject: Record<string, boolean> = {};
+    const openSessionClassCodes: Record<string, string> = {};
+    openSessions.forEach((s: any) => {
+      openSessionsBySubject[s.subject_id] = true;
+      openSessionClassCodes[s.subject_id] = classCodeMap[s.class_id] || '';
+    });
+
+    // Map today's lesson entries to enriched data
+    const todayLessonsMapped = todayEntries.map((entry: any) => {
+      const cs = classSubjectsData.find((c: any) => c.id === entry.class_subject_id);
+      const subjectId = cs?.subject_id || '';
+      const enroll = (enrollData || []).find((e: any) => e.subject_id === subjectId);
+      const sub = enroll?.subject as any;
+      // Find class for this class_subject
+      const classSubject = classSubjectsData.find((c: any) => c.id === entry.class_subject_id);
+      let classCode = '';
+      let classId = '';
+      if (classSubject) {
+        // Find matching class from student's classes
+        const matchedClass = (studentClasses || []).find((sc: any) => sc.class_id && classSubjectsData.some((c: any) => c.id === entry.class_subject_id && c.class_id === sc.class_id));
+        if (matchedClass) {
+          classCode = classCodeMap[matchedClass.class_id] || '';
+          classId = matchedClass.class_id;
+        }
+      }
+      return {
+        entry,
+        subjectName: sub?.name || 'Disciplina',
+        subjectCode: sub?.code || '',
+        classCode,
+        classId,
+        hasOpenSession: !!openSessionsBySubject[subjectId],
+      };
+    }).filter((t: any) => t.subjectName);
+
+    setTodayLessons(todayLessonsMapped);
+
     setLoading(false);
   }
 
@@ -881,8 +952,15 @@ export default function AlunoDashboard() {
         </div>
 
         {/* Main tabs */}
-        <Tabs defaultValue="disciplinas">
+        <Tabs defaultValue="hoje">
           <TabsList className="w-full h-auto flex flex-wrap gap-1 sm:inline-flex sm:h-10">
+            <TabsTrigger value="hoje" className="gap-1 text-xs sm:text-sm relative">
+              <PlayCircle className="w-3 h-3 sm:w-4 sm:h-4" />
+              Aulas Hoje
+              {todayLessons.some(t => t.hasOpenSession) && (
+                <span className="ml-1 inline-flex items-center justify-center w-2 h-2 rounded-full bg-primary animate-pulse" />
+              )}
+            </TabsTrigger>
             <TabsTrigger value="disciplinas" className="gap-1 text-xs sm:text-sm">
               <BookOpen className="w-3 h-3 sm:w-4 sm:h-4" />
               Disciplinas
@@ -921,6 +999,148 @@ export default function AlunoDashboard() {
               )}
             </TabsTrigger>
           </TabsList>
+
+          {/* ── AULAS HOJE ─────────────────────────────── */}
+          <TabsContent value="hoje" className="mt-4 space-y-4">
+            {/* Today's Classes */}
+            <div className="space-y-3">
+              <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                <PlayCircle className="w-4 h-4 text-primary" />
+                Aulas de Hoje — {new Date().toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+              </h3>
+              {todayLessons.length === 0 ? (
+                <Card className="border-border">
+                  <CardContent className="py-8 text-center text-muted-foreground">
+                    <Calendar className="w-10 h-10 mx-auto mb-2 text-muted-foreground/50" />
+                    <p className="text-sm">Nenhuma aula prevista para hoje.</p>
+                    <p className="text-xs mt-1">Aproveite para revisar suas disciplinas!</p>
+                  </CardContent>
+                </Card>
+              ) : (
+                todayLessons.map((lesson, idx) => (
+                  <Card key={`today-${idx}`} className={`border-2 ${lesson.hasOpenSession ? 'border-primary/50 bg-primary/[0.03]' : 'border-border'}`}>
+                    <CardContent className="pt-4 pb-3">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="font-semibold text-foreground">{lesson.subjectName}</p>
+                            {lesson.entry.lesson_number != null && (
+                              <Badge variant="outline" className="text-xs">Aula {lesson.entry.lesson_number}</Badge>
+                            )}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-0.5">{lesson.subjectCode} · Turma: {lesson.classCode || '—'}</p>
+                          <p className="text-sm text-foreground mt-1.5">{lesson.entry.title}</p>
+                          {lesson.entry.description && (
+                            <p className="text-xs text-muted-foreground mt-1">{lesson.entry.description}</p>
+                          )}
+                        </div>
+                        {lesson.hasOpenSession && (
+                          <Badge className="bg-primary text-primary-foreground shrink-0 animate-pulse">
+                            Chamada Aberta
+                          </Badge>
+                        )}
+                      </div>
+                      {lesson.hasOpenSession && lesson.classCode && (
+                        <div className="mt-3 pt-3 border-t border-border">
+                          <Button
+                            className="w-full gap-2"
+                            onClick={() => navigate(`/presenca?classCode=${encodeURIComponent(lesson.classCode)}`)}
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            Registrar Presença
+                          </Button>
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))
+              )}
+            </div>
+
+            {/* Risk Alerts */}
+            {(() => {
+              const riskEnrollments = enrollments.filter(e => {
+                const avg = calcAverage(e.grades, e.templateItems);
+                const freqRisk = e.attendance_pct !== null && e.attendance_pct < e.subject.min_attendance_pct;
+                const gradeRisk = avg !== null && avg < e.subject.min_grade;
+                return freqRisk || gradeRisk;
+              });
+              if (riskEnrollments.length === 0) return null;
+              return (
+                <div className="space-y-2">
+                  <h3 className="text-sm font-semibold text-destructive flex items-center gap-2">
+                    <ShieldAlert className="w-4 h-4" />
+                    Alertas de Risco de Reprovação
+                  </h3>
+                  {riskEnrollments.map(e => {
+                    const avg = calcAverage(e.grades, e.templateItems);
+                    const freqRisk = e.attendance_pct !== null && e.attendance_pct < e.subject.min_attendance_pct;
+                    const gradeRisk = avg !== null && avg < e.subject.min_grade;
+                    return (
+                      <Card key={`risk-${e.id}`} className="border-destructive/40 bg-destructive/[0.03]">
+                        <CardContent className="pt-3 pb-3">
+                          <div className="flex items-center gap-2 mb-1.5">
+                            <AlertTriangle className="w-4 h-4 text-destructive shrink-0" />
+                            <p className="font-semibold text-foreground text-sm">{e.subject.name}</p>
+                          </div>
+                          <div className="flex flex-wrap gap-2">
+                            {gradeRisk && avg !== null && (
+                              <span className="text-xs px-2 py-0.5 rounded-md bg-destructive/10 text-destructive border border-destructive/20">
+                                Nota: {avg.toFixed(1)} (mín: {e.subject.min_grade})
+                              </span>
+                            )}
+                            {freqRisk && e.attendance_pct !== null && (
+                              <span className="text-xs px-2 py-0.5 rounded-md bg-destructive/10 text-destructive border border-destructive/20">
+                                Freq: {e.attendance_pct}% (mín: {e.subject.min_attendance_pct}%)
+                              </span>
+                            )}
+                            {e.absencesRemaining !== null && e.absencesRemaining <= 2 && (
+                              <span className="text-xs px-2 py-0.5 rounded-md bg-destructive/10 text-destructive border border-destructive/20">
+                                {e.absencesRemaining === 0 ? 'Sem faltas restantes!' : `Apenas ${e.absencesRemaining} falta(s) restante(s)`}
+                              </span>
+                            )}
+                          </div>
+                        </CardContent>
+                      </Card>
+                    );
+                  })}
+                </div>
+              );
+            })()}
+
+            {/* Recent Tickets */}
+            {myTickets.length > 0 && (
+              <div className="space-y-2">
+                <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+                  <MessageSquarePlus className="w-4 h-4 text-muted-foreground" />
+                  Últimos Tickets
+                </h3>
+                {myTickets.slice(0, 3).map((ticket: any) => (
+                  <Card key={ticket.id} className="border-border">
+                    <CardContent className="pt-3 pb-3">
+                      <div className="flex items-center justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-foreground truncate">{ticket.subject}</p>
+                          <p className="text-xs text-muted-foreground truncate">{ticket.message}</p>
+                        </div>
+                        <Badge variant={
+                          ticket.status === 'ABERTO' ? 'destructive' :
+                          ticket.status === 'EM_ATENDIMENTO' ? 'default' : 'secondary'
+                        } className="shrink-0 text-xs">
+                          {ticket.status === 'ABERTO' ? 'Aberto' : ticket.status === 'EM_ATENDIMENTO' ? 'Em atendimento' : 'Resolvido'}
+                        </Badge>
+                      </div>
+                      {ticket.response && (
+                        <div className="mt-2 rounded bg-muted/50 p-2 text-xs text-muted-foreground">
+                          <span className="font-medium text-foreground">Resposta:</span> {ticket.response}
+                        </div>
+                      )}
+                    </CardContent>
+                  </Card>
+                ))}
+              </div>
+            )}
+          </TabsContent>
 
           {/* ── DISCIPLINAS ──────────────────────────────── */}
           <TabsContent value="disciplinas" className="mt-4 space-y-3">
