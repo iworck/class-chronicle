@@ -14,13 +14,15 @@ import {
 import {
   Loader2, CalendarCheck, Search, Filter, Play, CheckCircle2, Clock,
   ClipboardList, Users, ChevronDown, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown,
-  GraduationCap, Eye, Copy,
+  GraduationCap, Eye, Copy, ShieldCheck, FileText,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
 import { cn } from '@/lib/utils';
 import AttendanceSessionWizard from '@/components/dashboard/AttendanceSessionWizard';
 import ManualAttendanceModal from '@/components/dashboard/ManualAttendanceModal';
+import ReviewAttendanceModal from '@/components/dashboard/ReviewAttendanceModal';
+import { generateAttendanceAta } from '@/components/dashboard/AttendanceAtaPdf';
 
 interface LessonEntry {
   id: string;
@@ -84,6 +86,7 @@ export default function Aulas() {
   const [liveCode, setLiveCode] = useState<string | undefined>();
   const [liveSessionId, setLiveSessionId] = useState<string | undefined>();
   const [viewLesson, setViewLesson] = useState<LessonEntry | null>(null);
+  const [reviewLesson, setReviewLesson] = useState<LessonEntry | null>(null);
 
   // Active sessions (to block simultaneous opens)
   const [hasOpenSession, setHasOpenSession] = useState(false);
@@ -457,11 +460,33 @@ export default function Aulas() {
                     </div>
 
                     {/* Actions */}
-                    <div className="shrink-0 flex gap-2">
+                    <div className="shrink-0 flex gap-1.5 flex-wrap justify-end">
                       {/* View details button */}
                       {lesson.sessionId && (
                         <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => setViewLesson(lesson)}>
                           <Eye className="w-3 h-3" /> Ver
+                        </Button>
+                      )}
+                      {/* Revisar button */}
+                      {!isExam && lesson.sessionId && (lesson.lessonStatus === 'realizada' || lesson.lessonStatus === 'hoje') && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-primary/50 text-primary hover:bg-primary/10" onClick={() => setReviewLesson(lesson)}>
+                          <ShieldCheck className="w-3 h-3" /> Revisar
+                        </Button>
+                      )}
+                      {/* ATA button */}
+                      {!isExam && lesson.sessionId && (lesson.lessonStatus === 'realizada') && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1" onClick={() => generateAttendanceAta({
+                          sessionId: lesson.sessionId!,
+                          lessonTitle: lesson.title,
+                          lessonNumber: lesson.lesson_number,
+                          lessonDate: lesson.entry_date,
+                          className: lesson.className,
+                          subjectName: lesson.subjectName,
+                          professorName: lesson.professorName || '—',
+                          sessionOpenedAt: lesson.sessionOpenedAt,
+                          sessionClosedAt: lesson.sessionClosedAt,
+                        })}>
+                          <FileText className="w-3 h-3" /> Ata
                         </Button>
                       )}
                       {/* Only non-exam entries can open attendance */}
@@ -477,7 +502,7 @@ export default function Aulas() {
                       )}
                       {!isExam && lesson.lessonStatus === 'hoje' && lesson.sessionId && (
                         <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-success text-success hover:bg-success/10" onClick={() => openManual(lesson.sessionId!)}>
-                          <Users className="w-3 h-3" /> Lançar Presença
+                          <Users className="w-3 h-3" /> Lançar
                         </Button>
                       )}
                       {!isExam && lesson.lessonStatus === 'passada_sem_chamada' && (
@@ -488,12 +513,7 @@ export default function Aulas() {
                           onClick={() => openWizard(lesson)}
                           disabled={hasOpenSession}
                         >
-                          <ClipboardList className="w-3 h-3" /> Lançar Retroativo
-                        </Button>
-                      )}
-                      {!isExam && lesson.lessonStatus === 'realizada' && lesson.sessionId && (
-                        <Button size="sm" variant="ghost" className="h-7 text-xs gap-1 text-muted-foreground" onClick={() => openManual(lesson.sessionId!)}>
-                          <Users className="w-3 h-3" /> Ver / Editar Presença
+                          <ClipboardList className="w-3 h-3" /> Retroativo
                         </Button>
                       )}
                     </div>
@@ -543,6 +563,18 @@ export default function Aulas() {
         <ManualAttendanceModal
           sessionId={manualSessionId}
           onClose={() => { setManualOpen(false); setManualSessionId(null); load(); }}
+        />
+      )}
+
+      {/* Modal de revisão de presença */}
+      {reviewLesson && reviewLesson.sessionId && (
+        <ReviewAttendanceModal
+          sessionId={reviewLesson.sessionId}
+          lessonTitle={reviewLesson.title}
+          lessonDate={reviewLesson.entry_date}
+          className={reviewLesson.className}
+          subjectName={reviewLesson.subjectName}
+          onClose={() => { setReviewLesson(null); load(); }}
         />
       )}
 
