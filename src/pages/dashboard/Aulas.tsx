@@ -12,9 +12,13 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle,
 } from '@/components/ui/dialog';
 import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
+} from '@/components/ui/alert-dialog';
+import {
   Loader2, CalendarCheck, Search, Filter, Play, CheckCircle2, Clock,
   ClipboardList, Users, ChevronDown, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown,
-  GraduationCap, Eye, Copy, ShieldCheck, FileText,
+  GraduationCap, Eye, Copy, ShieldCheck, FileText, Trash2,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -88,6 +92,10 @@ export default function Aulas() {
   const [liveSessionId, setLiveSessionId] = useState<string | undefined>();
   const [viewLesson, setViewLesson] = useState<LessonEntry | null>(null);
   const [reviewLesson, setReviewLesson] = useState<LessonEntry | null>(null);
+  const [deleteLesson, setDeleteLesson] = useState<LessonEntry | null>(null);
+  const [deleteChecking, setDeleteChecking] = useState(false);
+  const [deleteHasAutoRecords, setDeleteHasAutoRecords] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   // Active sessions (to block simultaneous opens)
   const [hasOpenSession, setHasOpenSession] = useState(false);
@@ -281,6 +289,53 @@ export default function Aulas() {
   function openManual(sessionId: string) {
     setManualSessionId(sessionId);
     setManualOpen(true);
+  }
+
+  async function handleDeleteSession(lesson: LessonEntry) {
+    if (!lesson.sessionId) return;
+    setDeleteLesson(lesson);
+    setDeleteChecking(true);
+    setDeleteHasAutoRecords(false);
+
+    // Check if session has any AUTO_ALUNO records
+    const { count } = await supabase
+      .from('attendance_records')
+      .select('id', { count: 'exact', head: true })
+      .eq('session_id', lesson.sessionId)
+      .eq('source', 'AUTO_ALUNO');
+
+    setDeleteHasAutoRecords((count || 0) > 0);
+    setDeleteChecking(false);
+  }
+
+  async function confirmDeleteSession() {
+    if (!deleteLesson?.sessionId) return;
+    setDeleting(true);
+    try {
+      // 1. Delete all attendance_records for this session
+      const { error: recErr } = await supabase
+        .from('attendance_records')
+        .delete()
+        .eq('session_id', deleteLesson.sessionId);
+
+      if (recErr) throw recErr;
+
+      // 2. Delete the session itself
+      const { error: sessErr } = await supabase
+        .from('attendance_sessions')
+        .delete()
+        .eq('id', deleteLesson.sessionId);
+
+      if (sessErr) throw sessErr;
+
+      toast({ title: 'Sessão excluída', description: 'A sessão de chamada e seus registros foram removidos.' });
+      setDeleteLesson(null);
+      load();
+    } catch (err: any) {
+      toast({ title: 'Erro ao excluir', description: err.message || 'Não foi possível excluir a sessão.', variant: 'destructive' });
+    } finally {
+      setDeleting(false);
+    }
   }
 
   return (
@@ -525,6 +580,12 @@ export default function Aulas() {
                           <ClipboardList className="w-3 h-3" /> Retroativo
                         </Button>
                       )}
+                      {/* Cancelar e Excluir - only for open sessions */}
+                      {!isExam && lesson.sessionId && lesson.sessionStatus === 'ABERTA' && (
+                        <Button size="sm" variant="outline" className="h-7 text-xs gap-1 border-destructive/50 text-destructive hover:bg-destructive/10" onClick={() => handleDeleteSession(lesson)}>
+                          <Trash2 className="w-3 h-3" /> Excluir
+                        </Button>
+                      )}
                     </div>
                   </div>
                 );
@@ -731,6 +792,53 @@ export default function Aulas() {
           })()}
         </DialogContent>
       </Dialog>
+
+      {/* Confirmação de exclusão de sessão */}
+      <AlertDialog open={!!deleteLesson} onOpenChange={(open) => { if (!open) setDeleteLesson(null); }}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Cancelar e Excluir Sessão</AlertDialogTitle>
+            <AlertDialogDescription asChild>
+              <div className="space-y-3">
+                {deleteChecking ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Verificando registros...</span>
+                  </div>
+                ) : deleteHasAutoRecords ? (
+                  <div className="rounded-lg border border-destructive/30 bg-destructive/5 p-3 space-y-1">
+                    <p className="font-semibold text-destructive text-sm">Exclusão bloqueada</p>
+                    <p className="text-sm">Esta sessão possui registros de presença feitos automaticamente pelos alunos (AUTO_ALUNO). Não é possível excluí-la para preservar a integridade dos dados.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <p className="text-sm">
+                      Tem certeza que deseja excluir a sessão de chamada da aula{' '}
+                      <strong>{deleteLesson?.title}</strong> ({deleteLesson?.entry_date ? format(parseISO(deleteLesson.entry_date + 'T12:00:00'), 'dd/MM/yyyy', { locale: ptBR }) : ''})?
+                    </p>
+                    <p className="text-sm text-muted-foreground">
+                      Todos os registros manuais de presença desta sessão serão removidos. Esta ação não pode ser desfeita.
+                    </p>
+                  </div>
+                )}
+              </div>
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={deleting}>Voltar</AlertDialogCancel>
+            {!deleteChecking && !deleteHasAutoRecords && (
+              <AlertDialogAction
+                onClick={confirmDeleteSession}
+                disabled={deleting}
+                className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
+              >
+                {deleting ? <Loader2 className="w-4 h-4 animate-spin mr-1" /> : <Trash2 className="w-4 h-4 mr-1" />}
+                Excluir Sessão
+              </AlertDialogAction>
+            )}
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }
