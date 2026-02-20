@@ -99,14 +99,17 @@ export type Database = {
       attendance_records: {
         Row: {
           created_at: string
+          device_fingerprint: string | null
           final_status: Database["public"]["Enums"]["attendance_status"]
           geo_lat: number | null
           geo_lng: number | null
           geo_ok: boolean | null
           id: string
           ip_address: string | null
+          needs_review: boolean
           protocol: string
           registered_at: string | null
+          review_reason: string | null
           selfie_path: string | null
           session_id: string
           signature_path: string | null
@@ -116,14 +119,17 @@ export type Database = {
         }
         Insert: {
           created_at?: string
+          device_fingerprint?: string | null
           final_status?: Database["public"]["Enums"]["attendance_status"]
           geo_lat?: number | null
           geo_lng?: number | null
           geo_ok?: boolean | null
           id?: string
           ip_address?: string | null
+          needs_review?: boolean
           protocol?: string
           registered_at?: string | null
+          review_reason?: string | null
           selfie_path?: string | null
           session_id: string
           signature_path?: string | null
@@ -133,14 +139,17 @@ export type Database = {
         }
         Update: {
           created_at?: string
+          device_fingerprint?: string | null
           final_status?: Database["public"]["Enums"]["attendance_status"]
           geo_lat?: number | null
           geo_lng?: number | null
           geo_ok?: boolean | null
           id?: string
           ip_address?: string | null
+          needs_review?: boolean
           protocol?: string
           registered_at?: string | null
+          review_reason?: string | null
           selfie_path?: string | null
           session_id?: string
           signature_path?: string | null
