@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
 import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import {
@@ -40,9 +41,10 @@ interface Props {
   onSessionClosed: () => void;
   liveCode?: string;
   liveSessionId?: string;
+  liveCloseToken?: string;
 }
 
-export default function ActiveSessionPanel({ professorUserId, onSessionClosed, liveCode, liveSessionId }: Props) {
+export default function ActiveSessionPanel({ professorUserId, onSessionClosed, liveCode, liveSessionId, liveCloseToken }: Props) {
   const [openSessions, setOpenSessions] = useState<ActiveSession[]>([]);
   const [closedSessions, setClosedSessions] = useState<ActiveSession[]>([]);
   const [loading, setLoading] = useState(true);
@@ -55,6 +57,8 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
   const [closing, setClosing] = useState<string | null>(null);
   const [reopening, setReopening] = useState<string | null>(null);
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
+  const [closeTokenInput, setCloseTokenInput] = useState<Record<string, string>>({});
+  const [closeTokenError, setCloseTokenError] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadSessions = useCallback(async () => {
@@ -131,8 +135,45 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
     return () => { if (timerRef.current) clearInterval(timerRef.current); };
   }, []);
 
+  async function hashCode(code: string): Promise<string> {
+    const encoder = new TextEncoder();
+    const data = encoder.encode(code);
+    const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+    const hashArray = Array.from(new Uint8Array(hashBuffer));
+    return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+  }
+
   async function closeSession(sessionId: string) {
     setClosing(sessionId);
+    setCloseTokenError(null);
+
+    // If this is the live session and we have the token in memory, use it directly
+    const tokenValue = sessionId === liveSessionId && liveCloseToken
+      ? liveCloseToken
+      : closeTokenInput[sessionId];
+
+    if (!tokenValue) {
+      setCloseTokenError('Informe o token de encerramento.');
+      setClosing(null);
+      return;
+    }
+
+    // Verify the close token against the stored hash
+    const { data: sessionData } = await supabase
+      .from('attendance_sessions')
+      .select('close_token_hash')
+      .eq('id', sessionId)
+      .single();
+
+    if (sessionData?.close_token_hash) {
+      const inputHash = await hashCode(tokenValue);
+      if (inputHash !== sessionData.close_token_hash) {
+        setCloseTokenError('Token de encerramento inválido.');
+        setClosing(null);
+        return;
+      }
+    }
+
     const { error } = await supabase
       .from('attendance_sessions')
       .update({ status: 'ENCERRADA', closed_at: new Date().toISOString() })
@@ -264,6 +305,21 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
               </div>
             )}
 
+            {/* Close Token Display (for live session) */}
+            {isLive && liveCloseToken && (
+              <div className="rounded-xl border-2 border-warning/30 bg-warning/5 p-4 text-center mb-4">
+                <p className="text-xs text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">
+                  Token de Encerramento
+                </p>
+                <p className="text-2xl font-mono font-bold text-warning tracking-[0.2em] select-all">
+                  {liveCloseToken}
+                </p>
+                <p className="text-xs text-muted-foreground mt-1.5">
+                  Guarde este token — será necessário para encerrar a chamada
+                </p>
+              </div>
+            )}
+
             {/* Session ID */}
             <div className="rounded-lg bg-muted/40 border border-border px-3 py-2 text-xs font-mono text-muted-foreground truncate mb-4">
               ID da Aula: <span className="font-bold text-foreground tracking-widest">{session.id.replace(/-/g, '').slice(0, 6).toUpperCase()}</span>
@@ -297,12 +353,27 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
                       <AlertTriangle className="w-5 h-5 text-warning" />
                       Encerrar chamada?
                     </AlertDialogTitle>
-                    <AlertDialogDescription>
-                      Ao encerrar, os alunos não poderão mais registrar presença com o código.
-                      <br /><br />
-                      <strong>{present} aluno(s)</strong> registraram presença de <strong>{total} registros</strong> no total.
-                      <br /><br />
-                      Caso tenha encerrado por engano, você pode <strong>reabrir</strong> a chamada logo após.
+                    <AlertDialogDescription asChild>
+                      <div>
+                        <p>Ao encerrar, os alunos não poderão mais registrar presença com o código.</p>
+                        <p className="mt-2"><strong>{present} aluno(s)</strong> registraram presença de <strong>{total} registros</strong> no total.</p>
+                        {!(session.id === liveSessionId && liveCloseToken) && (
+                          <div className="mt-4 space-y-2">
+                            <label className="text-xs font-medium text-foreground">Token de Encerramento</label>
+                            <Input
+                              placeholder="Insira o token de 8 caracteres"
+                              value={closeTokenInput[session.id] || ''}
+                              onChange={e => setCloseTokenInput(prev => ({ ...prev, [session.id]: e.target.value.toUpperCase() }))}
+                              className="font-mono tracking-widest text-center"
+                              maxLength={8}
+                            />
+                            {closeTokenError && (
+                              <p className="text-xs text-destructive">{closeTokenError}</p>
+                            )}
+                          </div>
+                        )}
+                        <p className="mt-2 text-xs">Caso tenha encerrado por engano, você pode <strong>reabrir</strong> a chamada logo após.</p>
+                      </div>
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>

@@ -110,7 +110,7 @@ export default function Aulas() {
       supabase.from('subjects').select('id, name').in('id', subjectIds),
       supabase
         .from('attendance_sessions')
-        .select('id, class_id, subject_id, status')
+        .select('id, class_id, subject_id, status, lesson_entry_id')
         .eq('professor_user_id', targetUserId)
         .in('subject_id', subjectIds),
     ]);
@@ -128,9 +128,12 @@ export default function Aulas() {
 
     const items: LessonEntry[] = (entriesRes.data || []).map((e: any) => {
       const cs = csMap[e.class_subject_id];
-      // Find matching session (same class+subject)
+      // Match session by lesson_entry_id first, then fallback to class+subject (for legacy sessions)
       const session = sessions.find(
-        (s: any) => s.class_id === cs?.class_id && s.subject_id === cs?.subject_id
+        (s: any) => s.lesson_entry_id === e.id
+      ) || sessions.find(
+        (s: any) => !s.lesson_entry_id && s.class_id === cs?.class_id && s.subject_id === cs?.subject_id
+          && (s.status === 'ABERTA') // Only match legacy open sessions, not closed ones
       ) as any;
 
       const isToday = e.entry_date === today;
@@ -503,6 +506,7 @@ export default function Aulas() {
             load();
           }}
           classSubjectId={selectedLesson.class_subject_id}
+          lessonEntryId={selectedLesson.id}
           lessonTitle={selectedLesson.title}
           lessonNumber={selectedLesson.lesson_number}
           professorUserId={user!.id}
