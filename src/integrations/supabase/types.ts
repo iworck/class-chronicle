@@ -174,6 +174,51 @@ export type Database = {
           },
         ]
       }
+      attendance_session_deletions: {
+        Row: {
+          class_id: string
+          closed_at: string | null
+          deleted_at: string
+          deleted_by_user_id: string
+          id: string
+          lesson_entry_id: string | null
+          opened_at: string | null
+          reason: string | null
+          records_deleted_count: number
+          session_id: string
+          session_status: string | null
+          subject_id: string
+        }
+        Insert: {
+          class_id: string
+          closed_at?: string | null
+          deleted_at?: string
+          deleted_by_user_id: string
+          id?: string
+          lesson_entry_id?: string | null
+          opened_at?: string | null
+          reason?: string | null
+          records_deleted_count?: number
+          session_id: string
+          session_status?: string | null
+          subject_id: string
+        }
+        Update: {
+          class_id?: string
+          closed_at?: string | null
+          deleted_at?: string
+          deleted_by_user_id?: string
+          id?: string
+          lesson_entry_id?: string | null
+          opened_at?: string | null
+          reason?: string | null
+          records_deleted_count?: number
+          session_id?: string
+          session_status?: string | null
+          subject_id?: string
+        }
+        Relationships: []
+      }
       attendance_sessions: {
         Row: {
           audit_deadline_at: string | null
