@@ -14,6 +14,7 @@ import { ptBR } from 'date-fns/locale';
 import AttendanceSessionWizard from '@/components/dashboard/AttendanceSessionWizard';
 import ActiveSessionPanel from '@/components/dashboard/ActiveSessionPanel';
 import ManualAttendanceModal from '@/components/dashboard/ManualAttendanceModal';
+import AttendanceReviewPanel from '@/components/dashboard/AttendanceReviewPanel';
 
 interface ProfessorStats {
   totalSubjects: number;
@@ -217,6 +218,9 @@ export default function ProfessorDashboard() {
         liveCode={liveCode}
         liveSessionId={liveSessionId}
       />
+
+      {/* Painel de Revisão de Presença + Fingerprints Duplicados */}
+      <AttendanceReviewPanel />
 
       {/* Stats Grid */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
