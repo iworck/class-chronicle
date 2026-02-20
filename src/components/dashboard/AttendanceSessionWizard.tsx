@@ -14,7 +14,7 @@ import { cn } from '@/lib/utils';
 interface Props {
   open: boolean;
   onClose: () => void;
-  onSuccess: (code: string, sessionId: string, closeToken?: string) => void;
+  onSuccess: (code: string, sessionId: string) => void;
   classSubjectId: string;
   lessonEntryId?: string;
   lessonTitle: string;
@@ -120,16 +120,11 @@ export default function AttendanceSessionWizard({
       const code = generateCode(6);
       const hash = await hashCode(code);
 
-      // Generate close token for secure session closing
-      const closeToken = generateCode(8);
-      const closeTokenHash = await hashCode(closeToken);
-
       const payload: any = {
         class_id: classId,
         subject_id: subjectId,
         professor_user_id: professorUserId,
         entry_code_hash: hash,
-        close_token_hash: closeTokenHash,
         require_geo: useGeo === true && !!geoCoords,
         status: 'ABERTA',
       };
@@ -152,8 +147,7 @@ export default function AttendanceSessionWizard({
 
       setSessionCode(code);
       setSessionId(data.id);
-      // Notify dashboard (closes wizard and shows ActiveSessionPanel)
-      onSuccess(code, data.id, closeToken);
+      onSuccess(code, data.id);
     } catch (err: any) {
       toast({ title: 'Erro ao abrir sessão', description: err.message, variant: 'destructive' });
       setStep(modalidade === 'presencial' ? (useGeo !== null ? 'geolocalizacao' : 'modalidade') : 'modalidade');
