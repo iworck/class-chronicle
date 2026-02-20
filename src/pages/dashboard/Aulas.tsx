@@ -309,10 +309,33 @@ export default function Aulas() {
   }
 
   async function confirmDeleteSession() {
-    if (!deleteLesson?.sessionId) return;
+    if (!deleteLesson?.sessionId || !user?.id) return;
     setDeleting(true);
     try {
-      // 1. Delete all attendance_records for this session
+      // 1. Count records to be deleted
+      const { count: recCount } = await supabase
+        .from('attendance_records')
+        .select('id', { count: 'exact', head: true })
+        .eq('session_id', deleteLesson.sessionId);
+
+      // 2. Log the deletion for audit
+      const { error: logErr } = await supabase
+        .from('attendance_session_deletions' as any)
+        .insert({
+          session_id: deleteLesson.sessionId,
+          class_id: deleteLesson.classId,
+          subject_id: deleteLesson.subjectId,
+          lesson_entry_id: deleteLesson.id,
+          opened_at: deleteLesson.sessionOpenedAt,
+          closed_at: deleteLesson.sessionClosedAt,
+          session_status: deleteLesson.sessionStatus,
+          records_deleted_count: recCount || 0,
+          deleted_by_user_id: user.id,
+        });
+
+      if (logErr) throw logErr;
+
+      // 3. Delete all attendance_records for this session
       const { error: recErr } = await supabase
         .from('attendance_records')
         .delete()
@@ -320,7 +343,7 @@ export default function Aulas() {
 
       if (recErr) throw recErr;
 
-      // 2. Delete the session itself
+      // 4. Delete the session itself
       const { error: sessErr } = await supabase
         .from('attendance_sessions')
         .delete()
@@ -328,7 +351,7 @@ export default function Aulas() {
 
       if (sessErr) throw sessErr;
 
-      toast({ title: 'Sessão excluída', description: 'A sessão de chamada e seus registros foram removidos.' });
+      toast({ title: 'Sessão excluída', description: 'A sessão de chamada e seus registros foram removidos. Log de auditoria registrado.' });
       setDeleteLesson(null);
       load();
     } catch (err: any) {
