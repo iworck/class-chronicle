@@ -54,6 +54,7 @@ export default function ProfessorDashboard() {
   const [showAllSchedule, setShowAllSchedule] = useState(false);
   const [liveCode, setLiveCode] = useState<string | undefined>(undefined);
   const [liveSessionId, setLiveSessionId] = useState<string | undefined>(undefined);
+  const [liveCloseToken, setLiveCloseToken] = useState<string | undefined>(undefined);
 
   const loadDashboard = useCallback(async () => {
     if (!user) return;
@@ -76,7 +77,7 @@ export default function ProfessorDashboard() {
         : Promise.resolve({ data: [] }),
       csIds.length > 0
         ? supabase.from('attendance_sessions')
-            .select('id, class_id, subject_id, status')
+            .select('id, class_id, subject_id, status, lesson_entry_id')
             .in('subject_id', subjectIds)
             .eq('professor_user_id', user.id)
         : Promise.resolve({ data: [] }),
@@ -148,11 +149,18 @@ export default function ProfessorDashboard() {
       const subjectMap = Object.fromEntries((subjects || []).map((s: any) => [s.id, s.name]));
       const csMap = Object.fromEntries(csItems.map(c => [c.id, c]));
 
+      // Map sessions by lesson_entry_id for precise matching
+      const sessionByLessonId = new Map<string, { id: string; status: string }>();
       const sessionByCsId = new Map<string, { id: string; status: string }>();
       sessions.forEach((s: any) => {
-        const cs = csItems.find(c => c.subject_id === s.subject_id && c.class_id === s.class_id);
-        if (cs && !sessionByCsId.has(cs.id)) {
-          sessionByCsId.set(cs.id, { id: s.id, status: s.status });
+        if (s.lesson_entry_id) {
+          sessionByLessonId.set(s.lesson_entry_id, { id: s.id, status: s.status });
+        } else {
+          // Legacy fallback: only for ABERTA sessions without lesson_entry_id
+          const cs = csItems.find(c => c.subject_id === s.subject_id && c.class_id === s.class_id);
+          if (cs && s.status === 'ABERTA' && !sessionByCsId.has(cs.id)) {
+            sessionByCsId.set(cs.id, { id: s.id, status: s.status });
+          }
         }
       });
 
@@ -165,7 +173,7 @@ export default function ProfessorDashboard() {
         .filter(e => e.entry_date >= today && e.entry_date <= limitStr)
         .map(e => {
           const cs = csMap[e.class_subject_id];
-          const session = sessionByCsId.get(e.class_subject_id);
+          const session = sessionByLessonId.get(e.id) || sessionByCsId.get(e.class_subject_id);
           return {
             id: e.id,
             classSubjectId: e.class_subject_id,
@@ -214,9 +222,10 @@ export default function ProfessorDashboard() {
       {/* Sessão Ativa */}
       <ActiveSessionPanel
         professorUserId={user!.id}
-        onSessionClosed={() => { setLiveCode(undefined); setLiveSessionId(undefined); loadDashboard(); }}
+        onSessionClosed={() => { setLiveCode(undefined); setLiveSessionId(undefined); setLiveCloseToken(undefined); loadDashboard(); }}
         liveCode={liveCode}
         liveSessionId={liveSessionId}
+        liveCloseToken={liveCloseToken}
       />
 
       {/* Painel de Revisão de Presença + Fingerprints Duplicados */}
@@ -375,14 +384,16 @@ export default function ProfessorDashboard() {
         <AttendanceSessionWizard
           open={wizardOpen}
           onClose={() => { setWizardOpen(false); setSelectedScheduleItem(null); }}
-          onSuccess={(code, sessionId) => {
+          onSuccess={(code, sessionId, closeToken) => {
             setWizardOpen(false);
             setSelectedScheduleItem(null);
             setLiveCode(code);
             setLiveSessionId(sessionId);
+            setLiveCloseToken(closeToken);
             loadDashboard();
           }}
           classSubjectId={selectedScheduleItem.classSubjectId}
+          lessonEntryId={selectedScheduleItem.id}
           lessonTitle={selectedScheduleItem.title}
           lessonNumber={selectedScheduleItem.lessonNumber}
           professorUserId={user!.id}

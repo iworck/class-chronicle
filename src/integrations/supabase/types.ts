@@ -178,6 +178,7 @@ export type Database = {
         Row: {
           audit_deadline_at: string | null
           class_id: string
+          close_token_hash: string | null
           closed_at: string | null
           created_at: string
           entry_code_hash: string
@@ -185,6 +186,7 @@ export type Database = {
           geo_lng: number | null
           geo_radius_m: number | null
           id: string
+          lesson_entry_id: string | null
           opened_at: string
           professor_user_id: string
           public_token: string
@@ -195,6 +197,7 @@ export type Database = {
         Insert: {
           audit_deadline_at?: string | null
           class_id: string
+          close_token_hash?: string | null
           closed_at?: string | null
           created_at?: string
           entry_code_hash: string
@@ -202,6 +205,7 @@ export type Database = {
           geo_lng?: number | null
           geo_radius_m?: number | null
           id?: string
+          lesson_entry_id?: string | null
           opened_at?: string
           professor_user_id: string
           public_token?: string
@@ -212,6 +216,7 @@ export type Database = {
         Update: {
           audit_deadline_at?: string | null
           class_id?: string
+          close_token_hash?: string | null
           closed_at?: string | null
           created_at?: string
           entry_code_hash?: string
@@ -219,6 +224,7 @@ export type Database = {
           geo_lng?: number | null
           geo_radius_m?: number | null
           id?: string
+          lesson_entry_id?: string | null
           opened_at?: string
           professor_user_id?: string
           public_token?: string
@@ -232,6 +238,13 @@ export type Database = {
             columns: ["class_id"]
             isOneToOne: false
             referencedRelation: "classes"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "attendance_sessions_lesson_entry_id_fkey"
+            columns: ["lesson_entry_id"]
+            isOneToOne: false
+            referencedRelation: "lesson_plan_entries"
             referencedColumns: ["id"]
           },
           {
