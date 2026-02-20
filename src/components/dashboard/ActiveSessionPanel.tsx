@@ -59,6 +59,7 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
   const [manualSessionId, setManualSessionId] = useState<string | null>(null);
   const [closeTokenInput, setCloseTokenInput] = useState<Record<string, string>>({});
   const [closeTokenError, setCloseTokenError] = useState<string | null>(null);
+  const [closeDialogSessionId, setCloseDialogSessionId] = useState<string | null>(null);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
   const loadSessions = useCallback(async () => {
@@ -143,7 +144,7 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
     return hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
   }
 
-  async function closeSession(sessionId: string) {
+  async function closeSession(sessionId: string): Promise<boolean> {
     setClosing(sessionId);
     setCloseTokenError(null);
 
@@ -155,7 +156,7 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
     if (!tokenValue) {
       setCloseTokenError('Informe o token de encerramento.');
       setClosing(null);
-      return;
+      return false;
     }
 
     // Verify the close token against the stored hash
@@ -170,7 +171,7 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
       if (inputHash !== sessionData.close_token_hash) {
         setCloseTokenError('Token de encerramento inválido.');
         setClosing(null);
-        return;
+        return false;
       }
     }
 
@@ -181,10 +182,13 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
     setClosing(null);
     if (error) {
       toast({ title: 'Erro ao encerrar sessão', description: error.message, variant: 'destructive' });
+      return false;
     } else {
       toast({ title: '✅ Chamada encerrada com sucesso' });
+      setCloseDialogSessionId(null);
       onSessionClosed();
       loadSessions();
+      return true;
     }
   }
 
@@ -335,58 +339,16 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
                 <ListChecks className="w-4 h-4 mr-2" /> Lançar Presença
               </Button>
 
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <Button
-                    variant="destructive"
-                    className="flex-1"
-                    disabled={closing === session.id}
-                  >
-                    {closing === session.id
-                      ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Encerrando...</>
-                      : <><XCircle className="w-4 h-4 mr-2" />Encerrar Chamada</>}
-                  </Button>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle className="flex items-center gap-2">
-                      <AlertTriangle className="w-5 h-5 text-warning" />
-                      Encerrar chamada?
-                    </AlertDialogTitle>
-                    <AlertDialogDescription asChild>
-                      <div>
-                        <p>Ao encerrar, os alunos não poderão mais registrar presença com o código.</p>
-                        <p className="mt-2"><strong>{present} aluno(s)</strong> registraram presença de <strong>{total} registros</strong> no total.</p>
-                        {!(session.id === liveSessionId && liveCloseToken) && (
-                          <div className="mt-4 space-y-2">
-                            <label className="text-xs font-medium text-foreground">Token de Encerramento</label>
-                            <Input
-                              placeholder="Insira o token de 8 caracteres"
-                              value={closeTokenInput[session.id] || ''}
-                              onChange={e => setCloseTokenInput(prev => ({ ...prev, [session.id]: e.target.value.toUpperCase() }))}
-                              className="font-mono tracking-widest text-center"
-                              maxLength={8}
-                            />
-                            {closeTokenError && (
-                              <p className="text-xs text-destructive">{closeTokenError}</p>
-                            )}
-                          </div>
-                        )}
-                        <p className="mt-2 text-xs">Caso tenha encerrado por engano, você pode <strong>reabrir</strong> a chamada logo após.</p>
-                      </div>
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>Cancelar</AlertDialogCancel>
-                    <AlertDialogAction
-                      className="bg-destructive hover:bg-destructive/90"
-                      onClick={() => closeSession(session.id)}
-                    >
-                      Encerrar chamada
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
+              <Button
+                variant="destructive"
+                className="flex-1"
+                disabled={closing === session.id}
+                onClick={() => { setCloseDialogSessionId(session.id); setCloseTokenError(null); }}
+              >
+                {closing === session.id
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Encerrando...</>
+                  : <><XCircle className="w-4 h-4 mr-2" />Encerrar Chamada</>}
+              </Button>
             </div>
           </div>
         );
@@ -483,6 +445,62 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
           onClose={() => { setManualSessionId(null); loadSessions(); }}
         />
       )}
+
+      {/* ── DIALOG CONTROLADO PARA ENCERRAR ── */}
+      {closeDialogSessionId && (() => {
+        const session = openSessions.find(s => s.id === closeDialogSessionId);
+        if (!session) return null;
+        const present = presentCounts[session.id] || 0;
+        const total = totalCounts[session.id] || 0;
+        const isLive = session.id === liveSessionId && !!liveCloseToken;
+
+        return (
+          <AlertDialog open onOpenChange={(v) => { if (!v) { setCloseDialogSessionId(null); setCloseTokenError(null); } }}>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle className="flex items-center gap-2">
+                  <AlertTriangle className="w-5 h-5 text-warning" />
+                  Encerrar chamada?
+                </AlertDialogTitle>
+                <AlertDialogDescription asChild>
+                  <div>
+                    <p>Ao encerrar, os alunos não poderão mais registrar presença com o código.</p>
+                    <p className="mt-2"><strong>{present} aluno(s)</strong> registraram presença de <strong>{total} registros</strong> no total.</p>
+                    {!isLive && (
+                      <div className="mt-4 space-y-2">
+                        <label className="text-xs font-medium text-foreground">Token de Encerramento</label>
+                        <Input
+                          placeholder="Insira o token de 8 caracteres"
+                          value={closeTokenInput[session.id] || ''}
+                          onChange={e => setCloseTokenInput(prev => ({ ...prev, [session.id]: e.target.value.toUpperCase() }))}
+                          className="font-mono tracking-widest text-center"
+                          maxLength={8}
+                        />
+                        {closeTokenError && (
+                          <p className="text-xs text-destructive">{closeTokenError}</p>
+                        )}
+                      </div>
+                    )}
+                    <p className="mt-2 text-xs">Caso tenha encerrado por engano, você pode <strong>reabrir</strong> a chamada logo após.</p>
+                  </div>
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel onClick={() => { setCloseDialogSessionId(null); setCloseTokenError(null); }}>Cancelar</AlertDialogCancel>
+                <Button
+                  variant="destructive"
+                  disabled={closing === session.id}
+                  onClick={() => closeSession(session.id)}
+                >
+                  {closing === session.id
+                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Encerrando...</>
+                    : 'Encerrar chamada'}
+                </Button>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        );
+      })()}
     </div>
   );
 }
