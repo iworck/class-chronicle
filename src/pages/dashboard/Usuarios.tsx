@@ -19,6 +19,7 @@ import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import {
   Search, Pencil, Shield, Loader2, Users, MapPin, Plus, UserPlus, KeyRound, Mail, MessageSquare, Eye, Copy, FileText, BookOpen, GraduationCap,
+  ChevronDown, ChevronRight
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -50,6 +51,7 @@ interface UserCampus { id: string; user_id: string; campus_id: string; }
 interface UserUnit { id: string; user_id: string; unit_id: string; }
 interface UserCourse { id: string; user_id: string; course_id: string; }
 interface UserSubject { id: string; user_id: string; subject_id: string; }
+interface UserClass { id: string; user_id: string; class_id: string; }
 
 interface AuditLog {
   id: string;
@@ -117,12 +119,14 @@ const Usuarios = () => {
   const [allUserUnits, setAllUserUnits] = useState<UserUnit[]>([]);
   const [allUserCourses, setAllUserCourses] = useState<UserCourse[]>([]);
   const [allUserSubjects, setAllUserSubjects] = useState<UserSubject[]>([]);
+  const [allUserClasses, setAllUserClasses] = useState<UserClass[]>([]);
   const [allCourses, setAllCourses] = useState<{ id: string, name: string }[]>([]);
   const [allSubjects, setAllSubjects] = useState<any[]>([]);
   const [allMatrices, setAllMatrices] = useState<any[]>([]);
   const [allMatrixSubjects, setAllMatrixSubjects] = useState<any[]>([]);
   const [allClasses, setAllClasses] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
@@ -165,6 +169,7 @@ const Usuarios = () => {
   const [assignUserUnits, setAssignUserUnits] = useState<string[]>([]);
   const [assignUserCourses, setAssignUserCourses] = useState<string[]>([]);
   const [assignUserSubjects, setAssignUserSubjects] = useState<string[]>([]);
+  const [assignUserClasses, setAssignUserClasses] = useState<string[]>([]);
   const [savingAssign, setSavingAssign] = useState(false);
 
 
@@ -192,7 +197,7 @@ const Usuarios = () => {
     setLoading(true);
     const [
       profileRes, rolesRes, instRes, campusRes, unitRes, ucRes, uuRes,
-      courseRes, subjectRes, uCourseRes, uSubjectRes, matrixRes, matrixSubjectRes, classRes
+      courseRes, subjectRes, uCourseRes, uSubjectRes, matrixRes, matrixSubjectRes, classRes, uClassRes
     ] = await Promise.all([
       supabase.from('profiles').select('*').order('name'),
       supabase.from('user_roles').select('*'),
@@ -208,6 +213,7 @@ const Usuarios = () => {
       supabase.from('academic_matrices').select('*').eq('status', 'ATIVO'),
       supabase.from('matrix_subjects').select('*'),
       supabase.from('classes').select('id, code, course_id, semester_id').eq('status', 'ATIVO'),
+      supabase.from('user_classes').select('*'),
     ]);
 
     if (profileRes.error) {
@@ -225,6 +231,7 @@ const Usuarios = () => {
     setAllSubjects((subjectRes.data as any[]) || []);
     setAllUserCourses((uCourseRes.data as UserCourse[]) || []);
     setAllUserSubjects((uSubjectRes.data as UserSubject[]) || []);
+    setAllUserClasses((uClassRes.data as UserClass[]) || []);
     setAllMatrices((matrixRes.data as any[]) || []);
     setAllMatrixSubjects((matrixSubjectRes.data as any[]) || []);
     setAllClasses((classRes.data as any[]) || []);
@@ -449,6 +456,7 @@ const Usuarios = () => {
     setAssignUserUnits(allUserUnits.filter(uu => uu.user_id === profile.id).map(uu => uu.unit_id));
     setAssignUserCourses(allUserCourses.filter(uc => uc.user_id === profile.id).map(uc => uc.course_id));
     setAssignUserSubjects(allUserSubjects.filter(us => us.user_id === profile.id).map(us => us.subject_id));
+    setAssignUserClasses(allUserClasses.filter(ucl => ucl.user_id === profile.id).map(ucl => ucl.class_id));
     setAssignDialogOpen(true);
   }
 
@@ -523,6 +531,23 @@ const Usuarios = () => {
       for (const sid of subjectsToAdd) {
         const s = allSubjects.find(x => x.id === sid);
         auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'ADD_SUBJECT', entity_id: sid, entity_name: s?.name });
+      }
+    }
+    
+    // --- Classes ---
+    const currentClassIds = allUserClasses.filter(ucl => ucl.user_id === assignUserId).map(ucl => ucl.class_id);
+    const classesToAdd = assignUserClasses.filter(id => !currentClassIds.includes(id));
+    const classesToRemove = currentClassIds.filter(id => !assignUserClasses.includes(id));
+    for (const clid of classesToRemove) {
+      await supabase.from('user_classes').delete().eq('user_id', assignUserId).eq('class_id', clid);
+      const c = allClasses.find(x => x.id === clid);
+      auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'REMOVE_CLASS', entity_id: clid, entity_name: c?.code });
+    }
+    if (classesToAdd.length > 0) {
+      await supabase.from('user_classes').insert(classesToAdd.map(class_id => ({ user_id: assignUserId, class_id })));
+      for (const clid of classesToAdd) {
+        const c = allClasses.find(x => x.id === clid);
+        auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'ADD_CLASS', entity_id: clid, entity_name: c?.code });
       }
     }
 
@@ -1103,51 +1128,108 @@ const Usuarios = () => {
                     const courseMatrices = allMatrices.filter(m => m.course_id === course.id);
                     return (
                       <div key={course.id} className="border border-border rounded-lg p-3 bg-muted/10">
-                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                          <GraduationCap className="w-3 h-3" /> {course.name}
-                        </h4>
+                        <div 
+                          className="flex items-center justify-between cursor-pointer mb-3"
+                          onClick={() => setExpandedSections(prev => ({ ...prev, [`course-${course.id}`]: !prev[`course-${course.id}`] }))}
+                        >
+                          <h4 className="text-sm font-semibold flex items-center gap-2">
+                            <GraduationCap className="w-3 h-3" /> {course.name}
+                          </h4>
+                          {expandedSections[`course-${course.id}`] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </div>
                         
-                        {courseMatrices.length === 0 ? (
-                          <p className="text-xs text-muted-foreground italic">Nenhuma matriz ativa para este curso.</p>
-                        ) : (
-                          <div className="space-y-4 ml-4">
-                            {courseMatrices.map(matrix => {
-                              const semesters = Array.from(new Set(allMatrixSubjects.filter(ms => ms.matrix_id === matrix.id).map(ms => ms.semester))).sort((a, b) => a - b);
-                              
-                              return (
-                                <div key={matrix.id} className="space-y-2">
-                                  <p className="text-xs font-bold text-muted-foreground">Matriz: {matrix.code}</p>
-                                  <div className="space-y-3">
-                                    {semesters.map(sem => {
-                                      const semesterSubjects = allMatrixSubjects
-                                        .filter(ms => ms.matrix_id === matrix.id && ms.semester === sem)
-                                        .map(ms => allSubjects.find(s => s.id === ms.subject_id))
-                                        .filter(Boolean);
+                        {expandedSections[`course-${course.id}`] && (
+                          courseMatrices.length === 0 ? (
+                            <p className="text-xs text-muted-foreground italic">Nenhuma matriz ativa para este curso.</p>
+                          ) : (
+                            <div className="space-y-4 ml-4">
+                              {courseMatrices.map(matrix => {
+                                const semesters = Array.from(new Set(allMatrixSubjects.filter(ms => ms.matrix_id === matrix.id).map(ms => ms.semester))).sort((a, b) => (a as number) - (b as number));
+                                
+                                return (
+                                  <div key={matrix.id} className="space-y-2">
+                                    <div 
+                                      className="flex items-center justify-between cursor-pointer py-1"
+                                      onClick={() => setExpandedSections(prev => ({ ...prev, [`matrix-${matrix.id}`]: !prev[`matrix-${matrix.id}`] }))}
+                                    >
+                                      <p className="text-xs font-bold text-muted-foreground">Matriz: {matrix.code}</p>
+                                      {expandedSections[`matrix-${matrix.id}`] ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                    </div>
 
-                                      return (
-                                        <div key={sem} className="ml-4 border-l-2 border-primary/20 pl-3">
-                                          <p className="text-xs font-medium mb-2">{sem}º Semestre</p>
-                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            {semesterSubjects.map(subject => (
-                                              <label key={subject.id} className="flex items-center gap-3 p-2 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors">
-                                                <Checkbox
-                                                  checked={assignUserSubjects.includes(subject.id)}
-                                                  onCheckedChange={() => {
-                                                    setAssignUserSubjects(prev => prev.includes(subject.id) ? prev.filter(i => i !== subject.id) : [...prev, subject.id]);
-                                                  }}
-                                                />
-                                                <p className="text-xs line-clamp-1">{subject.name}</p>
-                                              </label>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
+                                    {expandedSections[`matrix-${matrix.id}`] && (
+                                      <div className="space-y-3">
+                                        {semesters.map(sem => {
+                                          const semesterSubjects = allMatrixSubjects
+                                            .filter(ms => ms.matrix_id === matrix.id && ms.semester === sem)
+                                            .map(ms => allSubjects.find(s => s.id === ms.subject_id))
+                                            .filter(Boolean);
+                                          
+                                          const semesterClasses = allClasses.filter(cl => cl.course_id === course.id && cl.semester_id === matrix.id); // matrix.id is often used as a grouping for classes in this schema
+                                          
+                                          // Let's find classes for this course and semester if possible, otherwise fallback to all course classes
+                                          const displayClasses = semesterClasses.length > 0 ? semesterClasses : allClasses.filter(cl => cl.course_id === course.id);
+
+                                          return (
+                                            <div key={sem as number} className="ml-4 border-l-2 border-primary/20 pl-3">
+                                              <div 
+                                                className="flex items-center justify-between cursor-pointer mb-2"
+                                                onClick={() => setExpandedSections(prev => ({ ...prev, [`matrix-${matrix.id}-sem-${sem}`]: !prev[`matrix-${matrix.id}-sem-${sem}`] }))}
+                                              >
+                                                <p className="text-xs font-medium">{sem}º Semestre</p>
+                                                {expandedSections[`matrix-${matrix.id}-sem-${sem}`] ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                              </div>
+
+                                              {expandedSections[`matrix-${matrix.id}-sem-${sem}`] && (
+                                                <div className="space-y-4">
+                                                  {/* Turmas Section */}
+                                                  <div className="space-y-2">
+                                                    <p className="text-[10px] uppercase font-bold text-muted-foreground">Turmas (Acesso às Aulas)</p>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                      {displayClasses.length === 0 ? (
+                                                        <p className="text-[10px] text-muted-foreground italic">Nenhuma turma encontrada para este curso.</p>
+                                                      ) : displayClasses.map(cl => (
+                                                        <label key={cl.id} className="flex items-center gap-3 p-2 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                                                          <Checkbox
+                                                            checked={assignUserClasses.includes(cl.id)}
+                                                            onCheckedChange={() => {
+                                                              setAssignUserClasses(prev => prev.includes(cl.id) ? prev.filter(i => i !== cl.id) : [...prev, cl.id]);
+                                                            }}
+                                                          />
+                                                          <p className="text-xs font-medium">{cl.code}</p>
+                                                        </label>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+
+                                                  {/* Disciplinas Section */}
+                                                  <div className="space-y-2">
+                                                    <p className="text-[10px] uppercase font-bold text-muted-foreground">Disciplinas (Lançamento)</p>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                      {semesterSubjects.map(subject => (
+                                                        <label key={subject.id} className="flex items-center gap-3 p-2 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                                                          <Checkbox
+                                                            checked={assignUserSubjects.includes(subject.id)}
+                                                            onCheckedChange={() => {
+                                                              setAssignUserSubjects(prev => prev.includes(subject.id) ? prev.filter(i => i !== subject.id) : [...prev, subject.id]);
+                                                            }}
+                                                          />
+                                                          <p className="text-xs line-clamp-1">{subject.name}</p>
+                                                        </label>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
                                   </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                                );
+                              })}
+                            </div>
+                          )
                         )}
                       </div>
                     );
