@@ -159,7 +159,10 @@ const Usuarios = () => {
   const [assignUserName, setAssignUserName] = useState('');
   const [assignUserCampuses, setAssignUserCampuses] = useState<string[]>([]);
   const [assignUserUnits, setAssignUserUnits] = useState<string[]>([]);
+  const [assignUserCourses, setAssignUserCourses] = useState<string[]>([]);
+  const [assignUserSubjects, setAssignUserSubjects] = useState<string[]>([]);
   const [savingAssign, setSavingAssign] = useState(false);
+
 
   // Quick-add role dialog (from tab)
   const [quickAddOpen, setQuickAddOpen] = useState(false);
