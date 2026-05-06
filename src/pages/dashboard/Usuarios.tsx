@@ -48,6 +48,21 @@ interface Campus { id: string; name: string; institution_id: string; }
 interface Unit { id: string; name: string; campus_id: string; }
 interface UserCampus { id: string; user_id: string; campus_id: string; }
 interface UserUnit { id: string; user_id: string; unit_id: string; }
+interface UserCourse { id: string; user_id: string; course_id: string; }
+interface UserSubject { id: string; user_id: string; subject_id: string; }
+
+interface AuditLog {
+  id: string;
+  changed_by_user_id: string;
+  target_user_id: string;
+  action: string;
+  entity_id: string | null;
+  entity_name: string | null;
+  created_at: string;
+  changed_by?: { name: string };
+  target?: { name: string };
+}
+
 
 const ROLE_LABELS: Record<AppRole, string> = {
   super_admin: 'Super Admin',
