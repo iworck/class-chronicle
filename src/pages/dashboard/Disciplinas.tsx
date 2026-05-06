@@ -94,20 +94,29 @@ const Disciplinas = () => {
   async function fetchAll() {
     setLoading(true);
     setBindingsLoading(true);
-    const [subjectRes, courseRes, unitRes, campusRes, bindingRes, classRes] = await Promise.all([
+    const [subjectRes, courseRes, unitRes, campusRes, bindingRes, classRes, uSubjectRes] = await Promise.all([
       supabase.from('subjects').select('*').order('name'),
       supabase.from('courses').select('id, name, unit_id').eq('status', 'ATIVO').order('name'),
       supabase.from('units').select('id, name, campus_id').eq('status', 'ATIVO').order('name'),
       supabase.from('campuses').select('id, name').eq('status', 'ATIVO').order('name'),
       supabase.from('class_subjects').select('*, classes(code, period), subjects(name, code)').order('class_id'),
       supabase.from('classes').select('id, code, period').eq('status', 'ATIVO').order('code'),
+      supabase.from('user_subjects').select('subject_id').eq('user_id', user?.id),
     ]);
+
+    const isSuperOrAdmin = hasRole('super_admin') || hasRole('admin');
+    const mySubjectIds = new Set((uSubjectRes.data || []).map(us => us.subject_id));
 
     if (subjectRes.error) {
       toast({ title: 'Erro ao carregar disciplinas', description: subjectRes.error.message, variant: 'destructive' });
     } else {
-      setSubjects(subjectRes.data || []);
+      let subjectData = subjectRes.data || [];
+      if (!isSuperOrAdmin && hasRole('professor')) {
+        subjectData = subjectData.filter(s => mySubjectIds.has(s.id));
+      }
+      setSubjects(subjectData);
     }
+
 
     setCourses((courseRes.data as CourseOption[]) || []);
     setUnits((unitRes.data as UnitOption[]) || []);
