@@ -197,7 +197,7 @@ const Usuarios = () => {
     setLoading(true);
     const [
       profileRes, rolesRes, instRes, campusRes, unitRes, ucRes, uuRes,
-      courseRes, subjectRes, uCourseRes, uSubjectRes, matrixRes, matrixSubjectRes, classRes
+      courseRes, subjectRes, uCourseRes, uSubjectRes, matrixRes, matrixSubjectRes, classRes, uClassRes
     ] = await Promise.all([
       supabase.from('profiles').select('*').order('name'),
       supabase.from('user_roles').select('*'),
@@ -213,6 +213,7 @@ const Usuarios = () => {
       supabase.from('academic_matrices').select('*').eq('status', 'ATIVO'),
       supabase.from('matrix_subjects').select('*'),
       supabase.from('classes').select('id, code, course_id, semester_id').eq('status', 'ATIVO'),
+      supabase.from('user_classes').select('*'),
     ]);
 
     if (profileRes.error) {
