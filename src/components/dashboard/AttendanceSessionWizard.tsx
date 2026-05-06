@@ -410,15 +410,25 @@ function OptionCard({ icon: Icon, label, desc, selected, onClick }: {
     <button
       onClick={onClick}
       className={cn(
-        'flex flex-col items-center gap-2 p-4 rounded-xl border-2 transition-all text-center cursor-pointer',
+        'flex flex-col items-center gap-2 p-5 rounded-2xl border-2 transition-all text-center cursor-pointer group relative overflow-hidden',
         selected
-          ? 'border-primary bg-primary/5 text-primary'
-          : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-muted/50'
+          ? 'border-primary bg-primary/5 text-primary shadow-sm ring-1 ring-primary/20'
+          : 'border-border bg-card text-muted-foreground hover:border-primary/40 hover:bg-muted/50 hover:text-foreground'
       )}
     >
-      <Icon className="w-6 h-6" />
-      <p className="font-semibold text-sm">{label}</p>
-      <p className="text-xs opacity-70 leading-tight">{desc}</p>
+      {selected && (
+        <div className="absolute top-0 right-0 p-1">
+          <CheckCircle2 className="w-4 h-4 text-primary" />
+        </div>
+      )}
+      <div className={cn(
+        "p-3 rounded-xl transition-colors",
+        selected ? "bg-primary/10" : "bg-muted group-hover:bg-primary/5"
+      )}>
+        <Icon className={cn("w-6 h-6", selected ? "text-primary" : "text-muted-foreground group-hover:text-primary")} />
+      </div>
+      <p className="font-bold text-sm tracking-tight">{label}</p>
+      <p className="text-xs opacity-70 leading-tight font-medium px-1">{desc}</p>
     </button>
   );
 }
