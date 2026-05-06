@@ -436,26 +436,73 @@ const Usuarios = () => {
   }
 
   async function handleSaveAssignments() {
-    if (!assignUserId) return;
+    if (!assignUserId || !user) return;
     setSavingAssign(true);
+
+    const auditChanges: any[] = [];
+
+    // --- Campuses ---
     const currentCampusIds = allUserCampuses.filter(uc => uc.user_id === assignUserId).map(uc => uc.campus_id);
     const campusesToAdd = assignUserCampuses.filter(id => !currentCampusIds.includes(id));
     const campusesToRemove = currentCampusIds.filter(id => !assignUserCampuses.includes(id));
     for (const cid of campusesToRemove) await supabase.from('user_campuses').delete().eq('user_id', assignUserId).eq('campus_id', cid);
     if (campusesToAdd.length > 0) {
-      const { error } = await supabase.from('user_campuses').insert(campusesToAdd.map(campus_id => ({ user_id: assignUserId, campus_id })));
-      if (error) { toast({ title: 'Erro ao vincular campus', description: error.message, variant: 'destructive' }); setSavingAssign(false); return; }
+      await supabase.from('user_campuses').insert(campusesToAdd.map(campus_id => ({ user_id: assignUserId, campus_id })));
     }
+
+    // --- Units ---
     const currentUnitIds = allUserUnits.filter(uu => uu.user_id === assignUserId).map(uu => uu.unit_id);
     const unitsToAdd = assignUserUnits.filter(id => !currentUnitIds.includes(id));
     const unitsToRemove = currentUnitIds.filter(id => !assignUserUnits.includes(id));
     for (const uid of unitsToRemove) await supabase.from('user_units').delete().eq('user_id', assignUserId).eq('unit_id', uid);
     if (unitsToAdd.length > 0) {
-      const { error } = await supabase.from('user_units').insert(unitsToAdd.map(unit_id => ({ user_id: assignUserId, unit_id })));
-      if (error) { toast({ title: 'Erro ao vincular unidades', description: error.message, variant: 'destructive' }); setSavingAssign(false); return; }
+      await supabase.from('user_units').insert(unitsToAdd.map(unit_id => ({ user_id: assignUserId, unit_id })));
     }
-    toast({ title: 'Vínculos atualizados com sucesso' }); setAssignDialogOpen(false); fetchAll(); setSavingAssign(false);
+
+    // --- Courses ---
+    const currentCourseIds = allUserCourses.filter(uc => uc.user_id === assignUserId).map(uc => uc.course_id);
+    const coursesToAdd = assignUserCourses.filter(id => !currentCourseIds.includes(id));
+    const coursesToRemove = currentCourseIds.filter(id => !assignUserCourses.includes(id));
+    for (const cid of coursesToRemove) {
+      await supabase.from('user_courses').delete().eq('user_id', assignUserId).eq('course_id', cid);
+      const c = allCourses.find(x => x.id === cid);
+      auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'REMOVE_COURSE', entity_id: cid, entity_name: c?.name });
+    }
+    if (coursesToAdd.length > 0) {
+      await supabase.from('user_courses').insert(coursesToAdd.map(course_id => ({ user_id: assignUserId, course_id })));
+      for (const cid of coursesToAdd) {
+        const c = allCourses.find(x => x.id === cid);
+        auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'ADD_COURSE', entity_id: cid, entity_name: c?.name });
+      }
+    }
+
+    // --- Subjects ---
+    const currentSubjectIds = allUserSubjects.filter(us => us.user_id === assignUserId).map(us => us.subject_id);
+    const subjectsToAdd = assignUserSubjects.filter(id => !currentSubjectIds.includes(id));
+    const subjectsToRemove = currentSubjectIds.filter(id => !assignUserSubjects.includes(id));
+    for (const sid of subjectsToRemove) {
+      await supabase.from('user_subjects').delete().eq('user_id', assignUserId).eq('subject_id', sid);
+      const s = allSubjects.find(x => x.id === sid);
+      auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'REMOVE_SUBJECT', entity_id: sid, entity_name: s?.name });
+    }
+    if (subjectsToAdd.length > 0) {
+      await supabase.from('user_subjects').insert(subjectsToAdd.map(subject_id => ({ user_id: assignUserId, subject_id })));
+      for (const sid of subjectsToAdd) {
+        const s = allSubjects.find(x => x.id === sid);
+        auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'ADD_SUBJECT', entity_id: sid, entity_name: s?.name });
+      }
+    }
+
+    if (auditChanges.length > 0) {
+      await supabase.from('permission_audit_logs').insert(auditChanges);
+    }
+
+    toast({ title: 'Vínculos atualizados com sucesso' });
+    setAssignDialogOpen(false);
+    fetchAll();
+    setSavingAssign(false);
   }
+
 
   function userNeedsAssignment(userId: string): boolean {
     return getRolesForUser(userId).some(r => CAMPUS_ROLES.includes(r));
