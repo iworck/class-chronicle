@@ -1128,51 +1128,108 @@ const Usuarios = () => {
                     const courseMatrices = allMatrices.filter(m => m.course_id === course.id);
                     return (
                       <div key={course.id} className="border border-border rounded-lg p-3 bg-muted/10">
-                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
-                          <GraduationCap className="w-3 h-3" /> {course.name}
-                        </h4>
+                        <div 
+                          className="flex items-center justify-between cursor-pointer mb-3"
+                          onClick={() => setExpandedSections(prev => ({ ...prev, [`course-${course.id}`]: !prev[`course-${course.id}`] }))}
+                        >
+                          <h4 className="text-sm font-semibold flex items-center gap-2">
+                            <GraduationCap className="w-3 h-3" /> {course.name}
+                          </h4>
+                          {expandedSections[`course-${course.id}`] ? <ChevronDown className="w-4 h-4" /> : <ChevronRight className="w-4 h-4" />}
+                        </div>
                         
-                        {courseMatrices.length === 0 ? (
-                          <p className="text-xs text-muted-foreground italic">Nenhuma matriz ativa para este curso.</p>
-                        ) : (
-                          <div className="space-y-4 ml-4">
-                            {courseMatrices.map(matrix => {
-                              const semesters = Array.from(new Set(allMatrixSubjects.filter(ms => ms.matrix_id === matrix.id).map(ms => ms.semester))).sort((a, b) => a - b);
-                              
-                              return (
-                                <div key={matrix.id} className="space-y-2">
-                                  <p className="text-xs font-bold text-muted-foreground">Matriz: {matrix.code}</p>
-                                  <div className="space-y-3">
-                                    {semesters.map(sem => {
-                                      const semesterSubjects = allMatrixSubjects
-                                        .filter(ms => ms.matrix_id === matrix.id && ms.semester === sem)
-                                        .map(ms => allSubjects.find(s => s.id === ms.subject_id))
-                                        .filter(Boolean);
+                        {expandedSections[`course-${course.id}`] && (
+                          courseMatrices.length === 0 ? (
+                            <p className="text-xs text-muted-foreground italic">Nenhuma matriz ativa para este curso.</p>
+                          ) : (
+                            <div className="space-y-4 ml-4">
+                              {courseMatrices.map(matrix => {
+                                const semesters = Array.from(new Set(allMatrixSubjects.filter(ms => ms.matrix_id === matrix.id).map(ms => ms.semester))).sort((a, b) => (a as number) - (b as number));
+                                
+                                return (
+                                  <div key={matrix.id} className="space-y-2">
+                                    <div 
+                                      className="flex items-center justify-between cursor-pointer py-1"
+                                      onClick={() => setExpandedSections(prev => ({ ...prev, [`matrix-${matrix.id}`]: !prev[`matrix-${matrix.id}`] }))}
+                                    >
+                                      <p className="text-xs font-bold text-muted-foreground">Matriz: {matrix.code}</p>
+                                      {expandedSections[`matrix-${matrix.id}`] ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                    </div>
 
-                                      return (
-                                        <div key={sem} className="ml-4 border-l-2 border-primary/20 pl-3">
-                                          <p className="text-xs font-medium mb-2">{sem}º Semestre</p>
-                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                            {semesterSubjects.map(subject => (
-                                              <label key={subject.id} className="flex items-center gap-3 p-2 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors">
-                                                <Checkbox
-                                                  checked={assignUserSubjects.includes(subject.id)}
-                                                  onCheckedChange={() => {
-                                                    setAssignUserSubjects(prev => prev.includes(subject.id) ? prev.filter(i => i !== subject.id) : [...prev, subject.id]);
-                                                  }}
-                                                />
-                                                <p className="text-xs line-clamp-1">{subject.name}</p>
-                                              </label>
-                                            ))}
-                                          </div>
-                                        </div>
-                                      );
-                                    })}
+                                    {expandedSections[`matrix-${matrix.id}`] && (
+                                      <div className="space-y-3">
+                                        {semesters.map(sem => {
+                                          const semesterSubjects = allMatrixSubjects
+                                            .filter(ms => ms.matrix_id === matrix.id && ms.semester === sem)
+                                            .map(ms => allSubjects.find(s => s.id === ms.subject_id))
+                                            .filter(Boolean);
+                                          
+                                          const semesterClasses = allClasses.filter(c => c.course_id === course.id && c.semester_id === matrix.id); // semester_id might be used differently, logic check:
+                                          // Note: In some systems classes are linked to semesters/matrices differently.
+                                          // Let's find classes for this course.
+                                          const courseClasses = allClasses.filter(cl => cl.course_id === course.id);
+
+                                          return (
+                                            <div key={sem as number} className="ml-4 border-l-2 border-primary/20 pl-3">
+                                              <div 
+                                                className="flex items-center justify-between cursor-pointer mb-2"
+                                                onClick={() => setExpandedSections(prev => ({ ...prev, [`matrix-${matrix.id}-sem-${sem}`]: !prev[`matrix-${matrix.id}-sem-${sem}`] }))}
+                                              >
+                                                <p className="text-xs font-medium">{sem}º Semestre</p>
+                                                {expandedSections[`matrix-${matrix.id}-sem-${sem}`] ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                                              </div>
+
+                                              {expandedSections[`matrix-${matrix.id}-sem-${sem}`] && (
+                                                <div className="space-y-4">
+                                                  {/* Turmas Section */}
+                                                  <div className="space-y-2">
+                                                    <p className="text-[10px] uppercase font-bold text-muted-foreground">Turmas (Acesso às Aulas)</p>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                      {courseClasses.length === 0 ? (
+                                                        <p className="text-[10px] text-muted-foreground italic">Nenhuma turma encontrada para este curso.</p>
+                                                      ) : courseClasses.map(cl => (
+                                                        <label key={cl.id} className="flex items-center gap-3 p-2 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                                                          <Checkbox
+                                                            checked={assignUserClasses.includes(cl.id)}
+                                                            onCheckedChange={() => {
+                                                              setAssignUserClasses(prev => prev.includes(cl.id) ? prev.filter(i => i !== cl.id) : [...prev, cl.id]);
+                                                            }}
+                                                          />
+                                                          <p className="text-xs font-medium">{cl.code}</p>
+                                                        </label>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+
+                                                  {/* Disciplinas Section */}
+                                                  <div className="space-y-2">
+                                                    <p className="text-[10px] uppercase font-bold text-muted-foreground">Disciplinas (Lançamento)</p>
+                                                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                                      {semesterSubjects.map(subject => (
+                                                        <label key={subject.id} className="flex items-center gap-3 p-2 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                                                          <Checkbox
+                                                            checked={assignUserSubjects.includes(subject.id)}
+                                                            onCheckedChange={() => {
+                                                              setAssignUserSubjects(prev => prev.includes(subject.id) ? prev.filter(i => i !== subject.id) : [...prev, subject.id]);
+                                                            }}
+                                                          />
+                                                          <p className="text-xs line-clamp-1">{subject.name}</p>
+                                                        </label>
+                                                      ))}
+                                                    </div>
+                                                  </div>
+                                                </div>
+                                              )}
+                                            </div>
+                                          );
+                                        })}
+                                      </div>
+                                    )}
                                   </div>
-                                </div>
-                              );
-                            })}
-                          </div>
+                                );
+                              })}
+                            </div>
+                          )
                         )}
                       </div>
                     );
