@@ -234,49 +234,59 @@ export default function AttendanceSessionWizard({
 
             {/* STEP: geolocalizacao */}
             {step === 'geolocalizacao' && (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground font-medium">Deseja usar geolocalização para validar presença?</p>
-                <p className="text-xs text-muted-foreground">
-                  Se ativado, o sistema captura sua localização agora e aplica um raio de <strong>200 metros</strong> para validar a presença dos alunos.
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">2</div>
+                  <p className="text-sm font-semibold text-foreground">Deseja usar geolocalização?</p>
+                </div>
+                
+                <p className="text-xs text-muted-foreground leading-relaxed px-1">
+                  O sistema valida se os alunos estão no local através do GPS do celular (raio de 200m).
                 </p>
 
                 <div className="grid grid-cols-2 gap-3">
                   <OptionCard
                     icon={MapPin}
-                    label="Sim, usar Geo"
-                    desc="Valida presença por GPS"
+                    label="Ativar GPS"
+                    desc="Mais segurança"
                     selected={useGeo === true}
                     onClick={() => { setUseGeo(true); captureGeo(); }}
                   />
                   <OptionCard
                     icon={Monitor}
-                    label="Não usar"
-                    desc="Apenas código de acesso"
+                    label="Apenas Código"
+                    desc="Sem validação GPS"
                     selected={useGeo === false}
                     onClick={() => { setUseGeo(false); setGeoCoords(null); setGeoError(null); }}
                   />
                 </div>
 
                 {useGeo === true && (
-                  <div className="rounded-lg border border-border p-3">
+                  <div className={cn(
+                    "rounded-xl border p-3 transition-colors",
+                    geoCoords ? "bg-success/5 border-success/30" : "bg-muted/50 border-border"
+                  )}>
                     {geoLoading && (
-                      <div className="flex items-center gap-2 text-muted-foreground text-sm">
-                        <Loader2 className="w-4 h-4 animate-spin" />
-                        Capturando localização...
+                      <div className="flex items-center gap-3 text-muted-foreground text-sm py-1">
+                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                        <span className="font-medium">Capturando sua posição...</span>
                       </div>
                     )}
                     {geoCoords && !geoLoading && (
-                      <div className="flex items-center gap-2 text-success text-sm">
-                        <CheckCircle2 className="w-4 h-4" />
-                        Localização capturada ({geoCoords.lat.toFixed(5)}, {geoCoords.lng.toFixed(5)})
+                      <div className="flex items-center gap-3 text-success text-sm py-1">
+                        <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
+                        <span className="font-semibold">Localização confirmada</span>
+                        <CheckCircle2 className="w-4 h-4 ml-auto" />
                       </div>
                     )}
                     {geoError && (
-                      <div className="flex items-center gap-2 text-destructive text-sm">
-                        <AlertTriangle className="w-4 h-4" />
-                        {geoError}
-                        <Button size="sm" variant="outline" onClick={captureGeo} className="ml-auto text-xs h-6">
-                          Tentar novamente
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-2 text-destructive text-sm font-medium">
+                          <AlertTriangle className="w-4 h-4 shrink-0" />
+                          {geoError}
+                        </div>
+                        <Button size="sm" variant="outline" onClick={captureGeo} className="w-full text-xs h-8">
+                          <RotateCcw className="w-3 h-3 mr-2" /> Tentar novamente
                         </Button>
                       </div>
                     )}
@@ -284,12 +294,13 @@ export default function AttendanceSessionWizard({
                 )}
 
                 <div className="flex justify-between gap-2 pt-2">
-                  <Button variant="outline" onClick={() => setStep('modalidade')}>Voltar</Button>
+                  <Button variant="ghost" onClick={() => setStep('modalidade')}>Voltar</Button>
                   <Button
                     disabled={useGeo === null || (useGeo === true && !geoCoords)}
+                    className="flex-1 font-bold shadow-md bg-primary hover:bg-primary/90"
                     onClick={openSession}
                   >
-                    <Play className="w-4 h-4 mr-2" /> Abrir Chamada
+                    <Play className="w-4 h-4 mr-2 fill-current" /> Abrir Chamada Agora
                   </Button>
                 </div>
               </div>
