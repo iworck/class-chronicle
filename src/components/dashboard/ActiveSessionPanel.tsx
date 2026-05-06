@@ -196,22 +196,29 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
         return (
           <div
             key={session.id}
-            className="rounded-xl border-2 border-success/40 bg-success/5 p-5 shadow-sm animate-fade-in"
+            className="rounded-2xl border-2 border-success bg-success/[0.03] p-6 shadow-md shadow-success/5 animate-fade-in relative overflow-hidden"
           >
+            {/* Background glow */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-success/5 rounded-full -mr-16 -mt-16 blur-3xl pointer-events-none" />
+
             {/* Header */}
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-success" />
-                </span>
-                <span className="font-semibold text-foreground text-sm">Chamada em Andamento</span>
-                <Badge variant="outline" className="border-success text-success text-xs">
-                  <Radio className="w-3 h-3 mr-1" /> AO VIVO
-                </Badge>
+            <div className="flex items-center justify-between mb-5 flex-wrap gap-2 relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-success/10 text-success">
+                  <Radio className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-foreground text-base tracking-tight">Aula em Andamento</span>
+                    <Badge variant="default" className="bg-success text-success-foreground hover:bg-success border-none text-[10px] font-black uppercase px-1.5 h-4">
+                      AO VIVO
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-medium">Os alunos já podem registrar presença</p>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 text-muted-foreground text-sm font-mono tabular-nums">
-                <Clock className="w-4 h-4" />
+              <div className="bg-muted/50 px-3 py-1.5 rounded-lg flex items-center gap-2 text-foreground font-mono font-bold border border-border">
+                <Clock className="w-4 h-4 text-muted-foreground" />
                 {formatElapsed(elapsedSecs)}
               </div>
             </div>
