@@ -169,6 +169,7 @@ const Usuarios = () => {
   const [assignUserUnits, setAssignUserUnits] = useState<string[]>([]);
   const [assignUserCourses, setAssignUserCourses] = useState<string[]>([]);
   const [assignUserSubjects, setAssignUserSubjects] = useState<string[]>([]);
+  const [assignUserClasses, setAssignUserClasses] = useState<string[]>([]);
   const [savingAssign, setSavingAssign] = useState(false);
 
 
