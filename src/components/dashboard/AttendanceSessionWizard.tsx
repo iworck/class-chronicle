@@ -206,38 +206,48 @@ export default function AttendanceSessionWizard({
             {/* STEP: modalidade */}
             {step === 'modalidade' && (
               <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">1</div>
-                  <p className="text-sm font-semibold text-foreground">Como será esta aula?</p>
+                {/* Step Header & Progress */}
+                <div className="space-y-4 mb-2">
+                  <div className="flex items-center justify-between px-1">
+                    <p className="text-xs font-black uppercase text-primary tracking-widest">Passo 1 de 2</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Configuração</p>
+                  </div>
+                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/50">
+                    <div className="h-full bg-primary w-1/2 transition-all duration-500 ease-out shadow-[0_0_8px_rgba(var(--primary),0.3)]" />
+                  </div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-black text-sm shadow-lg shadow-primary/20">1</div>
+                    <p className="text-sm font-black text-foreground uppercase tracking-tight">Modalidade da Aula</p>
+                  </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3">
                   <OptionCard
                     icon={Users}
-                    label="Presencial"
-                    desc="Alunos presentes fisicamente"
+                    label="PRESENCIAL"
+                    desc="Alunos presentes no campus"
                     selected={modalidade === 'presencial'}
                     onClick={() => setModalidade('presencial')}
                   />
                   <OptionCard
                     icon={Wifi}
-                    label="Online"
-                    desc="Aula remota / EAD"
+                    label="ONLINE / EAD"
+                    desc="Aula remota via Meet/Zoom"
                     selected={modalidade === 'online'}
                     onClick={() => setModalidade('online')}
                   />
                 </div>
-                <div className="flex justify-between gap-2 pt-2">
-                  <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+                <div className="flex justify-between gap-3 pt-4 border-t border-border/50">
+                  <Button variant="ghost" onClick={onClose} className="font-bold text-muted-foreground hover:text-foreground rounded-xl px-6">CANCELAR</Button>
                   <Button
                     disabled={!modalidade}
-                    className="shadow-sm"
+                    className="shadow-xl font-black rounded-xl px-8 h-11 bg-primary hover:bg-primary/90 transition-all hover:scale-[1.02]"
                     onClick={() => {
                       if (modalidade === 'presencial') setStep('geolocalizacao');
                       else openSession();
                     }}
                   >
-                    Próximo <ArrowRight className="w-4 h-4 ml-2" />
+                    PRÓXIMO <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </div>
               </div>
