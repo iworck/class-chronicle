@@ -161,7 +161,7 @@ const Cursos = () => {
 
   async function fetchAll() {
     setLoading(true);
-    const [courseRes, instRes, campusRes, unitRes, profileRes, rolesRes, allUcRes] = await Promise.all([
+    const [courseRes, instRes, campusRes, unitRes, profileRes, rolesRes, allUcRes, uCourseRes] = await Promise.all([
       supabase.from('courses').select('*').order('name'),
       supabase.from('institutions').select('id, name').eq('status', 'ATIVO').order('name'),
       supabase.from('campuses').select('id, name, institution_id, director_user_id').eq('status', 'ATIVO').order('name'),
@@ -169,13 +169,22 @@ const Cursos = () => {
       supabase.from('profiles').select('id, name, email').eq('status', 'ATIVO').order('name'),
       supabase.from('user_roles').select('user_id, role'),
       supabase.from('user_campuses').select('user_id, campus_id'),
+      supabase.from('user_courses').select('course_id').eq('user_id', user?.id),
     ]);
+
+    const isSuperOrAdmin = hasRole('super_admin') || hasRole('admin');
+    const myCourseIds = new Set((uCourseRes.data || []).map(uc => uc.course_id));
 
     if (courseRes.error) {
       toast({ title: 'Erro ao carregar cursos', description: courseRes.error.message, variant: 'destructive' });
     } else {
-      setCourses((courseRes.data as Course[]) || []);
+      let courseData = (courseRes.data as Course[]) || [];
+      if (!isSuperOrAdmin && (hasRole('coordenador') || hasRole('professor'))) {
+        courseData = courseData.filter(c => myCourseIds.has(c.id));
+      }
+      setCourses(courseData);
     }
+
 
     setInstitutions((instRes.data as Institution[]) || []);
     setAllCampuses((campusRes.data as Campus[]) || []);
