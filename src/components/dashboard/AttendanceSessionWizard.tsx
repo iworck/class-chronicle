@@ -194,8 +194,12 @@ export default function AttendanceSessionWizard({
           <>
             {/* STEP: modalidade */}
             {step === 'modalidade' && (
-              <div className="space-y-4">
-                <p className="text-sm text-muted-foreground font-medium">Como será esta aula?</p>
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
+                <div className="flex items-center gap-2 mb-1">
+                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">1</div>
+                  <p className="text-sm font-semibold text-foreground">Como será esta aula?</p>
+                </div>
+                
                 <div className="grid grid-cols-2 gap-3">
                   <OptionCard
                     icon={Users}
@@ -212,16 +216,17 @@ export default function AttendanceSessionWizard({
                     onClick={() => setModalidade('online')}
                   />
                 </div>
-                <div className="flex justify-end gap-2 pt-2">
-                  <Button variant="outline" onClick={onClose}>Cancelar</Button>
+                <div className="flex justify-between gap-2 pt-2">
+                  <Button variant="ghost" onClick={onClose}>Cancelar</Button>
                   <Button
                     disabled={!modalidade}
+                    className="shadow-sm"
                     onClick={() => {
                       if (modalidade === 'presencial') setStep('geolocalizacao');
                       else openSession();
                     }}
                   >
-                    Continuar
+                    Próximo <ArrowRight className="w-4 h-4 ml-2" />
                   </Button>
                 </div>
               </div>
