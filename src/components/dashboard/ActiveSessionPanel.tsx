@@ -224,19 +224,24 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
             </div>
 
             {/* Turma / Disciplina */}
-            <div className="flex items-center gap-2 mb-4 text-sm text-muted-foreground">
-              <BookOpen className="w-4 h-4 shrink-0" />
-              <span>
-                <span className="font-medium text-foreground">{classNames[session.class_id] || '...'}</span>
-                {' · '}
-                {subjectNames[session.subject_id] || '...'}
-              </span>
+            <div className="flex items-start gap-3 mb-6 bg-muted/30 p-3 rounded-xl border border-border/50">
+              <div className="w-10 h-10 rounded-lg bg-background flex items-center justify-center border border-border shadow-sm shrink-0">
+                <BookOpen className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-foreground text-sm truncate uppercase tracking-tight">
+                  {classNames[session.class_id] || 'Carregando...'}
+                </p>
+                <p className="text-xs text-muted-foreground truncate font-medium">
+                  {subjectNames[session.subject_id] || 'Carregando...'}
+                </p>
+              </div>
             </div>
 
             {/* Métricas */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-3 gap-3 mb-6">
               <MetricChip label="Presentes" value={String(present)} color="success" />
-              <MetricChip label="Total registros" value={String(total)} color="muted" />
+              <MetricChip label="Total" value={String(total)} color="muted" />
               <MetricChip label="Ausentes" value={String(Math.max(0, total - present))} color={total - present > 0 ? 'warning' : 'muted'} />
             </div>
 
