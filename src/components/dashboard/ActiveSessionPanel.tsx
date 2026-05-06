@@ -297,13 +297,22 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
 
             {/* Ações: lançar presença manual + encerrar */}
             <div className="grid grid-cols-2 gap-3">
-              <Button
-                variant="outline"
-                className="h-11 rounded-xl border-border hover:border-primary hover:bg-primary/[0.02] hover:text-primary font-bold shadow-sm transition-all"
-                onClick={() => setManualSessionId(session.id)}
-              >
-                <ListChecks className="w-4 h-4 mr-2" /> Presença
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="h-11 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/[0.05] hover:text-primary font-black shadow-sm transition-all group"
+                      onClick={() => setManualSessionId(session.id)}
+                    >
+                      <ListChecks className="w-5 h-5 mr-2 transition-transform group-hover:scale-110" /> Presença
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-bold">Lançar ou editar frequências manualmente</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
 
               <TooltipProvider>
                 <Tooltip>
