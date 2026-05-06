@@ -211,21 +211,23 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
             {/* Header */}
             <div className="flex items-center justify-between mb-5 flex-wrap gap-2 relative z-10">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-success/10 text-success">
-                  <Radio className="w-6 h-6 animate-pulse" />
+                <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-success/20 text-success shadow-[0_0_15px_rgba(34,197,94,0.3)] border border-success/30">
+                  <Radio className="w-7 h-7 animate-pulse" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground text-base tracking-tight">Aula em Andamento</span>
-                    <Badge variant="default" className="bg-success text-success-foreground hover:bg-success border-none text-[10px] font-black uppercase px-1.5 h-4">
+                    <span className="font-black text-foreground text-lg tracking-tight uppercase">Aula Ativa</span>
+                    <Badge variant="default" className="bg-success text-success-foreground hover:bg-success border-none text-[11px] font-black uppercase px-2 py-0.5 h-5 shadow-[0_0_10px_rgba(34,197,94,0.5)] animate-pulse">
                       AO VIVO
                     </Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground font-medium">Os alunos já podem registrar presença</p>
+                  <p className="text-xs text-success font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Registros liberados
+                  </p>
                 </div>
               </div>
-              <div className="bg-muted/50 px-3 py-1.5 rounded-lg flex items-center gap-2 text-foreground font-mono font-bold border border-border">
-                <Clock className="w-4 h-4 text-muted-foreground" />
+              <div className="bg-success/10 px-3 py-2 rounded-xl flex items-center gap-2 text-success font-mono font-black text-lg border-2 border-success/20 shadow-inner">
+                <Clock className="w-5 h-5" />
                 {formatElapsed(elapsedSecs)}
               </div>
             </div>
