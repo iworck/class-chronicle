@@ -230,6 +230,7 @@ const Usuarios = () => {
     setAllSubjects((subjectRes.data as any[]) || []);
     setAllUserCourses((uCourseRes.data as UserCourse[]) || []);
     setAllUserSubjects((uSubjectRes.data as UserSubject[]) || []);
+    setAllUserClasses((uClassRes.data as UserClass[]) || []);
     setAllMatrices((matrixRes.data as any[]) || []);
     setAllMatrixSubjects((matrixSubjectRes.data as any[]) || []);
     setAllClasses((classRes.data as any[]) || []);
