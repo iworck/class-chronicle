@@ -441,28 +441,44 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
           <AlertDialog open onOpenChange={(v) => { if (!v) setCloseDialogSessionId(null); }}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-warning" />
-                  Encerrar chamada?
+                <AlertDialogTitle className="flex items-center gap-3 text-destructive text-xl font-black uppercase tracking-tight">
+                  <AlertTriangle className="w-8 h-8 animate-bounce text-destructive" />
+                  Encerrar Chamada?
                 </AlertDialogTitle>
                 <AlertDialogDescription asChild>
-                  <div>
-                    <p>Ao encerrar, os alunos não poderão mais registrar presença com o código.</p>
-                    <p className="mt-2"><strong>{present} aluno(s)</strong> registraram presença de <strong>{total} registros</strong> no total.</p>
-                    <p className="mt-2 text-xs">Caso tenha encerrado por engano, você pode <strong>reabrir</strong> a chamada logo após.</p>
+                  <div className="space-y-4 pt-2">
+                    <p className="text-foreground font-bold leading-relaxed">
+                      Ao encerrar, os alunos <span className="underline decoration-destructive/50 decoration-2 font-black">não poderão mais</span> registrar presença usando o código ou QR Code.
+                    </p>
+                    <div className="bg-muted/50 p-4 rounded-2xl border border-border space-y-2">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground font-bold uppercase tracking-widest text-[10px]">Alunos Registrados</span>
+                        <span className="font-black text-primary text-lg">{present} / {total}</span>
+                      </div>
+                      <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-primary transition-all duration-500" 
+                          style={{ width: `${total > 0 ? (present / total) * 100 : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground font-medium italic">
+                      Dica: Se encerrar por engano, você poderá reabrir a sessão no histórico logo abaixo.
+                    </p>
                   </div>
                 </AlertDialogDescription>
               </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setCloseDialogSessionId(null)}>Cancelar</AlertDialogCancel>
+              <AlertDialogFooter className="gap-2 sm:gap-0 mt-6">
+                <AlertDialogCancel onClick={() => setCloseDialogSessionId(null)} className="rounded-xl font-bold h-12">CANCELAR</AlertDialogCancel>
                 <Button
                   variant="destructive"
                   disabled={closing === session.id}
                   onClick={() => closeSession(session.id)}
+                  className="rounded-xl font-black h-12 shadow-xl shadow-destructive/20 active:scale-95 transition-transform"
                 >
                   {closing === session.id
-                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Encerrando...</>
-                    : 'Encerrar chamada'}
+                    ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> ENCERRANDO...</>
+                    : 'SIM, ENCERRAR AGORA'}
                 </Button>
               </AlertDialogFooter>
             </AlertDialogContent>
