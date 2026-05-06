@@ -51,6 +51,7 @@ interface UserCampus { id: string; user_id: string; campus_id: string; }
 interface UserUnit { id: string; user_id: string; unit_id: string; }
 interface UserCourse { id: string; user_id: string; course_id: string; }
 interface UserSubject { id: string; user_id: string; subject_id: string; }
+interface UserClass { id: string; user_id: string; class_id: string; }
 
 interface AuditLog {
   id: string;
