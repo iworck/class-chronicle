@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import {
-  Search, Pencil, Shield, Loader2, Users, MapPin, Plus, UserPlus, KeyRound, Mail, MessageSquare, Eye, Copy,
+  Search, Pencil, Shield, Loader2, Users, MapPin, Plus, UserPlus, KeyRound, Mail, MessageSquare, Eye, Copy, FileText, BookOpen, GraduationCap,
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 
@@ -48,6 +48,21 @@ interface Campus { id: string; name: string; institution_id: string; }
 interface Unit { id: string; name: string; campus_id: string; }
 interface UserCampus { id: string; user_id: string; campus_id: string; }
 interface UserUnit { id: string; user_id: string; unit_id: string; }
+interface UserCourse { id: string; user_id: string; course_id: string; }
+interface UserSubject { id: string; user_id: string; subject_id: string; }
+
+interface AuditLog {
+  id: string;
+  changed_by_user_id: string;
+  target_user_id: string;
+  action: string;
+  entity_id: string | null;
+  entity_name: string | null;
+  created_at: string;
+  changed_by?: { name: string };
+  target?: { name: string };
+}
+
 
 const ROLE_LABELS: Record<AppRole, string> = {
   super_admin: 'Super Admin',
@@ -70,7 +85,7 @@ const ROLE_SINGULAR: Record<string, string> = {
 
 const ALL_ROLES: AppRole[] = ['super_admin', 'admin', 'diretor', 'gerente', 'coordenador', 'professor', 'aluno'];
 
-type TabKey = 'todos' | 'admin' | 'diretor' | 'gerente' | 'coordenador' | 'professor' | 'aluno';
+type TabKey = 'todos' | 'admin' | 'diretor' | 'gerente' | 'coordenador' | 'professor' | 'aluno' | 'auditoria';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode; role?: AppRole }[] = [
   { key: 'todos', label: 'Todos', icon: <Users className="w-4 h-4" /> },
@@ -80,13 +95,17 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; role?: AppRole 
   { key: 'coordenador', label: 'Coordenadores', icon: <UserPlus className="w-4 h-4" />, role: 'coordenador' },
   { key: 'professor', label: 'Professores', icon: <UserPlus className="w-4 h-4" />, role: 'professor' },
   { key: 'aluno', label: 'Alunos', icon: <UserPlus className="w-4 h-4" />, role: 'aluno' },
+  { key: 'auditoria', label: 'Auditoria', icon: <FileText className="w-4 h-4" /> },
 ];
 
+
 const Usuarios = () => {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
   const isSuperAdmin = hasRole('super_admin');
   const isAdmin = hasRole('admin');
+  const isDiretor = hasRole('diretor');
   const canManage = isSuperAdmin || isAdmin;
+  const canViewAudit = canManage || isDiretor;
   const assignableRoles = isSuperAdmin ? ALL_ROLES : ALL_ROLES.filter(r => r !== 'super_admin');
 
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -96,9 +115,15 @@ const Usuarios = () => {
   const [units, setUnits] = useState<Unit[]>([]);
   const [allUserCampuses, setAllUserCampuses] = useState<UserCampus[]>([]);
   const [allUserUnits, setAllUserUnits] = useState<UserUnit[]>([]);
+  const [allUserCourses, setAllUserCourses] = useState<UserCourse[]>([]);
+  const [allUserSubjects, setAllUserSubjects] = useState<UserSubject[]>([]);
+  const [allCourses, setAllCourses] = useState<{ id: string, name: string }[]>([]);
+  const [allSubjects, setAllSubjects] = useState<{ id: string, name: string }[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<TabKey>('todos');
+
 
   // Edit profile dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false);
@@ -134,7 +159,10 @@ const Usuarios = () => {
   const [assignUserName, setAssignUserName] = useState('');
   const [assignUserCampuses, setAssignUserCampuses] = useState<string[]>([]);
   const [assignUserUnits, setAssignUserUnits] = useState<string[]>([]);
+  const [assignUserCourses, setAssignUserCourses] = useState<string[]>([]);
+  const [assignUserSubjects, setAssignUserSubjects] = useState<string[]>([]);
   const [savingAssign, setSavingAssign] = useState(false);
+
 
   // Quick-add role dialog (from tab)
   const [quickAddOpen, setQuickAddOpen] = useState(false);
@@ -158,7 +186,10 @@ const Usuarios = () => {
 
   async function fetchAll() {
     setLoading(true);
-    const [profileRes, rolesRes, instRes, campusRes, unitRes, ucRes, uuRes] = await Promise.all([
+    const [
+      profileRes, rolesRes, instRes, campusRes, unitRes, ucRes, uuRes,
+      courseRes, subjectRes, uCourseRes, uSubjectRes
+    ] = await Promise.all([
       supabase.from('profiles').select('*').order('name'),
       supabase.from('user_roles').select('*'),
       supabase.from('institutions').select('id, name').eq('status', 'ATIVO').order('name'),
@@ -166,6 +197,10 @@ const Usuarios = () => {
       supabase.from('units').select('id, name, campus_id').eq('status', 'ATIVO').order('name'),
       supabase.from('user_campuses').select('*'),
       supabase.from('user_units').select('*'),
+      supabase.from('courses').select('id, name').eq('status', 'ATIVO').order('name'),
+      supabase.from('subjects').select('id, name').eq('status', 'ATIVO').order('name'),
+      supabase.from('user_courses').select('*'),
+      supabase.from('user_subjects').select('*'),
     ]);
     if (profileRes.error) {
       toast({ title: 'Erro ao carregar usuários', description: profileRes.error.message, variant: 'destructive' });
@@ -178,8 +213,23 @@ const Usuarios = () => {
     setUnits((unitRes.data as Unit[]) || []);
     setAllUserCampuses((ucRes.data as UserCampus[]) || []);
     setAllUserUnits((uuRes.data as UserUnit[]) || []);
+    setAllCourses((courseRes.data as any[]) || []);
+    setAllSubjects((subjectRes.data as any[]) || []);
+    setAllUserCourses((uCourseRes.data as UserCourse[]) || []);
+    setAllUserSubjects((uSubjectRes.data as UserSubject[]) || []);
+
+    if (canViewAudit) {
+      const { data: logs } = await supabase
+        .from('permission_audit_logs')
+        .select('*, changed_by:profiles!permission_audit_logs_changed_by_user_id_fkey(name), target:profiles!permission_audit_logs_target_user_id_fkey(name)')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      setAuditLogs((logs as any[]) || []);
+    }
+
     setLoading(false);
   }
+
 
   function getRolesForUser(userId: string): AppRole[] {
     return allRoles.filter(r => r.user_id === userId).map(r => r.role);
@@ -342,21 +392,43 @@ const Usuarios = () => {
   }
 
   async function handleSaveRoles() {
-    if (!rolesUserId) return;
+    if (!rolesUserId || !user) return;
     setSavingRoles(true);
     const currentRoles = getRolesForUser(rolesUserId);
     const toAdd = selectedRoles.filter(r => !currentRoles.includes(r));
     const toRemove = currentRoles.filter(r => !selectedRoles.includes(r));
+    
+    const auditLogs: any[] = [];
+
     for (const role of toRemove) {
       const rec = allRoles.find(r => r.user_id === rolesUserId && r.role === role);
-      if (rec) await supabase.from('user_roles').delete().eq('id', rec.id);
+      if (rec) {
+        await supabase.from('user_roles').delete().eq('id', rec.id);
+        auditLogs.push({ changed_by_user_id: user.id, target_user_id: rolesUserId, action: 'REMOVE_ROLE', entity_name: role });
+      }
     }
     if (toAdd.length > 0) {
       const { error } = await supabase.from('user_roles').insert(toAdd.map(role => ({ user_id: rolesUserId, role })));
-      if (error) { toast({ title: 'Erro ao atribuir papéis', description: error.message, variant: 'destructive' }); setSavingRoles(false); return; }
+      if (error) { 
+        toast({ title: 'Erro ao atribuir papéis', description: error.message, variant: 'destructive' }); 
+        setSavingRoles(false); 
+        return; 
+      }
+      for (const role of toAdd) {
+        auditLogs.push({ changed_by_user_id: user.id, target_user_id: rolesUserId, action: 'ADD_ROLE', entity_name: role });
+      }
     }
-    toast({ title: 'Papéis atualizados com sucesso' }); setRolesDialogOpen(false); fetchAll(); setSavingRoles(false);
+
+    if (auditLogs.length > 0) {
+      await supabase.from('permission_audit_logs').insert(auditLogs);
+    }
+
+    toast({ title: 'Papéis atualizados com sucesso' }); 
+    setRolesDialogOpen(false); 
+    fetchAll(); 
+    setSavingRoles(false);
   }
+
 
   // --- Assignments ---
   function openAssignDialog(profile: UserProfile) {
@@ -364,8 +436,11 @@ const Usuarios = () => {
     setAssignUserName(profile.name);
     setAssignUserCampuses(allUserCampuses.filter(uc => uc.user_id === profile.id).map(uc => uc.campus_id));
     setAssignUserUnits(allUserUnits.filter(uu => uu.user_id === profile.id).map(uu => uu.unit_id));
+    setAssignUserCourses(allUserCourses.filter(uc => uc.user_id === profile.id).map(uc => uc.course_id));
+    setAssignUserSubjects(allUserSubjects.filter(us => us.user_id === profile.id).map(us => us.subject_id));
     setAssignDialogOpen(true);
   }
+
 
   function toggleCampus(campusId: string) {
     setAssignUserCampuses(prev => {
@@ -383,26 +458,73 @@ const Usuarios = () => {
   }
 
   async function handleSaveAssignments() {
-    if (!assignUserId) return;
+    if (!assignUserId || !user) return;
     setSavingAssign(true);
+
+    const auditChanges: any[] = [];
+
+    // --- Campuses ---
     const currentCampusIds = allUserCampuses.filter(uc => uc.user_id === assignUserId).map(uc => uc.campus_id);
     const campusesToAdd = assignUserCampuses.filter(id => !currentCampusIds.includes(id));
     const campusesToRemove = currentCampusIds.filter(id => !assignUserCampuses.includes(id));
     for (const cid of campusesToRemove) await supabase.from('user_campuses').delete().eq('user_id', assignUserId).eq('campus_id', cid);
     if (campusesToAdd.length > 0) {
-      const { error } = await supabase.from('user_campuses').insert(campusesToAdd.map(campus_id => ({ user_id: assignUserId, campus_id })));
-      if (error) { toast({ title: 'Erro ao vincular campus', description: error.message, variant: 'destructive' }); setSavingAssign(false); return; }
+      await supabase.from('user_campuses').insert(campusesToAdd.map(campus_id => ({ user_id: assignUserId, campus_id })));
     }
+
+    // --- Units ---
     const currentUnitIds = allUserUnits.filter(uu => uu.user_id === assignUserId).map(uu => uu.unit_id);
     const unitsToAdd = assignUserUnits.filter(id => !currentUnitIds.includes(id));
     const unitsToRemove = currentUnitIds.filter(id => !assignUserUnits.includes(id));
     for (const uid of unitsToRemove) await supabase.from('user_units').delete().eq('user_id', assignUserId).eq('unit_id', uid);
     if (unitsToAdd.length > 0) {
-      const { error } = await supabase.from('user_units').insert(unitsToAdd.map(unit_id => ({ user_id: assignUserId, unit_id })));
-      if (error) { toast({ title: 'Erro ao vincular unidades', description: error.message, variant: 'destructive' }); setSavingAssign(false); return; }
+      await supabase.from('user_units').insert(unitsToAdd.map(unit_id => ({ user_id: assignUserId, unit_id })));
     }
-    toast({ title: 'Vínculos atualizados com sucesso' }); setAssignDialogOpen(false); fetchAll(); setSavingAssign(false);
+
+    // --- Courses ---
+    const currentCourseIds = allUserCourses.filter(uc => uc.user_id === assignUserId).map(uc => uc.course_id);
+    const coursesToAdd = assignUserCourses.filter(id => !currentCourseIds.includes(id));
+    const coursesToRemove = currentCourseIds.filter(id => !assignUserCourses.includes(id));
+    for (const cid of coursesToRemove) {
+      await supabase.from('user_courses').delete().eq('user_id', assignUserId).eq('course_id', cid);
+      const c = allCourses.find(x => x.id === cid);
+      auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'REMOVE_COURSE', entity_id: cid, entity_name: c?.name });
+    }
+    if (coursesToAdd.length > 0) {
+      await supabase.from('user_courses').insert(coursesToAdd.map(course_id => ({ user_id: assignUserId, course_id })));
+      for (const cid of coursesToAdd) {
+        const c = allCourses.find(x => x.id === cid);
+        auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'ADD_COURSE', entity_id: cid, entity_name: c?.name });
+      }
+    }
+
+    // --- Subjects ---
+    const currentSubjectIds = allUserSubjects.filter(us => us.user_id === assignUserId).map(us => us.subject_id);
+    const subjectsToAdd = assignUserSubjects.filter(id => !currentSubjectIds.includes(id));
+    const subjectsToRemove = currentSubjectIds.filter(id => !assignUserSubjects.includes(id));
+    for (const sid of subjectsToRemove) {
+      await supabase.from('user_subjects').delete().eq('user_id', assignUserId).eq('subject_id', sid);
+      const s = allSubjects.find(x => x.id === sid);
+      auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'REMOVE_SUBJECT', entity_id: sid, entity_name: s?.name });
+    }
+    if (subjectsToAdd.length > 0) {
+      await supabase.from('user_subjects').insert(subjectsToAdd.map(subject_id => ({ user_id: assignUserId, subject_id })));
+      for (const sid of subjectsToAdd) {
+        const s = allSubjects.find(x => x.id === sid);
+        auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'ADD_SUBJECT', entity_id: sid, entity_name: s?.name });
+      }
+    }
+
+    if (auditChanges.length > 0) {
+      await supabase.from('permission_audit_logs').insert(auditChanges);
+    }
+
+    toast({ title: 'Vínculos atualizados com sucesso' });
+    setAssignDialogOpen(false);
+    fetchAll();
+    setSavingAssign(false);
   }
+
 
   function userNeedsAssignment(userId: string): boolean {
     return getRolesForUser(userId).some(r => CAMPUS_ROLES.includes(r));
@@ -572,7 +694,7 @@ const Usuarios = () => {
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
           <TabsList className="flex-wrap h-auto gap-1">
-            {TABS.map(tab => (
+            {TABS.filter(t => t.key !== 'auditoria' || canViewAudit).map(tab => (
               <TabsTrigger key={tab.key} value={tab.key} className="gap-1.5 text-xs sm:text-sm">
                 {tab.icon}
                 {tab.label}
@@ -581,6 +703,7 @@ const Usuarios = () => {
             ))}
           </TabsList>
         </div>
+
 
         {/* Search + Add button */}
         <div className="bg-card rounded-xl border border-border shadow-card">
@@ -602,7 +725,39 @@ const Usuarios = () => {
             )}
           </div>
 
-          {loading ? (
+          {activeTab === 'auditoria' ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Alterado por</TableHead>
+                    <TableHead>Usuário Alvo</TableHead>
+                    <TableHead>Ação</TableHead>
+                    <TableHead>Entidade</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {auditLogs.length === 0 ? (
+                    <TableRow><TableCell colSpan={5} className="text-center py-8">Nenhum log encontrado.</TableCell></TableRow>
+                  ) : auditLogs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell className="text-xs">{new Date(log.created_at).toLocaleString('pt-BR')}</TableCell>
+                      <TableCell className="font-medium text-xs">{log.changed_by?.name || '—'}</TableCell>
+                      <TableCell className="text-xs">{log.target?.name || '—'}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px]">
+                          {log.action}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">{log.entity_name || '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : loading ? (
+
             <div className="flex items-center justify-center py-16">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
@@ -864,44 +1019,85 @@ const Usuarios = () => {
 
       {/* Dialog: Manage Assignments */}
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Vínculos de {assignUserName}</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <p className="text-sm text-muted-foreground">Selecione os campi e unidades aos quais este usuário está vinculado.</p>
-            {assignUserId && getCampusesForUser(assignUserId).map(campus => {
-              const campusSelected = assignUserCampuses.includes(campus.id);
-              const campusUnits = units.filter(u => u.campus_id === campus.id);
-              const showUnits = campusSelected && userNeedsUnitAssignment(assignUserId);
-              return (
-                <div key={campus.id} className="border border-border rounded-lg overflow-hidden">
-                  <label className="flex items-center gap-3 p-3 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors">
-                    <Checkbox checked={campusSelected} onCheckedChange={() => toggleCampus(campus.id)} />
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-primary" />
-                      <p className="font-medium text-sm">{campus.name}</p>
-                    </div>
-                  </label>
-                  {showUnits && campusUnits.length > 0 && (
-                    <div className="px-3 py-2 space-y-1 border-t border-border bg-background">
-                      <p className="text-xs text-muted-foreground mb-2">Unidades deste campus:</p>
-                      {campusUnits.map(unit => (
-                        <label key={unit.id} className="flex items-center gap-3 p-2 rounded hover:bg-muted/30 cursor-pointer transition-colors">
-                          <Checkbox checked={assignUserUnits.includes(unit.id)} onCheckedChange={() => toggleUnit(unit.id)} />
-                          <p className="text-sm">{unit.name}</p>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                  {showUnits && campusUnits.length === 0 && (
-                    <div className="px-3 py-2 border-t border-border">
-                      <p className="text-xs text-muted-foreground italic">Nenhuma unidade cadastrada neste campus.</p>
-                    </div>
-                  )}
+          <div className="space-y-6 py-2">
+            {/* Campus/Units */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-bold flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-primary" /> Campi e Unidades
+              </h3>
+              <p className="text-xs text-muted-foreground">Selecione os campi e unidades aos quais este usuário está vinculado.</p>
+              {assignUserId && getCampusesForUser(assignUserId).map(campus => {
+                const campusSelected = assignUserCampuses.includes(campus.id);
+                const campusUnits = units.filter(u => u.campus_id === campus.id);
+                const showUnits = campusSelected && userNeedsUnitAssignment(assignUserId);
+                return (
+                  <div key={campus.id} className="border border-border rounded-lg overflow-hidden">
+                    <label className="flex items-center gap-3 p-3 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors">
+                      <Checkbox checked={campusSelected} onCheckedChange={() => toggleCampus(campus.id)} />
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-primary" />
+                        <p className="font-medium text-sm">{campus.name}</p>
+                      </div>
+                    </label>
+                    {showUnits && campusUnits.length > 0 && (
+                      <div className="px-3 py-2 space-y-1 border-t border-border bg-background">
+                        {campusUnits.map(unit => (
+                          <label key={unit.id} className="flex items-center gap-3 p-2 rounded hover:bg-muted/30 cursor-pointer transition-colors">
+                            <Checkbox checked={assignUserUnits.includes(unit.id)} onCheckedChange={() => toggleUnit(unit.id)} />
+                            <p className="text-sm">{unit.name}</p>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Courses for Coordinator/Professor */}
+            {assignUserId && getRolesForUser(assignUserId).some(r => r === 'coordenador' || r === 'professor') && (
+              <div className="space-y-4 border-t pt-4">
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <GraduationCap className="w-4 h-4 text-primary" /> Cursos Acessíveis
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {allCourses.map(course => (
+                    <label key={course.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                      <Checkbox
+                        checked={assignUserCourses.includes(course.id)}
+                        onCheckedChange={() => {
+                          setAssignUserCourses(prev => prev.includes(course.id) ? prev.filter(i => i !== course.id) : [...prev, course.id]);
+                        }}
+                      />
+                      <p className="text-sm">{course.name}</p>
+                    </label>
+                  ))}
                 </div>
-              );
-            })}
-            {assignUserId && getCampusesForUser(assignUserId).length === 0 && (
-              <p className="text-sm text-muted-foreground italic">Nenhum campus disponível. Verifique se o usuário possui uma instituição vinculada.</p>
+              </div>
+            )}
+
+            {/* Subjects for Professor */}
+            {assignUserId && getRolesForUser(assignUserId).includes('professor') && (
+              <div className="space-y-4 border-t pt-4">
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-primary" /> Disciplinas Acessíveis
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {allSubjects.map(subject => (
+                    <label key={subject.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                      <Checkbox
+                        checked={assignUserSubjects.includes(subject.id)}
+                        onCheckedChange={() => {
+                          setAssignUserSubjects(prev => prev.includes(subject.id) ? prev.filter(i => i !== subject.id) : [...prev, subject.id]);
+                        }}
+                      />
+                      <p className="text-sm">{subject.name}</p>
+                    </label>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
           <DialogFooter>
@@ -912,6 +1108,7 @@ const Usuarios = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
 
       {/* Dialog: Quick-add role */}
       <Dialog open={quickAddOpen} onOpenChange={setQuickAddOpen}>

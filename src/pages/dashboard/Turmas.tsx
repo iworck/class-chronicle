@@ -126,7 +126,8 @@ const EXAM_TYPE_LABELS: Record<string, string> = {
 };
 
 const Turmas = () => {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
+
   const canManage = hasRole('super_admin') || hasRole('admin') || hasRole('coordenador');
 
   const [classes, setClasses] = useState<ClassRow[]>([]);
@@ -190,13 +191,27 @@ const Turmas = () => {
 
   async function fetchAll() {
     setLoading(true);
-    const [classRes, courseRes, subjectRes, profRes] = await Promise.all([
+    const [classRes, courseRes, subjectRes, profRes, uCourseRes] = await Promise.all([
       supabase.from('classes').select('*').order('created_at', { ascending: false }),
       supabase.from('courses').select('id, name, unit_id').eq('status', 'ATIVO').order('name'),
       supabase.from('subjects').select('id, name, code, course_id').eq('status', 'ATIVO').order('name'),
       supabase.from('profiles').select('id, name, email').eq('status', 'ATIVO').order('name'),
+      supabase.from('user_courses').select('course_id').eq('user_id', user?.id),
     ]);
-    setClasses((classRes.data as ClassRow[]) || []);
+
+    const myCourseIds = new Set((uCourseRes.data || []).map(uc => uc.course_id));
+    const isProfessor = hasRole('professor');
+    const isCoordenador = hasRole('coordenador');
+    const isSuperOrAdmin = hasRole('super_admin') || hasRole('admin');
+
+    let classData = (classRes.data as ClassRow[]) || [];
+    if (!isSuperOrAdmin) {
+      // Filter classes by user's assigned courses
+      classData = classData.filter(c => myCourseIds.has(c.course_id));
+    }
+
+    setClasses(classData);
+
     setCourses((courseRes.data as Course[]) || []);
     setSubjects((subjectRes.data as Subject[]) || []);
     setProfessors((profRes.data as Profile[]) || []);
