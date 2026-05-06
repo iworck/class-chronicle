@@ -694,7 +694,7 @@ const Usuarios = () => {
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabKey)}>
         <div className="flex flex-col sm:flex-row sm:items-center gap-3 mb-4">
           <TabsList className="flex-wrap h-auto gap-1">
-            {TABS.map(tab => (
+            {TABS.filter(t => t.key !== 'auditoria' || canViewAudit).map(tab => (
               <TabsTrigger key={tab.key} value={tab.key} className="gap-1.5 text-xs sm:text-sm">
                 {tab.icon}
                 {tab.label}
@@ -703,6 +703,7 @@ const Usuarios = () => {
             ))}
           </TabsList>
         </div>
+
 
         {/* Search + Add button */}
         <div className="bg-card rounded-xl border border-border shadow-card">
