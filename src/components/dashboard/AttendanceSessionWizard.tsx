@@ -7,9 +7,17 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import {
   MapPin, Monitor, Wifi, Play, Loader2, Copy, CheckCircle2, Clock,
-  AlertTriangle, BookOpen, Users, XCircle, ArrowRight, RotateCcw
+  AlertTriangle, BookOpen, Users, XCircle, ArrowRight, RotateCcw,
+  ExternalLink, QrCode, Check, Info, HelpCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { QRCodeSVG } from 'qrcode.react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Props {
   open: boolean;
