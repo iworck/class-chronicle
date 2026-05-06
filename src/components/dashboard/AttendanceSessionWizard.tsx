@@ -179,10 +179,13 @@ export default function AttendanceSessionWizard({
         </DialogHeader>
 
         {/* Lesson info */}
-        <div className="px-4 py-3 rounded-lg bg-muted/50 border border-border mb-2">
-          <p className="text-xs text-muted-foreground">Aula</p>
-          <p className="font-semibold text-foreground text-sm">
-            {lessonNumber ? `Aula ${lessonNumber} — ` : ''}{lessonTitle}
+        <div className="px-5 py-4 rounded-2xl bg-primary/[0.03] border border-primary/10 mb-4 relative overflow-hidden group">
+          <div className="absolute top-0 right-0 p-3 opacity-10 group-hover:opacity-20 transition-opacity">
+            <BookOpen className="w-12 h-12 text-primary" />
+          </div>
+          <p className="text-[10px] text-primary font-black uppercase tracking-widest mb-1">Aula Selecionada</p>
+          <p className="font-bold text-foreground text-base leading-tight">
+            {lessonNumber ? `Aula ${lessonNumber} · ` : ''}{lessonTitle}
           </p>
         </div>
 
