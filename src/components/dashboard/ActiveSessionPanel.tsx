@@ -196,40 +196,52 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
         return (
           <div
             key={session.id}
-            className="rounded-xl border-2 border-success/40 bg-success/5 p-5 shadow-sm animate-fade-in"
+            className="rounded-2xl border-2 border-success bg-success/[0.03] p-6 shadow-md shadow-success/5 animate-fade-in relative overflow-hidden"
           >
+            {/* Background glow */}
+            <div className="absolute top-0 right-0 w-32 h-32 bg-success/5 rounded-full -mr-16 -mt-16 blur-3xl pointer-events-none" />
+
             {/* Header */}
-            <div className="flex items-center justify-between mb-4 flex-wrap gap-2">
-              <div className="flex items-center gap-2">
-                <span className="relative flex h-3 w-3">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
-                  <span className="relative inline-flex rounded-full h-3 w-3 bg-success" />
-                </span>
-                <span className="font-semibold text-foreground text-sm">Chamada em Andamento</span>
-                <Badge variant="outline" className="border-success text-success text-xs">
-                  <Radio className="w-3 h-3 mr-1" /> AO VIVO
-                </Badge>
+            <div className="flex items-center justify-between mb-5 flex-wrap gap-2 relative z-10">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-success/10 text-success">
+                  <Radio className="w-6 h-6 animate-pulse" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="font-bold text-foreground text-base tracking-tight">Aula em Andamento</span>
+                    <Badge variant="default" className="bg-success text-success-foreground hover:bg-success border-none text-[10px] font-black uppercase px-1.5 h-4">
+                      AO VIVO
+                    </Badge>
+                  </div>
+                  <p className="text-xs text-muted-foreground font-medium">Os alunos já podem registrar presença</p>
+                </div>
               </div>
-              <div className="flex items-center gap-1.5 text-muted-foreground text-sm font-mono tabular-nums">
-                <Clock className="w-4 h-4" />
+              <div className="bg-muted/50 px-3 py-1.5 rounded-lg flex items-center gap-2 text-foreground font-mono font-bold border border-border">
+                <Clock className="w-4 h-4 text-muted-foreground" />
                 {formatElapsed(elapsedSecs)}
               </div>
             </div>
 
             {/* Turma / Disciplina */}
-            <div className="flex items-center gap-2 mb-4 text-sm text-muted-foreground">
-              <BookOpen className="w-4 h-4 shrink-0" />
-              <span>
-                <span className="font-medium text-foreground">{classNames[session.class_id] || '...'}</span>
-                {' · '}
-                {subjectNames[session.subject_id] || '...'}
-              </span>
+            <div className="flex items-start gap-3 mb-6 bg-muted/30 p-3 rounded-xl border border-border/50">
+              <div className="w-10 h-10 rounded-lg bg-background flex items-center justify-center border border-border shadow-sm shrink-0">
+                <BookOpen className="w-5 h-5 text-muted-foreground" />
+              </div>
+              <div className="min-w-0">
+                <p className="font-bold text-foreground text-sm truncate uppercase tracking-tight">
+                  {classNames[session.class_id] || 'Carregando...'}
+                </p>
+                <p className="text-xs text-muted-foreground truncate font-medium">
+                  {subjectNames[session.subject_id] || 'Carregando...'}
+                </p>
+              </div>
             </div>
 
             {/* Métricas */}
-            <div className="grid grid-cols-3 gap-3 mb-4">
+            <div className="grid grid-cols-3 gap-3 mb-6">
               <MetricChip label="Presentes" value={String(present)} color="success" />
-              <MetricChip label="Total registros" value={String(total)} color="muted" />
+              <MetricChip label="Total" value={String(total)} color="muted" />
               <MetricChip label="Ausentes" value={String(Math.max(0, total - present))} color={total - present > 0 ? 'warning' : 'muted'} />
             </div>
 
@@ -246,25 +258,22 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
 
             {/* Código ao vivo */}
             {displayCode && (
-              <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 text-center mb-4">
-                <p className="text-xs text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">
+              <div className="rounded-2xl border-2 border-primary bg-primary/[0.03] p-6 text-center mb-6 relative group transition-all hover:bg-primary/[0.05]">
+                <p className="text-[10px] text-primary mb-3 font-black uppercase tracking-[0.25em]">
                   Código de Autenticação
                 </p>
-                <p className="text-4xl font-mono font-bold text-primary tracking-[0.25em] select-all">
+                <p className="text-5xl font-mono font-black text-primary tracking-[0.2em] select-all mb-4">
                   {displayCode}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  Informe este código aos alunos para registrar presença
                 </p>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="mt-3"
+                  className="bg-background/80 backdrop-blur-sm border-primary/20 hover:border-primary/50 text-primary font-bold px-6 h-9 rounded-full shadow-sm"
                   onClick={() => copyCode(displayCode, session.id)}
                 >
                   {copied === session.id
                     ? <><CheckCircle2 className="w-4 h-4 mr-2 text-success" />Copiado!</>
-                    : <><Copy className="w-4 h-4 mr-2" />Copiar código</>}
+                    : <><Copy className="w-4 h-4 mr-2" />Copiar Código</>}
                 </Button>
               </div>
             )}
@@ -440,10 +449,11 @@ function MetricChip({ label, value, color }: { label: string; value: string; col
     warning: 'bg-warning/10 text-warning border-warning/20',
     muted: 'bg-muted/60 text-muted-foreground border-border',
   };
+
   return (
-    <div className={cn('rounded-lg border p-2.5 text-center', styles[color])}>
-      <p className="text-lg font-display font-bold">{value}</p>
-      <p className="text-xs font-medium leading-tight mt-0.5">{label}</p>
+    <div className={cn('flex flex-col items-center justify-center p-3 rounded-2xl border transition-all hover:scale-[1.02]', styles[color])}>
+      <span className="text-xl font-black tabular-nums">{value}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wider opacity-80">{label}</span>
     </div>
   );
 }

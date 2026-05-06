@@ -18,7 +18,7 @@ import {
 import {
   Loader2, CalendarCheck, Search, Filter, Play, CheckCircle2, Clock,
   ClipboardList, Users, ChevronDown, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown,
-  GraduationCap, Eye, Copy, ShieldCheck, FileText, Trash2,
+  GraduationCap, Eye, Copy, ShieldCheck, FileText, Trash2, Radio,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
@@ -371,11 +371,17 @@ export default function Aulas() {
 
       {/* Active session alert */}
       {hasOpenSession && (
-        <div className="flex items-center gap-3 p-3 rounded-lg border border-primary/40 bg-primary/5">
-          <GraduationCap className="w-5 h-5 text-primary shrink-0" />
-          <p className="text-sm text-foreground">
-            <strong>Chamada em andamento.</strong> Você tem uma sessão aberta. Encerre-a antes de abrir uma nova chamada.
-          </p>
+        <div className="flex items-center gap-4 p-4 rounded-2xl border-2 border-primary bg-primary/5 shadow-lg shadow-primary/5 animate-in slide-in-from-top-4 duration-500">
+          <div className="w-12 h-12 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
+            <Radio className="w-6 h-6 text-primary animate-pulse" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-bold text-foreground">Sessão de Chamada Ativa</p>
+            <p className="text-xs text-muted-foreground">Você possui uma chamada em andamento. Encerre-a para poder abrir uma nova.</p>
+          </div>
+          <Button variant="outline" size="sm" className="hidden sm:flex border-primary/20 text-primary font-bold" onClick={() => window.scrollTo({ top: 0, behavior: 'smooth' })}>
+            Ver Sessão
+          </Button>
         </div>
       )}
 
