@@ -118,8 +118,12 @@ const Usuarios = () => {
   const [allUserCourses, setAllUserCourses] = useState<UserCourse[]>([]);
   const [allUserSubjects, setAllUserSubjects] = useState<UserSubject[]>([]);
   const [allCourses, setAllCourses] = useState<{ id: string, name: string }[]>([]);
-  const [allSubjects, setAllSubjects] = useState<{ id: string, name: string }[]>([]);
+  const [allSubjects, setAllSubjects] = useState<any[]>([]);
+  const [allMatrices, setAllMatrices] = useState<any[]>([]);
+  const [allMatrixSubjects, setAllMatrixSubjects] = useState<any[]>([]);
+  const [allClasses, setAllClasses] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<TabKey>('todos');
