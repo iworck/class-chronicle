@@ -533,6 +533,23 @@ const Usuarios = () => {
         auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'ADD_SUBJECT', entity_id: sid, entity_name: s?.name });
       }
     }
+    
+    // --- Classes ---
+    const currentClassIds = allUserClasses.filter(ucl => ucl.user_id === assignUserId).map(ucl => ucl.class_id);
+    const classesToAdd = assignUserClasses.filter(id => !currentClassIds.includes(id));
+    const classesToRemove = currentClassIds.filter(id => !assignUserClasses.includes(id));
+    for (const clid of classesToRemove) {
+      await supabase.from('user_classes').delete().eq('user_id', assignUserId).eq('class_id', clid);
+      const c = allClasses.find(x => x.id === clid);
+      auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'REMOVE_CLASS', entity_id: clid, entity_name: c?.code });
+    }
+    if (classesToAdd.length > 0) {
+      await supabase.from('user_classes').insert(classesToAdd.map(class_id => ({ user_id: assignUserId, class_id })));
+      for (const clid of classesToAdd) {
+        const c = allClasses.find(x => x.id === clid);
+        auditChanges.push({ changed_by_user_id: user.id, target_user_id: assignUserId, action: 'ADD_CLASS', entity_id: clid, entity_name: c?.code });
+      }
+    }
 
     if (auditChanges.length > 0) {
       await supabase.from('permission_audit_logs').insert(auditChanges);
