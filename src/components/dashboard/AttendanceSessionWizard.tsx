@@ -255,28 +255,37 @@ export default function AttendanceSessionWizard({
 
             {/* STEP: geolocalizacao */}
             {step === 'geolocalizacao' && (
-              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">2</div>
-                  <p className="text-sm font-semibold text-foreground">Deseja usar geolocalização?</p>
+                {/* Step Header & Progress */}
+                <div className="space-y-4 mb-2">
+                  <div className="flex items-center justify-between px-1">
+                    <p className="text-xs font-black uppercase text-primary tracking-widest">Passo 2 de 2</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Localização</p>
+                  </div>
+                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/50">
+                    <div className="h-full bg-primary w-full transition-all duration-500 ease-out shadow-[0_0_8px_rgba(var(--primary),0.3)]" />
+                  </div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-black text-sm shadow-lg shadow-primary/20">2</div>
+                    <p className="text-sm font-black text-foreground uppercase tracking-tight">Validação por GPS</p>
+                  </div>
                 </div>
                 
-                <p className="text-xs text-muted-foreground leading-relaxed px-1">
-                  O sistema valida se os alunos estão no local através do GPS do celular (raio de 200m).
+                <p className="text-xs text-muted-foreground leading-relaxed px-1 font-medium">
+                  Ative o GPS para garantir que apenas alunos no local (raio de <span className="text-foreground font-bold underline decoration-primary/30">200 metros</span>) possam marcar presença.
                 </p>
 
                 <div className="grid grid-cols-2 gap-3">
                   <OptionCard
                     icon={MapPin}
-                    label="Ativar GPS"
-                    desc="Mais segurança"
+                    label="ATIVAR GPS"
+                    desc="Máxima segurança"
                     selected={useGeo === true}
                     onClick={() => { setUseGeo(true); captureGeo(); }}
                   />
                   <OptionCard
                     icon={Monitor}
-                    label="Apenas Código"
-                    desc="Sem validação GPS"
+                    label="SEM GPS"
+                    desc="Apenas o código"
                     selected={useGeo === false}
                     onClick={() => { setUseGeo(false); setGeoCoords(null); setGeoError(null); }}
                   />
@@ -284,47 +293,54 @@ export default function AttendanceSessionWizard({
 
                 {useGeo === true && (
                   <div className={cn(
-                    "rounded-xl border p-3 transition-colors",
-                    geoCoords ? "bg-success/5 border-success/30" : "bg-muted/50 border-border"
+                    "rounded-2xl border-2 p-4 transition-all duration-300 shadow-sm",
+                    geoCoords ? "bg-success/10 border-success/40 scale-[1.02]" : "bg-muted/30 border-dashed border-border/50"
                   )}>
                     {geoLoading && (
-                      <div className="flex items-center gap-3 text-muted-foreground text-sm py-1">
-                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                        <span className="font-medium">Capturando sua posição...</span>
+                      <div className="flex items-center gap-3 text-primary text-sm py-1">
+                        <Loader2 className="w-5 h-5 animate-spin font-black" />
+                        <span className="font-black uppercase tracking-tighter">Sincronizando Satélites...</span>
                       </div>
                     )}
                     {geoCoords && !geoLoading && (
-                      <div className="flex items-center gap-3 text-success text-sm py-1">
-                        <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                        <span className="font-semibold">Localização confirmada</span>
-                        <CheckCircle2 className="w-4 h-4 ml-auto" />
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-3 text-success text-sm py-1">
+                          <div className="w-3 h-3 rounded-full bg-success animate-ping" />
+                          <span className="font-black uppercase tracking-tight">Sinal de GPS Forte</span>
+                          <CheckCircle2 className="w-5 h-5 ml-auto text-success" />
+                        </div>
+                        <div className="flex justify-between items-center text-[10px] bg-white/50 px-2 py-1.5 rounded-lg border border-success/20">
+                          <span className="font-bold text-success/80">LAT: {geoCoords.lat.toFixed(6)}</span>
+                          <span className="font-bold text-success/80">LNG: {geoCoords.lng.toFixed(6)}</span>
+                          <span className="bg-success text-white px-1.5 py-0.5 rounded font-black">RAIO 200m</span>
+                        </div>
                       </div>
                     )}
                     {geoError && (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2 text-destructive text-sm font-medium">
-                          <AlertTriangle className="w-4 h-4 shrink-0" />
-                          {geoError}
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-2 text-destructive text-xs font-black uppercase tracking-tight">
+                          <AlertTriangle className="w-5 h-5 shrink-0" />
+                          Erro de Localização
                         </div>
-                        <Button size="sm" variant="outline" onClick={captureGeo} className="w-full text-xs h-8">
-                          <RotateCcw className="w-3 h-3 mr-2" /> Tentar novamente
+                        <p className="text-[10px] text-destructive/80 font-bold leading-tight px-1">{geoError}</p>
+                        <Button size="sm" variant="destructive" onClick={captureGeo} className="w-full text-[10px] font-black h-9 rounded-xl shadow-lg">
+                          <RotateCcw className="w-3 h-3 mr-2" /> RE-SINCROZINAR GPS
                         </Button>
                       </div>
                     )}
                   </div>
                 )}
 
-                <div className="flex justify-between gap-2 pt-2">
-                  <Button variant="ghost" onClick={() => setStep('modalidade')}>Voltar</Button>
+                <div className="flex justify-between gap-3 pt-4 border-t border-border/50">
+                  <Button variant="ghost" onClick={() => setStep('modalidade')} className="font-bold text-muted-foreground hover:text-foreground rounded-xl">VOLTAR</Button>
                   <Button
                     disabled={useGeo === null || (useGeo === true && !geoCoords)}
-                    className="flex-1 font-bold shadow-md bg-primary hover:bg-primary/90"
+                    className="flex-1 font-black shadow-2xl rounded-xl h-12 bg-primary hover:bg-primary/90 transition-all hover:scale-[1.02] text-base"
                     onClick={openSession}
                   >
-                    <Play className="w-4 h-4 mr-2 fill-current" /> Abrir Chamada Agora
+                    <Play className="w-5 h-5 mr-2 fill-current" /> INICIAR CHAMADA
                   </Button>
                 </div>
-              </div>
             )}
 
             {/* STEP: abrindo */}
