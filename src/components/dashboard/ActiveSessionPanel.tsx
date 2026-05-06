@@ -279,8 +279,11 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
             )}
 
             {/* Session ID */}
-            <div className="rounded-lg bg-muted/40 border border-border px-3 py-2 text-xs font-mono text-muted-foreground truncate mb-4">
-              ID da Aula: <span className="font-bold text-foreground tracking-widest">{session.id.replace(/-/g, '').slice(0, 6).toUpperCase()}</span>
+            <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-muted/30 border border-border/50 mb-4 group transition-colors hover:bg-muted/50">
+              <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">ID da Aula</span>
+              <span className="text-xs font-mono font-bold text-foreground tracking-widest group-hover:text-primary transition-colors">
+                {session.id.replace(/-/g, '').slice(0, 8).toUpperCase()}
+              </span>
             </div>
 
             {/* Ações: lançar presença manual + encerrar */}
