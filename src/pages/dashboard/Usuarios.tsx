@@ -225,6 +225,9 @@ const Usuarios = () => {
     setAllSubjects((subjectRes.data as any[]) || []);
     setAllUserCourses((uCourseRes.data as UserCourse[]) || []);
     setAllUserSubjects((uSubjectRes.data as UserSubject[]) || []);
+    setAllMatrices((matrixRes.data as any[]) || []);
+    setAllMatrixSubjects((matrixSubjectRes.data as any[]) || []);
+    setAllClasses((classRes.data as any[]) || []);
 
     if (canViewAudit) {
       const { data: logs } = await supabase
