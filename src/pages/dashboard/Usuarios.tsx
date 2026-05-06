@@ -414,8 +414,11 @@ const Usuarios = () => {
     setAssignUserName(profile.name);
     setAssignUserCampuses(allUserCampuses.filter(uc => uc.user_id === profile.id).map(uc => uc.campus_id));
     setAssignUserUnits(allUserUnits.filter(uu => uu.user_id === profile.id).map(uu => uu.unit_id));
+    setAssignUserCourses(allUserCourses.filter(uc => uc.user_id === profile.id).map(uc => uc.course_id));
+    setAssignUserSubjects(allUserSubjects.filter(us => us.user_id === profile.id).map(us => us.subject_id));
     setAssignDialogOpen(true);
   }
+
 
   function toggleCampus(campusId: string) {
     setAssignUserCampuses(prev => {
