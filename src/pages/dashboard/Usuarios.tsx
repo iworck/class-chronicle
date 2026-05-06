@@ -702,7 +702,39 @@ const Usuarios = () => {
             )}
           </div>
 
-          {loading ? (
+          {activeTab === 'auditoria' ? (
+            <div className="overflow-x-auto">
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>Data</TableHead>
+                    <TableHead>Alterado por</TableHead>
+                    <TableHead>Usuário Alvo</TableHead>
+                    <TableHead>Ação</TableHead>
+                    <TableHead>Entidade</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {auditLogs.length === 0 ? (
+                    <TableRow><TableCell colSpan={5} className="text-center py-8">Nenhum log encontrado.</TableCell></TableRow>
+                  ) : auditLogs.map((log) => (
+                    <TableRow key={log.id}>
+                      <TableCell className="text-xs">{new Date(log.created_at).toLocaleString('pt-BR')}</TableCell>
+                      <TableCell className="font-medium text-xs">{log.changed_by?.name || '—'}</TableCell>
+                      <TableCell className="text-xs">{log.target?.name || '—'}</TableCell>
+                      <TableCell>
+                        <Badge variant="outline" className="text-[10px]">
+                          {log.action}
+                        </Badge>
+                      </TableCell>
+                      <TableCell className="text-xs">{log.entity_name || '—'}</TableCell>
+                    </TableRow>
+                  ))}
+                </TableBody>
+              </Table>
+            </div>
+          ) : loading ? (
+
             <div className="flex items-center justify-center py-16">
               <Loader2 className="w-6 h-6 animate-spin text-primary" />
             </div>
