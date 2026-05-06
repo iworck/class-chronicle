@@ -1185,9 +1185,9 @@ const Usuarios = () => {
                                                   <div className="space-y-2">
                                                     <p className="text-[10px] uppercase font-bold text-muted-foreground">Turmas (Acesso às Aulas)</p>
                                                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                                                      {courseClasses.length === 0 ? (
+                                                      {displayClasses.length === 0 ? (
                                                         <p className="text-[10px] text-muted-foreground italic">Nenhuma turma encontrada para este curso.</p>
-                                                      ) : courseClasses.map(cl => (
+                                                      ) : displayClasses.map(cl => (
                                                         <label key={cl.id} className="flex items-center gap-3 p-2 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors">
                                                           <Checkbox
                                                             checked={assignUserClasses.includes(cl.id)}
