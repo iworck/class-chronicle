@@ -449,10 +449,11 @@ function MetricChip({ label, value, color }: { label: string; value: string; col
     warning: 'bg-warning/10 text-warning border-warning/20',
     muted: 'bg-muted/60 text-muted-foreground border-border',
   };
+
   return (
-    <div className={cn('rounded-lg border p-2.5 text-center', styles[color])}>
-      <p className="text-lg font-display font-bold">{value}</p>
-      <p className="text-xs font-medium leading-tight mt-0.5">{label}</p>
+    <div className={cn('flex flex-col items-center justify-center p-3 rounded-2xl border transition-all hover:scale-[1.02]', styles[color])}>
+      <span className="text-xl font-black tabular-nums">{value}</span>
+      <span className="text-[10px] font-bold uppercase tracking-wider opacity-80">{label}</span>
     </div>
   );
 }
