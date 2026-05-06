@@ -255,6 +255,7 @@ export default function AttendanceSessionWizard({
 
             {/* STEP: geolocalizacao */}
             {step === 'geolocalizacao' && (
+              <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
                 {/* Step Header & Progress */}
                 <div className="space-y-4 mb-2">
                   <div className="flex items-center justify-between px-1">
@@ -341,6 +342,7 @@ export default function AttendanceSessionWizard({
                     <Play className="w-5 h-5 mr-2 fill-current" /> INICIAR CHAMADA
                   </Button>
                 </div>
+              </div>
             )}
 
             {/* STEP: abrindo */}
