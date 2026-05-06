@@ -964,44 +964,85 @@ const Usuarios = () => {
 
       {/* Dialog: Manage Assignments */}
       <Dialog open={assignDialogOpen} onOpenChange={setAssignDialogOpen}>
-        <DialogContent className="max-w-lg max-h-[80vh] overflow-y-auto">
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
           <DialogHeader><DialogTitle>Vínculos de {assignUserName}</DialogTitle></DialogHeader>
-          <div className="space-y-4 py-2">
-            <p className="text-sm text-muted-foreground">Selecione os campi e unidades aos quais este usuário está vinculado.</p>
-            {assignUserId && getCampusesForUser(assignUserId).map(campus => {
-              const campusSelected = assignUserCampuses.includes(campus.id);
-              const campusUnits = units.filter(u => u.campus_id === campus.id);
-              const showUnits = campusSelected && userNeedsUnitAssignment(assignUserId);
-              return (
-                <div key={campus.id} className="border border-border rounded-lg overflow-hidden">
-                  <label className="flex items-center gap-3 p-3 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors">
-                    <Checkbox checked={campusSelected} onCheckedChange={() => toggleCampus(campus.id)} />
-                    <div className="flex items-center gap-2">
-                      <MapPin className="w-4 h-4 text-primary" />
-                      <p className="font-medium text-sm">{campus.name}</p>
-                    </div>
-                  </label>
-                  {showUnits && campusUnits.length > 0 && (
-                    <div className="px-3 py-2 space-y-1 border-t border-border bg-background">
-                      <p className="text-xs text-muted-foreground mb-2">Unidades deste campus:</p>
-                      {campusUnits.map(unit => (
-                        <label key={unit.id} className="flex items-center gap-3 p-2 rounded hover:bg-muted/30 cursor-pointer transition-colors">
-                          <Checkbox checked={assignUserUnits.includes(unit.id)} onCheckedChange={() => toggleUnit(unit.id)} />
-                          <p className="text-sm">{unit.name}</p>
-                        </label>
-                      ))}
-                    </div>
-                  )}
-                  {showUnits && campusUnits.length === 0 && (
-                    <div className="px-3 py-2 border-t border-border">
-                      <p className="text-xs text-muted-foreground italic">Nenhuma unidade cadastrada neste campus.</p>
-                    </div>
-                  )}
+          <div className="space-y-6 py-2">
+            {/* Campus/Units */}
+            <div className="space-y-4">
+              <h3 className="text-sm font-bold flex items-center gap-2">
+                <MapPin className="w-4 h-4 text-primary" /> Campi e Unidades
+              </h3>
+              <p className="text-xs text-muted-foreground">Selecione os campi e unidades aos quais este usuário está vinculado.</p>
+              {assignUserId && getCampusesForUser(assignUserId).map(campus => {
+                const campusSelected = assignUserCampuses.includes(campus.id);
+                const campusUnits = units.filter(u => u.campus_id === campus.id);
+                const showUnits = campusSelected && userNeedsUnitAssignment(assignUserId);
+                return (
+                  <div key={campus.id} className="border border-border rounded-lg overflow-hidden">
+                    <label className="flex items-center gap-3 p-3 bg-muted/30 cursor-pointer hover:bg-muted/50 transition-colors">
+                      <Checkbox checked={campusSelected} onCheckedChange={() => toggleCampus(campus.id)} />
+                      <div className="flex items-center gap-2">
+                        <MapPin className="w-4 h-4 text-primary" />
+                        <p className="font-medium text-sm">{campus.name}</p>
+                      </div>
+                    </label>
+                    {showUnits && campusUnits.length > 0 && (
+                      <div className="px-3 py-2 space-y-1 border-t border-border bg-background">
+                        {campusUnits.map(unit => (
+                          <label key={unit.id} className="flex items-center gap-3 p-2 rounded hover:bg-muted/30 cursor-pointer transition-colors">
+                            <Checkbox checked={assignUserUnits.includes(unit.id)} onCheckedChange={() => toggleUnit(unit.id)} />
+                            <p className="text-sm">{unit.name}</p>
+                          </label>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+
+            {/* Courses for Coordinator/Professor */}
+            {assignUserId && getRolesForUser(assignUserId).some(r => r === 'coordenador' || r === 'professor') && (
+              <div className="space-y-4 border-t pt-4">
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <GraduationCap className="w-4 h-4 text-primary" /> Cursos Acessíveis
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {allCourses.map(course => (
+                    <label key={course.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                      <Checkbox
+                        checked={assignUserCourses.includes(course.id)}
+                        onCheckedChange={() => {
+                          setAssignUserCourses(prev => prev.includes(course.id) ? prev.filter(i => i !== course.id) : [...prev, course.id]);
+                        }}
+                      />
+                      <p className="text-sm">{course.name}</p>
+                    </label>
+                  ))}
                 </div>
-              );
-            })}
-            {assignUserId && getCampusesForUser(assignUserId).length === 0 && (
-              <p className="text-sm text-muted-foreground italic">Nenhum campus disponível. Verifique se o usuário possui uma instituição vinculada.</p>
+              </div>
+            )}
+
+            {/* Subjects for Professor */}
+            {assignUserId && getRolesForUser(assignUserId).includes('professor') && (
+              <div className="space-y-4 border-t pt-4">
+                <h3 className="text-sm font-bold flex items-center gap-2">
+                  <BookOpen className="w-4 h-4 text-primary" /> Disciplinas Acessíveis
+                </h3>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                  {allSubjects.map(subject => (
+                    <label key={subject.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                      <Checkbox
+                        checked={assignUserSubjects.includes(subject.id)}
+                        onCheckedChange={() => {
+                          setAssignUserSubjects(prev => prev.includes(subject.id) ? prev.filter(i => i !== subject.id) : [...prev, subject.id]);
+                        }}
+                      />
+                      <p className="text-sm">{subject.name}</p>
+                    </label>
+                  ))}
+                </div>
+              </div>
             )}
           </div>
           <DialogFooter>
@@ -1012,6 +1053,7 @@ const Usuarios = () => {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+
 
       {/* Dialog: Quick-add role */}
       <Dialog open={quickAddOpen} onOpenChange={setQuickAddOpen}>
