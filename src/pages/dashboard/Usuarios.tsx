@@ -205,7 +205,11 @@ const Usuarios = () => {
       supabase.from('subjects').select('id, name').eq('status', 'ATIVO').order('name'),
       supabase.from('user_courses').select('*'),
       supabase.from('user_subjects').select('*'),
+      supabase.from('academic_matrices').select('*').eq('status', 'ATIVO'),
+      supabase.from('matrix_subjects').select('*'),
+      supabase.from('classes').select('id, code, course_id, semester_id').eq('status', 'ATIVO'),
     ]);
+
     if (profileRes.error) {
       toast({ title: 'Erro ao carregar usuários', description: profileRes.error.message, variant: 'destructive' });
     } else {
