@@ -46,7 +46,8 @@ interface CampusOption {
 }
 
 const Disciplinas = () => {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
+
   const canManage = hasRole('admin') || hasRole('diretor') || hasRole('gerente') || hasRole('coordenador');
 
   const [subjects, setSubjects] = useState<Subject[]>([]);
