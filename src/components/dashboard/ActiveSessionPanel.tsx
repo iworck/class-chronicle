@@ -6,8 +6,15 @@ import { toast } from '@/hooks/use-toast';
 import {
   Clock, Users, MapPin, XCircle, Copy, CheckCircle2,
   Loader2, Radio, BookOpen, AlertTriangle, RotateCcw, ListChecks,
+  ExternalLink, QrCode, Check, Info, HelpCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
