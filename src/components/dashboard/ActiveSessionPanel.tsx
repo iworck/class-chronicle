@@ -287,24 +287,24 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
             </div>
 
             {/* Ações: lançar presença manual + encerrar */}
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-3">
               <Button
                 variant="outline"
-                className="flex-1"
+                className="h-11 rounded-xl border-border hover:border-primary hover:bg-primary/[0.02] hover:text-primary font-bold shadow-sm transition-all"
                 onClick={() => setManualSessionId(session.id)}
               >
-                <ListChecks className="w-4 h-4 mr-2" /> Lançar Presença
+                <ListChecks className="w-4 h-4 mr-2" /> Presença
               </Button>
 
               <Button
                 variant="destructive"
-                className="flex-1"
+                className="h-11 rounded-xl font-bold shadow-md shadow-destructive/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
                 disabled={closing === session.id}
                 onClick={() => setCloseDialogSessionId(session.id)}
               >
                 {closing === session.id
-                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Encerrando...</>
-                  : <><XCircle className="w-4 h-4 mr-2" />Encerrar Chamada</>}
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />...</>
+                  : <><XCircle className="w-4 h-4 mr-2" /> Encerrar</>}
               </Button>
             </div>
           </div>
