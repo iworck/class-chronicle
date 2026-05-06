@@ -305,16 +305,25 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
                 <ListChecks className="w-4 h-4 mr-2" /> Presença
               </Button>
 
-              <Button
-                variant="destructive"
-                className="h-11 rounded-xl font-bold shadow-md shadow-destructive/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                disabled={closing === session.id}
-                onClick={() => setCloseDialogSessionId(session.id)}
-              >
-                {closing === session.id
-                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />...</>
-                  : <><XCircle className="w-4 h-4 mr-2" /> Encerrar</>}
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      className="h-11 rounded-xl font-black shadow-lg shadow-destructive/20 transition-all hover:scale-[1.05] active:scale-[0.95] border-2 border-transparent hover:border-white/20"
+                      disabled={closing === session.id}
+                      onClick={() => setCloseDialogSessionId(session.id)}
+                    >
+                      {closing === session.id
+                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />...</>
+                        : <><XCircle className="w-5 h-5 mr-2" /> Encerrar</>}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-bold">Finalizar chamada definitivamente</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         );
