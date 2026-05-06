@@ -192,7 +192,7 @@ const Usuarios = () => {
     setLoading(true);
     const [
       profileRes, rolesRes, instRes, campusRes, unitRes, ucRes, uuRes,
-      courseRes, subjectRes, uCourseRes, uSubjectRes
+      courseRes, subjectRes, uCourseRes, uSubjectRes, matrixRes, matrixSubjectRes, classRes
     ] = await Promise.all([
       supabase.from('profiles').select('*').order('name'),
       supabase.from('user_roles').select('*'),
