@@ -328,83 +328,154 @@ export default function AttendanceSessionWizard({
             {/* STEP: aberta */}
             {step === 'aberta' && (
               <div className="space-y-6 animate-in fade-in zoom-in duration-300">
-                {/* Timer & Status */}
-                <div className="flex items-center justify-between bg-success/5 border border-success/20 p-3 rounded-xl">
+                {/* Visual Progress or Status */}
+                <div className="flex items-center justify-between bg-success/10 border-2 border-success/30 p-3 rounded-xl shadow-inner">
                   <div className="flex items-center gap-2">
                     <span className="relative flex h-3 w-3">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
                       <span className="relative inline-flex rounded-full h-3 w-3 bg-success" />
                     </span>
-                    <Badge variant="outline" className="border-none bg-transparent text-success font-bold text-sm p-0">
-                      CHAMADA ATIVA
+                    <Badge variant="outline" className="border-none bg-transparent text-success font-black text-sm p-0 tracking-tighter">
+                      CHAMADA AO VIVO
                     </Badge>
                   </div>
-                  <div className="flex items-center gap-2 text-success font-mono font-bold">
-                    <Clock className="w-4 h-4" />
+                  <div className="flex items-center gap-2 text-success font-mono font-black text-lg bg-success/5 px-2 py-0.5 rounded-lg border border-success/10">
+                    <Clock className="w-5 h-5" />
                     {formatElapsed(elapsed)}
                   </div>
                 </div>
 
-                {/* Modalidade & geo */}
-                <div className="flex gap-2 flex-wrap">
-                  <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                    {modalidade === 'presencial' ? '🏫 Presencial' : '💻 Online'}
-                  </Badge>
-                  {useGeo && geoCoords && (
-                    <Badge variant="secondary" className="bg-success/10 text-success border-success/20">
-                      <MapPin className="w-3 h-3 mr-1" /> Geo ativo (200m)
-                    </Badge>
-                  )}
+                {/* Legend / Status Indicators */}
+                <div className="flex justify-center gap-4 py-1 border-y border-border/50">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-success shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Aberta</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 opacity-50">
+                    <div className="w-2.5 h-2.5 rounded-full bg-destructive" />
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Encerrada</span>
+                  </div>
                 </div>
 
-                {/* Code Card */}
-                <div className="relative overflow-hidden rounded-2xl border-2 border-primary bg-primary/5 p-8 text-center shadow-lg shadow-primary/10">
-                  <div className="absolute top-0 right-0 p-2">
-                    <div className="w-16 h-16 bg-primary/10 rounded-full -mr-8 -mt-8 blur-2xl" />
-                  </div>
-                  
-                  <p className="text-xs text-primary font-bold uppercase tracking-[0.2em] mb-4">
-                    Código de Autenticação
-                  </p>
-                  
-                  <div className="relative">
-                    <p className="text-6xl font-mono font-black text-primary tracking-[0.2em] select-all mb-4">
-                      {sessionCode}
+                {/* Code & QR Section */}
+                <div className="grid grid-cols-1 gap-4">
+                  {/* Big Code Card */}
+                  <div className="relative overflow-hidden rounded-3xl border-4 border-primary bg-primary/[0.02] p-6 text-center shadow-2xl shadow-primary/20 transition-all hover:scale-[1.01]">
+                    <p className="text-[11px] text-primary font-black uppercase tracking-[0.3em] mb-4 flex items-center justify-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                      Código de Acesso
                     </p>
+                    
+                    <div className="relative inline-block mb-4">
+                      <p className="text-7xl font-mono font-black text-primary tracking-[0.15em] select-all leading-none py-2 px-4 rounded-2xl bg-primary/5 border border-primary/10">
+                        {sessionCode}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2 mt-2">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="default"
+                              size="lg"
+                              className="w-full font-black text-lg shadow-xl hover:shadow-primary/30 transition-all bg-primary hover:bg-primary/90 h-14 rounded-2xl group"
+                              onClick={copyCode}
+                            >
+                              {copied ? (
+                                <><Check className="w-6 h-6 mr-2 animate-in zoom-in" /> Copiado!</>
+                              ) : (
+                                <><Copy className="w-6 h-6 mr-2 transition-transform group-hover:scale-110" /> Copiar Código</>
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Copia o código de 6 dígitos</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="font-bold border-primary/20 text-primary hover:bg-primary/5 h-10 rounded-xl"
+                          onClick={() => {
+                            const url = `${window.location.origin}/presenca?code=${sessionCode}`;
+                            navigator.clipboard.writeText(url);
+                            toast({ title: "Link copiado!", description: "O link direto para frequência foi copiado." });
+                          }}
+                        >
+                          <ExternalLink className="w-4 h-4 mr-2" /> Copiar Link
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="font-bold border-primary/20 text-primary hover:bg-primary/5 h-10 rounded-xl"
+                          onClick={() => window.open(`/presenca?code=${sessionCode}`, '_blank')}
+                        >
+                          <Users className="w-4 h-4 mr-2" /> Ver Alunos
+                        </Button>
+                      </div>
+                    </div>
                   </div>
 
-                  <p className="text-sm text-muted-foreground max-w-[200px] mx-auto leading-tight">
-                    Compartilhe com os alunos para registro automático
-                  </p>
-                  
-                  <Button
-                    variant="default"
-                    size="lg"
-                    className="mt-6 w-full font-bold shadow-md hover:shadow-lg transition-all"
-                    onClick={copyCode}
-                  >
-                    {copied ? (
-                      <><CheckCircle2 className="w-5 h-5 mr-2" /> Copiado!</>
-                    ) : (
-                      <><Copy className="w-5 h-5 mr-2" /> Copiar Código</>
-                    )}
-                  </Button>
+                  {/* QR Preview Section */}
+                  <div className="bg-muted/40 border border-border/50 rounded-2xl p-4 flex items-center gap-4">
+                    <div className="bg-white p-2 rounded-xl border border-border shadow-sm">
+                      <QRCodeSVG 
+                        value={`${window.location.origin}/presenca?code=${sessionCode}`} 
+                        size={80}
+                        level="H"
+                        includeMargin={false}
+                      />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="text-xs font-black uppercase text-foreground mb-1 flex items-center gap-1.5">
+                        <QrCode className="w-3.5 h-3.5" /> Link Direto
+                      </p>
+                      <p className="text-[10px] text-muted-foreground font-medium leading-tight mb-2">
+                        Alunos podem ler o QR Code ou usar o link direto para marcar presença.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Session ID - subtle */}
-                <div className="text-center">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest opacity-50">
-                    ID da Sessão: {sessionId.replace(/-/g, '').slice(0, 8).toUpperCase()}
-                  </p>
-                </div>
+                <div className="flex flex-col gap-3 pt-2">
+                  <div className="flex items-center justify-between px-2">
+                    <div className="flex items-center gap-1.5">
+                      <Info className="w-3 h-3 text-muted-foreground" />
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-black">
+                        Sessão: {sessionId.replace(/-/g, '').slice(0, 8).toUpperCase()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-muted-foreground cursor-help group">
+                      <HelpCircle className="w-3 h-3 transition-colors group-hover:text-primary" />
+                      <span className="text-[10px] font-bold">Ajuda</span>
+                    </div>
+                  </div>
 
-                <Button
-                  variant="ghost"
-                  className="w-full text-destructive hover:bg-destructive/5 hover:text-destructive font-semibold"
-                  onClick={closeSession}
-                >
-                  <XCircle className="w-4 h-4 mr-2" /> Encerrar Chamada
-                </Button>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive font-black py-6 border-2 border-transparent hover:border-destructive/20 transition-all rounded-2xl"
+                          onClick={() => {
+                            if (window.confirm("Deseja realmente encerrar a chamada agora? Alunos não poderão mais registrar presença.")) {
+                              closeSession();
+                            }
+                          }}
+                        >
+                          <XCircle className="w-5 h-5 mr-2" /> ENCERRAR CHAMADA
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Bloqueia novos registros de presença</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </div>
             )}
           </>
