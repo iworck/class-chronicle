@@ -279,29 +279,32 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
             )}
 
             {/* Session ID */}
-            <div className="rounded-lg bg-muted/40 border border-border px-3 py-2 text-xs font-mono text-muted-foreground truncate mb-4">
-              ID da Aula: <span className="font-bold text-foreground tracking-widest">{session.id.replace(/-/g, '').slice(0, 6).toUpperCase()}</span>
+            <div className="flex items-center justify-between px-3 py-2 rounded-xl bg-muted/30 border border-border/50 mb-4 group transition-colors hover:bg-muted/50">
+              <span className="text-[10px] text-muted-foreground font-black uppercase tracking-widest">ID da Aula</span>
+              <span className="text-xs font-mono font-bold text-foreground tracking-widest group-hover:text-primary transition-colors">
+                {session.id.replace(/-/g, '').slice(0, 8).toUpperCase()}
+              </span>
             </div>
 
             {/* Ações: lançar presença manual + encerrar */}
-            <div className="flex gap-2">
+            <div className="grid grid-cols-2 gap-3">
               <Button
                 variant="outline"
-                className="flex-1"
+                className="h-11 rounded-xl border-border hover:border-primary hover:bg-primary/[0.02] hover:text-primary font-bold shadow-sm transition-all"
                 onClick={() => setManualSessionId(session.id)}
               >
-                <ListChecks className="w-4 h-4 mr-2" /> Lançar Presença
+                <ListChecks className="w-4 h-4 mr-2" /> Presença
               </Button>
 
               <Button
                 variant="destructive"
-                className="flex-1"
+                className="h-11 rounded-xl font-bold shadow-md shadow-destructive/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
                 disabled={closing === session.id}
                 onClick={() => setCloseDialogSessionId(session.id)}
               >
                 {closing === session.id
-                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Encerrando...</>
-                  : <><XCircle className="w-4 h-4 mr-2" />Encerrar Chamada</>}
+                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />...</>
+                  : <><XCircle className="w-4 h-4 mr-2" /> Encerrar</>}
               </Button>
             </div>
           </div>
