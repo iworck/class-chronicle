@@ -18,7 +18,7 @@ import {
 import {
   Loader2, CalendarCheck, Search, Filter, Play, CheckCircle2, Clock,
   ClipboardList, Users, ChevronDown, AlertCircle, ArrowUpDown, ArrowUp, ArrowDown,
-  GraduationCap, Eye, Copy, ShieldCheck, FileText, Trash2,
+  GraduationCap, Eye, Copy, ShieldCheck, FileText, Trash2, Radio,
 } from 'lucide-react';
 import { format, parseISO } from 'date-fns';
 import { ptBR } from 'date-fns/locale';
