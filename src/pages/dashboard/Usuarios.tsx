@@ -186,7 +186,10 @@ const Usuarios = () => {
 
   async function fetchAll() {
     setLoading(true);
-    const [profileRes, rolesRes, instRes, campusRes, unitRes, ucRes, uuRes] = await Promise.all([
+    const [
+      profileRes, rolesRes, instRes, campusRes, unitRes, ucRes, uuRes,
+      courseRes, subjectRes, uCourseRes, uSubjectRes
+    ] = await Promise.all([
       supabase.from('profiles').select('*').order('name'),
       supabase.from('user_roles').select('*'),
       supabase.from('institutions').select('id, name').eq('status', 'ATIVO').order('name'),
@@ -194,6 +197,10 @@ const Usuarios = () => {
       supabase.from('units').select('id, name, campus_id').eq('status', 'ATIVO').order('name'),
       supabase.from('user_campuses').select('*'),
       supabase.from('user_units').select('*'),
+      supabase.from('courses').select('id, name').eq('status', 'ATIVO').order('name'),
+      supabase.from('subjects').select('id, name').eq('status', 'ATIVO').order('name'),
+      supabase.from('user_courses').select('*'),
+      supabase.from('user_subjects').select('*'),
     ]);
     if (profileRes.error) {
       toast({ title: 'Erro ao carregar usuários', description: profileRes.error.message, variant: 'destructive' });
@@ -206,8 +213,23 @@ const Usuarios = () => {
     setUnits((unitRes.data as Unit[]) || []);
     setAllUserCampuses((ucRes.data as UserCampus[]) || []);
     setAllUserUnits((uuRes.data as UserUnit[]) || []);
+    setAllCourses((courseRes.data as any[]) || []);
+    setAllSubjects((subjectRes.data as any[]) || []);
+    setAllUserCourses((uCourseRes.data as UserCourse[]) || []);
+    setAllUserSubjects((uSubjectRes.data as UserSubject[]) || []);
+
+    if (canViewAudit) {
+      const { data: logs } = await supabase
+        .from('permission_audit_logs')
+        .select('*, changed_by:profiles!permission_audit_logs_changed_by_user_id_fkey(name), target:profiles!permission_audit_logs_target_user_id_fkey(name)')
+        .order('created_at', { ascending: false })
+        .limit(100);
+      setAuditLogs((logs as any[]) || []);
+    }
+
     setLoading(false);
   }
+
 
   function getRolesForUser(userId: string): AppRole[] {
     return allRoles.filter(r => r.user_id === userId).map(r => r.role);
