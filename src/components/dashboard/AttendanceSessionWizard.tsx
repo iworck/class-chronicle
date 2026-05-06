@@ -300,14 +300,19 @@ export default function AttendanceSessionWizard({
 
             {/* STEP: aberta */}
             {step === 'aberta' && (
-              <div className="space-y-5">
-                {/* Timer */}
-                <div className="flex items-center justify-between">
-                  <Badge variant="outline" className="border-success text-success gap-1.5">
-                    <span className="w-2 h-2 rounded-full bg-success animate-pulse inline-block" />
-                    Sessão aberta
-                  </Badge>
-                  <div className="flex items-center gap-1.5 text-muted-foreground text-sm">
+              <div className="space-y-6 animate-in fade-in zoom-in duration-300">
+                {/* Timer & Status */}
+                <div className="flex items-center justify-between bg-success/5 border border-success/20 p-3 rounded-xl">
+                  <div className="flex items-center gap-2">
+                    <span className="relative flex h-3 w-3">
+                      <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
+                      <span className="relative inline-flex rounded-full h-3 w-3 bg-success" />
+                    </span>
+                    <Badge variant="outline" className="border-none bg-transparent text-success font-bold text-sm p-0">
+                      CHAMADA ATIVA
+                    </Badge>
+                  </div>
+                  <div className="flex items-center gap-2 text-success font-mono font-bold">
                     <Clock className="w-4 h-4" />
                     {formatElapsed(elapsed)}
                   </div>
@@ -315,52 +320,63 @@ export default function AttendanceSessionWizard({
 
                 {/* Modalidade & geo */}
                 <div className="flex gap-2 flex-wrap">
-                  <Badge variant="secondary">
+                  <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
                     {modalidade === 'presencial' ? '🏫 Presencial' : '💻 Online'}
                   </Badge>
                   {useGeo && geoCoords && (
-                    <Badge variant="secondary">
-                      <MapPin className="w-3 h-3 mr-1" /> Geo ativo · raio 200m
+                    <Badge variant="secondary" className="bg-success/10 text-success border-success/20">
+                      <MapPin className="w-3 h-3 mr-1" /> Geo ativo (200m)
                     </Badge>
                   )}
                 </div>
 
-                {/* Session ID curto */}
-                <div className="rounded-lg bg-muted/40 border border-border p-3 text-xs space-y-1">
-                  <p className="text-muted-foreground font-medium">ID da Aula</p>
-                  <p className="font-mono text-foreground text-lg font-bold tracking-widest">
-                    {sessionId.replace(/-/g, '').slice(0, 6).toUpperCase()}
-                  </p>
-                </div>
-
-                {/* Code */}
-                <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-5 text-center">
-                  <p className="text-xs text-muted-foreground mb-2 font-medium uppercase tracking-wider">
+                {/* Code Card */}
+                <div className="relative overflow-hidden rounded-2xl border-2 border-primary bg-primary/5 p-8 text-center shadow-lg shadow-primary/10">
+                  <div className="absolute top-0 right-0 p-2">
+                    <div className="w-16 h-16 bg-primary/10 rounded-full -mr-8 -mt-8 blur-2xl" />
+                  </div>
+                  
+                  <p className="text-xs text-primary font-bold uppercase tracking-[0.2em] mb-4">
                     Código de Autenticação
                   </p>
-                  <p className="text-5xl font-mono font-bold text-primary tracking-[0.25em] select-all">
-                    {sessionCode}
+                  
+                  <div className="relative">
+                    <p className="text-6xl font-mono font-black text-primary tracking-[0.2em] select-all mb-4">
+                      {sessionCode}
+                    </p>
+                  </div>
+
+                  <p className="text-sm text-muted-foreground max-w-[200px] mx-auto leading-tight">
+                    Compartilhe com os alunos para registro automático
                   </p>
-                  <p className="text-xs text-muted-foreground mt-2">
-                    Informe este código aos alunos para registrar presença
-                  </p>
+                  
                   <Button
-                    variant="outline"
-                    size="sm"
-                    className="mt-3"
+                    variant="default"
+                    size="lg"
+                    className="mt-6 w-full font-bold shadow-md hover:shadow-lg transition-all"
                     onClick={copyCode}
                   >
-                    {copied ? <CheckCircle2 className="w-4 h-4 mr-2 text-success" /> : <Copy className="w-4 h-4 mr-2" />}
-                    {copied ? 'Copiado!' : 'Copiar código'}
+                    {copied ? (
+                      <><CheckCircle2 className="w-5 h-5 mr-2" /> Copiado!</>
+                    ) : (
+                      <><Copy className="w-5 h-5 mr-2" /> Copiar Código</>
+                    )}
                   </Button>
                 </div>
 
+                {/* Session ID - subtle */}
+                <div className="text-center">
+                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest opacity-50">
+                    ID da Sessão: {sessionId.replace(/-/g, '').slice(0, 8).toUpperCase()}
+                  </p>
+                </div>
+
                 <Button
-                  variant="destructive"
-                  className="w-full"
+                  variant="ghost"
+                  className="w-full text-destructive hover:bg-destructive/5 hover:text-destructive font-semibold"
                   onClick={closeSession}
                 >
-                  Encerrar Chamada
+                  <XCircle className="w-4 h-4 mr-2" /> Encerrar Chamada
                 </Button>
               </div>
             )}
