@@ -456,6 +456,7 @@ const Usuarios = () => {
     setAssignUserUnits(allUserUnits.filter(uu => uu.user_id === profile.id).map(uu => uu.unit_id));
     setAssignUserCourses(allUserCourses.filter(uc => uc.user_id === profile.id).map(uc => uc.course_id));
     setAssignUserSubjects(allUserSubjects.filter(us => us.user_id === profile.id).map(us => us.subject_id));
+    setAssignUserClasses(allUserClasses.filter(ucl => ucl.user_id === profile.id).map(ucl => ucl.class_id));
     setAssignDialogOpen(true);
   }
 
