@@ -1089,27 +1089,106 @@ const Usuarios = () => {
               </div>
             )}
 
-            {/* Subjects for Professor */}
+            {/* Subjects and Hierarchy for Professor */}
             {assignUserId && getRolesForUser(assignUserId).includes('professor') && (
-              <div className="space-y-4 border-t pt-4">
-                <h3 className="text-sm font-bold flex items-center gap-2">
-                  <BookOpen className="w-4 h-4 text-primary" /> Disciplinas Acessíveis
-                </h3>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
-                  {allSubjects.map(subject => (
-                    <label key={subject.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 cursor-pointer transition-colors">
-                      <Checkbox
-                        checked={assignUserSubjects.includes(subject.id)}
-                        onCheckedChange={() => {
-                          setAssignUserSubjects(prev => prev.includes(subject.id) ? prev.filter(i => i !== subject.id) : [...prev, subject.id]);
-                        }}
-                      />
-                      <p className="text-sm">{subject.name}</p>
-                    </label>
-                  ))}
+              <div className="space-y-6 border-t pt-4">
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <BookOpen className="w-4 h-4 text-primary" /> Hierarquia de Acesso (Matrizes/Semestres)
+                  </h3>
+                </div>
+
+                <div className="space-y-4">
+                  {allCourses.filter(c => assignUserCourses.includes(c.id)).map(course => {
+                    const courseMatrices = allMatrices.filter(m => m.course_id === course.id);
+                    return (
+                      <div key={course.id} className="border border-border rounded-lg p-3 bg-muted/10">
+                        <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                          <GraduationCap className="w-3 h-3" /> {course.name}
+                        </h4>
+                        
+                        {courseMatrices.length === 0 ? (
+                          <p className="text-xs text-muted-foreground italic">Nenhuma matriz ativa para este curso.</p>
+                        ) : (
+                          <div className="space-y-4 ml-4">
+                            {courseMatrices.map(matrix => {
+                              const semesters = Array.from(new Set(allMatrixSubjects.filter(ms => ms.matrix_id === matrix.id).map(ms => ms.semester))).sort((a, b) => a - b);
+                              
+                              return (
+                                <div key={matrix.id} className="space-y-2">
+                                  <p className="text-xs font-bold text-muted-foreground">Matriz: {matrix.code}</p>
+                                  <div className="space-y-3">
+                                    {semesters.map(sem => {
+                                      const semesterSubjects = allMatrixSubjects
+                                        .filter(ms => ms.matrix_id === matrix.id && ms.semester === sem)
+                                        .map(ms => allSubjects.find(s => s.id === ms.subject_id))
+                                        .filter(Boolean);
+
+                                      return (
+                                        <div key={sem} className="ml-4 border-l-2 border-primary/20 pl-3">
+                                          <p className="text-xs font-medium mb-2">{sem}º Semestre</p>
+                                          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                            {semesterSubjects.map(subject => (
+                                              <label key={subject.id} className="flex items-center gap-3 p-2 rounded-md border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                                                <Checkbox
+                                                  checked={assignUserSubjects.includes(subject.id)}
+                                                  onCheckedChange={() => {
+                                                    setAssignUserSubjects(prev => prev.includes(subject.id) ? prev.filter(i => i !== subject.id) : [...prev, subject.id]);
+                                                  }}
+                                                />
+                                                <p className="text-xs line-clamp-1">{subject.name}</p>
+                                              </label>
+                                            ))}
+                                          </div>
+                                        </div>
+                                      );
+                                    })}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                  
+                  {assignUserCourses.length === 0 && (
+                    <p className="text-sm text-muted-foreground italic">Selecione pelo menos um curso acima para listar as matrizes e disciplinas.</p>
+                  ) || allCourses.filter(c => assignUserCourses.includes(c.id)).length === 0 && (
+                    <p className="text-sm text-muted-foreground italic">Nenhum dos cursos selecionados possui dados vinculados.</p>
+                  )}
+                </div>
+
+                <div className="space-y-4 border-t pt-4">
+                  <h3 className="text-sm font-bold flex items-center gap-2">
+                    <Users className="w-4 h-4 text-primary" /> Outras Disciplinas Ativas (Geral)
+                  </h3>
+                  <p className="text-xs text-muted-foreground">Disciplinas que não estão vinculadas aos cursos selecionados acima.</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                    {allSubjects.filter(s => {
+                      // Filter out subjects already shown in the hierarchy to avoid duplication
+                      const shownInHierarchy = allMatrixSubjects.some(ms => {
+                        const matrix = allMatrices.find(m => m.id === ms.matrix_id);
+                        return matrix && assignUserCourses.includes(matrix.course_id) && ms.subject_id === s.id;
+                      });
+                      return !shownInHierarchy;
+                    }).map(subject => (
+                      <label key={subject.id} className="flex items-center gap-3 p-3 rounded-lg border border-border hover:bg-muted/50 cursor-pointer transition-colors">
+                        <Checkbox
+                          checked={assignUserSubjects.includes(subject.id)}
+                          onCheckedChange={() => {
+                            setAssignUserSubjects(prev => prev.includes(subject.id) ? prev.filter(i => i !== subject.id) : [...prev, subject.id]);
+                          }}
+                        />
+                        <p className="text-sm">{subject.name}</p>
+                      </label>
+                    ))}
+                  </div>
                 </div>
               </div>
             )}
+
           </div>
           <DialogFooter>
             <DialogClose asChild><Button variant="outline">Cancelar</Button></DialogClose>
