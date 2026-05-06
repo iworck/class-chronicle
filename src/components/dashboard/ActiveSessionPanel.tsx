@@ -253,25 +253,22 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
 
             {/* Código ao vivo */}
             {displayCode && (
-              <div className="rounded-xl border-2 border-primary/30 bg-primary/5 p-4 text-center mb-4">
-                <p className="text-xs text-muted-foreground mb-1.5 font-medium uppercase tracking-wider">
+              <div className="rounded-2xl border-2 border-primary bg-primary/[0.03] p-6 text-center mb-6 relative group transition-all hover:bg-primary/[0.05]">
+                <p className="text-[10px] text-primary mb-3 font-black uppercase tracking-[0.25em]">
                   Código de Autenticação
                 </p>
-                <p className="text-4xl font-mono font-bold text-primary tracking-[0.25em] select-all">
+                <p className="text-5xl font-mono font-black text-primary tracking-[0.2em] select-all mb-4">
                   {displayCode}
-                </p>
-                <p className="text-xs text-muted-foreground mt-1.5">
-                  Informe este código aos alunos para registrar presença
                 </p>
                 <Button
                   variant="outline"
                   size="sm"
-                  className="mt-3"
+                  className="bg-background/80 backdrop-blur-sm border-primary/20 hover:border-primary/50 text-primary font-bold px-6 h-9 rounded-full shadow-sm"
                   onClick={() => copyCode(displayCode, session.id)}
                 >
                   {copied === session.id
                     ? <><CheckCircle2 className="w-4 h-4 mr-2 text-success" />Copiado!</>
-                    : <><Copy className="w-4 h-4 mr-2" />Copiar código</>}
+                    : <><Copy className="w-4 h-4 mr-2" />Copiar Código</>}
                 </Button>
               </div>
             )}
