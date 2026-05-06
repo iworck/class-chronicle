@@ -7,9 +7,17 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import {
   MapPin, Monitor, Wifi, Play, Loader2, Copy, CheckCircle2, Clock,
-  AlertTriangle, BookOpen, Users, XCircle, ArrowRight, RotateCcw
+  AlertTriangle, BookOpen, Users, XCircle, ArrowRight, RotateCcw,
+  ExternalLink, QrCode, Check, Info, HelpCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { QRCodeSVG } from 'qrcode.react';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 
 interface Props {
   open: boolean;
@@ -198,38 +206,48 @@ export default function AttendanceSessionWizard({
             {/* STEP: modalidade */}
             {step === 'modalidade' && (
               <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">1</div>
-                  <p className="text-sm font-semibold text-foreground">Como será esta aula?</p>
+                {/* Step Header & Progress */}
+                <div className="space-y-4 mb-2">
+                  <div className="flex items-center justify-between px-1">
+                    <p className="text-xs font-black uppercase text-primary tracking-widest">Passo 1 de 2</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Configuração</p>
+                  </div>
+                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/50">
+                    <div className="h-full bg-primary w-1/2 transition-all duration-500 ease-out shadow-[0_0_8px_rgba(var(--primary),0.3)]" />
+                  </div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-black text-sm shadow-lg shadow-primary/20">1</div>
+                    <p className="text-sm font-black text-foreground uppercase tracking-tight">Modalidade da Aula</p>
+                  </div>
                 </div>
                 
                 <div className="grid grid-cols-2 gap-3">
                   <OptionCard
                     icon={Users}
-                    label="Presencial"
-                    desc="Alunos presentes fisicamente"
+                    label="PRESENCIAL"
+                    desc="Alunos presentes no campus"
                     selected={modalidade === 'presencial'}
                     onClick={() => setModalidade('presencial')}
                   />
                   <OptionCard
                     icon={Wifi}
-                    label="Online"
-                    desc="Aula remota / EAD"
+                    label="ONLINE / EAD"
+                    desc="Aula remota via Meet/Zoom"
                     selected={modalidade === 'online'}
                     onClick={() => setModalidade('online')}
                   />
                 </div>
-                <div className="flex justify-between gap-2 pt-2">
-                  <Button variant="ghost" onClick={onClose}>Cancelar</Button>
+                <div className="flex justify-between gap-3 pt-4 border-t border-border/50">
+                  <Button variant="ghost" onClick={onClose} className="font-bold text-muted-foreground hover:text-foreground rounded-xl px-6">CANCELAR</Button>
                   <Button
                     disabled={!modalidade}
-                    className="shadow-sm"
+                    className="shadow-xl font-black rounded-xl px-8 h-11 bg-primary hover:bg-primary/90 transition-all hover:scale-[1.02]"
                     onClick={() => {
                       if (modalidade === 'presencial') setStep('geolocalizacao');
                       else openSession();
                     }}
                   >
-                    Próximo <ArrowRight className="w-4 h-4 ml-2" />
+                    PRÓXIMO <ArrowRight className="w-5 h-5 ml-2" />
                   </Button>
                 </div>
               </div>
@@ -238,27 +256,37 @@ export default function AttendanceSessionWizard({
             {/* STEP: geolocalizacao */}
             {step === 'geolocalizacao' && (
               <div className="space-y-4 animate-in fade-in slide-in-from-bottom-2 duration-300">
-                <div className="flex items-center gap-2 mb-1">
-                  <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-primary font-bold text-xs">2</div>
-                  <p className="text-sm font-semibold text-foreground">Deseja usar geolocalização?</p>
+                {/* Step Header & Progress */}
+                <div className="space-y-4 mb-2">
+                  <div className="flex items-center justify-between px-1">
+                    <p className="text-xs font-black uppercase text-primary tracking-widest">Passo 2 de 2</p>
+                    <p className="text-[10px] font-bold text-muted-foreground uppercase">Localização</p>
+                  </div>
+                  <div className="h-2 w-full bg-muted rounded-full overflow-hidden border border-border/50">
+                    <div className="h-full bg-primary w-full transition-all duration-500 ease-out shadow-[0_0_8px_rgba(var(--primary),0.3)]" />
+                  </div>
+                  <div className="flex items-center gap-2 mb-1">
+                    <div className="w-8 h-8 rounded-xl bg-primary text-primary-foreground flex items-center justify-center font-black text-sm shadow-lg shadow-primary/20">2</div>
+                    <p className="text-sm font-black text-foreground uppercase tracking-tight">Validação por GPS</p>
+                  </div>
                 </div>
                 
-                <p className="text-xs text-muted-foreground leading-relaxed px-1">
-                  O sistema valida se os alunos estão no local através do GPS do celular (raio de 200m).
+                <p className="text-xs text-muted-foreground leading-relaxed px-1 font-medium">
+                  Ative o GPS para garantir que apenas alunos no local (raio de <span className="text-foreground font-bold underline decoration-primary/30">200 metros</span>) possam marcar presença.
                 </p>
 
                 <div className="grid grid-cols-2 gap-3">
                   <OptionCard
                     icon={MapPin}
-                    label="Ativar GPS"
-                    desc="Mais segurança"
+                    label="ATIVAR GPS"
+                    desc="Máxima segurança"
                     selected={useGeo === true}
                     onClick={() => { setUseGeo(true); captureGeo(); }}
                   />
                   <OptionCard
                     icon={Monitor}
-                    label="Apenas Código"
-                    desc="Sem validação GPS"
+                    label="SEM GPS"
+                    desc="Apenas o código"
                     selected={useGeo === false}
                     onClick={() => { setUseGeo(false); setGeoCoords(null); setGeoError(null); }}
                   />
@@ -266,44 +294,52 @@ export default function AttendanceSessionWizard({
 
                 {useGeo === true && (
                   <div className={cn(
-                    "rounded-xl border p-3 transition-colors",
-                    geoCoords ? "bg-success/5 border-success/30" : "bg-muted/50 border-border"
+                    "rounded-2xl border-2 p-4 transition-all duration-300 shadow-sm",
+                    geoCoords ? "bg-success/10 border-success/40 scale-[1.02]" : "bg-muted/30 border-dashed border-border/50"
                   )}>
                     {geoLoading && (
-                      <div className="flex items-center gap-3 text-muted-foreground text-sm py-1">
-                        <Loader2 className="w-4 h-4 animate-spin text-primary" />
-                        <span className="font-medium">Capturando sua posição...</span>
+                      <div className="flex items-center gap-3 text-primary text-sm py-1">
+                        <Loader2 className="w-5 h-5 animate-spin font-black" />
+                        <span className="font-black uppercase tracking-tighter">Sincronizando Satélites...</span>
                       </div>
                     )}
                     {geoCoords && !geoLoading && (
-                      <div className="flex items-center gap-3 text-success text-sm py-1">
-                        <div className="w-2 h-2 rounded-full bg-success animate-pulse" />
-                        <span className="font-semibold">Localização confirmada</span>
-                        <CheckCircle2 className="w-4 h-4 ml-auto" />
+                      <div className="flex flex-col gap-2">
+                        <div className="flex items-center gap-3 text-success text-sm py-1">
+                          <div className="w-3 h-3 rounded-full bg-success animate-ping" />
+                          <span className="font-black uppercase tracking-tight">Sinal de GPS Forte</span>
+                          <CheckCircle2 className="w-5 h-5 ml-auto text-success" />
+                        </div>
+                        <div className="flex justify-between items-center text-[10px] bg-white/50 px-2 py-1.5 rounded-lg border border-success/20">
+                          <span className="font-bold text-success/80">LAT: {geoCoords.lat.toFixed(6)}</span>
+                          <span className="font-bold text-success/80">LNG: {geoCoords.lng.toFixed(6)}</span>
+                          <span className="bg-success text-white px-1.5 py-0.5 rounded font-black">RAIO 200m</span>
+                        </div>
                       </div>
                     )}
                     {geoError && (
-                      <div className="flex flex-col gap-2">
-                        <div className="flex items-center gap-2 text-destructive text-sm font-medium">
-                          <AlertTriangle className="w-4 h-4 shrink-0" />
-                          {geoError}
+                      <div className="flex flex-col gap-3">
+                        <div className="flex items-center gap-2 text-destructive text-xs font-black uppercase tracking-tight">
+                          <AlertTriangle className="w-5 h-5 shrink-0" />
+                          Erro de Localização
                         </div>
-                        <Button size="sm" variant="outline" onClick={captureGeo} className="w-full text-xs h-8">
-                          <RotateCcw className="w-3 h-3 mr-2" /> Tentar novamente
+                        <p className="text-[10px] text-destructive/80 font-bold leading-tight px-1">{geoError}</p>
+                        <Button size="sm" variant="destructive" onClick={captureGeo} className="w-full text-[10px] font-black h-9 rounded-xl shadow-lg">
+                          <RotateCcw className="w-3 h-3 mr-2" /> RE-SINCROZINAR GPS
                         </Button>
                       </div>
                     )}
                   </div>
                 )}
 
-                <div className="flex justify-between gap-2 pt-2">
-                  <Button variant="ghost" onClick={() => setStep('modalidade')}>Voltar</Button>
+                <div className="flex justify-between gap-3 pt-4 border-t border-border/50">
+                  <Button variant="ghost" onClick={() => setStep('modalidade')} className="font-bold text-muted-foreground hover:text-foreground rounded-xl">VOLTAR</Button>
                   <Button
                     disabled={useGeo === null || (useGeo === true && !geoCoords)}
-                    className="flex-1 font-bold shadow-md bg-primary hover:bg-primary/90"
+                    className="flex-1 font-black shadow-2xl rounded-xl h-12 bg-primary hover:bg-primary/90 transition-all hover:scale-[1.02] text-base"
                     onClick={openSession}
                   >
-                    <Play className="w-4 h-4 mr-2 fill-current" /> Abrir Chamada Agora
+                    <Play className="w-5 h-5 mr-2 fill-current" /> INICIAR CHAMADA
                   </Button>
                 </div>
               </div>
@@ -320,83 +356,154 @@ export default function AttendanceSessionWizard({
             {/* STEP: aberta */}
             {step === 'aberta' && (
               <div className="space-y-6 animate-in fade-in zoom-in duration-300">
-                {/* Timer & Status */}
-                <div className="flex items-center justify-between bg-success/5 border border-success/20 p-3 rounded-xl">
+                {/* Visual Progress or Status */}
+                <div className="flex items-center justify-between bg-success/10 border-2 border-success/30 p-3 rounded-xl shadow-inner">
                   <div className="flex items-center gap-2">
                     <span className="relative flex h-3 w-3">
                       <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-success opacity-75" />
                       <span className="relative inline-flex rounded-full h-3 w-3 bg-success" />
                     </span>
-                    <Badge variant="outline" className="border-none bg-transparent text-success font-bold text-sm p-0">
-                      CHAMADA ATIVA
+                    <Badge variant="outline" className="border-none bg-transparent text-success font-black text-sm p-0 tracking-tighter">
+                      CHAMADA AO VIVO
                     </Badge>
                   </div>
-                  <div className="flex items-center gap-2 text-success font-mono font-bold">
-                    <Clock className="w-4 h-4" />
+                  <div className="flex items-center gap-2 text-success font-mono font-black text-lg bg-success/5 px-2 py-0.5 rounded-lg border border-success/10">
+                    <Clock className="w-5 h-5" />
                     {formatElapsed(elapsed)}
                   </div>
                 </div>
 
-                {/* Modalidade & geo */}
-                <div className="flex gap-2 flex-wrap">
-                  <Badge variant="secondary" className="bg-primary/10 text-primary border-primary/20">
-                    {modalidade === 'presencial' ? '🏫 Presencial' : '💻 Online'}
-                  </Badge>
-                  {useGeo && geoCoords && (
-                    <Badge variant="secondary" className="bg-success/10 text-success border-success/20">
-                      <MapPin className="w-3 h-3 mr-1" /> Geo ativo (200m)
-                    </Badge>
-                  )}
+                {/* Legend / Status Indicators */}
+                <div className="flex justify-center gap-4 py-1 border-y border-border/50">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-2.5 h-2.5 rounded-full bg-success shadow-[0_0_8px_rgba(34,197,94,0.4)]" />
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Aberta</span>
+                  </div>
+                  <div className="flex items-center gap-1.5 opacity-50">
+                    <div className="w-2.5 h-2.5 rounded-full bg-destructive" />
+                    <span className="text-[10px] font-bold text-muted-foreground uppercase">Encerrada</span>
+                  </div>
                 </div>
 
-                {/* Code Card */}
-                <div className="relative overflow-hidden rounded-2xl border-2 border-primary bg-primary/5 p-8 text-center shadow-lg shadow-primary/10">
-                  <div className="absolute top-0 right-0 p-2">
-                    <div className="w-16 h-16 bg-primary/10 rounded-full -mr-8 -mt-8 blur-2xl" />
-                  </div>
-                  
-                  <p className="text-xs text-primary font-bold uppercase tracking-[0.2em] mb-4">
-                    Código de Autenticação
-                  </p>
-                  
-                  <div className="relative">
-                    <p className="text-6xl font-mono font-black text-primary tracking-[0.2em] select-all mb-4">
-                      {sessionCode}
+                {/* Code & QR Section */}
+                <div className="grid grid-cols-1 gap-4">
+                  {/* Big Code Card */}
+                  <div className="relative overflow-hidden rounded-3xl border-4 border-primary bg-primary/[0.02] p-6 text-center shadow-2xl shadow-primary/20 transition-all hover:scale-[1.01]">
+                    <p className="text-[11px] text-primary font-black uppercase tracking-[0.3em] mb-4 flex items-center justify-center gap-2">
+                      <span className="w-1.5 h-1.5 rounded-full bg-primary animate-pulse" />
+                      Código de Acesso
                     </p>
+                    
+                    <div className="relative inline-block mb-4">
+                      <p className="text-7xl font-mono font-black text-primary tracking-[0.15em] select-all leading-none py-2 px-4 rounded-2xl bg-primary/5 border border-primary/10">
+                        {sessionCode}
+                      </p>
+                    </div>
+
+                    <div className="flex flex-col gap-2 mt-2">
+                      <TooltipProvider>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <Button
+                              variant="default"
+                              size="lg"
+                              className="w-full font-black text-lg shadow-xl hover:shadow-primary/30 transition-all bg-primary hover:bg-primary/90 h-14 rounded-2xl group"
+                              onClick={copyCode}
+                            >
+                              {copied ? (
+                                <><Check className="w-6 h-6 mr-2 animate-in zoom-in" /> Copiado!</>
+                              ) : (
+                                <><Copy className="w-6 h-6 mr-2 transition-transform group-hover:scale-110" /> Copiar Código</>
+                              )}
+                            </Button>
+                          </TooltipTrigger>
+                          <TooltipContent>
+                            <p>Copia o código de 6 dígitos</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+
+                      <div className="grid grid-cols-2 gap-2">
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="font-bold border-primary/20 text-primary hover:bg-primary/5 h-10 rounded-xl"
+                          onClick={() => {
+                            const url = `${window.location.origin}/presenca?code=${sessionCode}`;
+                            navigator.clipboard.writeText(url);
+                            toast({ title: "Link copiado!", description: "O link direto para frequência foi copiado." });
+                          }}
+                        >
+                          <ExternalLink className="w-4 h-4 mr-2" /> Copiar Link
+                        </Button>
+                        <Button 
+                          variant="outline" 
+                          size="sm" 
+                          className="font-bold border-primary/20 text-primary hover:bg-primary/5 h-10 rounded-xl"
+                          onClick={() => window.open(`/presenca?code=${sessionCode}`, '_blank')}
+                        >
+                          <Users className="w-4 h-4 mr-2" /> Ver Alunos
+                        </Button>
+                      </div>
+                    </div>
                   </div>
 
-                  <p className="text-sm text-muted-foreground max-w-[200px] mx-auto leading-tight">
-                    Compartilhe com os alunos para registro automático
-                  </p>
-                  
-                  <Button
-                    variant="default"
-                    size="lg"
-                    className="mt-6 w-full font-bold shadow-md hover:shadow-lg transition-all"
-                    onClick={copyCode}
-                  >
-                    {copied ? (
-                      <><CheckCircle2 className="w-5 h-5 mr-2" /> Copiado!</>
-                    ) : (
-                      <><Copy className="w-5 h-5 mr-2" /> Copiar Código</>
-                    )}
-                  </Button>
+                  {/* QR Preview Section */}
+                  <div className="bg-muted/40 border border-border/50 rounded-2xl p-4 flex items-center gap-4">
+                    <div className="bg-white p-2 rounded-xl border border-border shadow-sm">
+                      <QRCodeSVG 
+                        value={`${window.location.origin}/presenca?code=${sessionCode}`} 
+                        size={80}
+                        level="H"
+                        includeMargin={false}
+                      />
+                    </div>
+                    <div className="flex-1 text-left">
+                      <p className="text-xs font-black uppercase text-foreground mb-1 flex items-center gap-1.5">
+                        <QrCode className="w-3.5 h-3.5" /> Link Direto
+                      </p>
+                      <p className="text-[10px] text-muted-foreground font-medium leading-tight mb-2">
+                        Alunos podem ler o QR Code ou usar o link direto para marcar presença.
+                      </p>
+                    </div>
+                  </div>
                 </div>
 
-                {/* Session ID - subtle */}
-                <div className="text-center">
-                  <p className="text-[10px] text-muted-foreground uppercase tracking-widest opacity-50">
-                    ID da Sessão: {sessionId.replace(/-/g, '').slice(0, 8).toUpperCase()}
-                  </p>
-                </div>
+                <div className="flex flex-col gap-3 pt-2">
+                  <div className="flex items-center justify-between px-2">
+                    <div className="flex items-center gap-1.5">
+                      <Info className="w-3 h-3 text-muted-foreground" />
+                      <p className="text-[10px] text-muted-foreground uppercase tracking-widest font-black">
+                        Sessão: {sessionId.replace(/-/g, '').slice(0, 8).toUpperCase()}
+                      </p>
+                    </div>
+                    <div className="flex items-center gap-1.5 text-muted-foreground cursor-help group">
+                      <HelpCircle className="w-3 h-3 transition-colors group-hover:text-primary" />
+                      <span className="text-[10px] font-bold">Ajuda</span>
+                    </div>
+                  </div>
 
-                <Button
-                  variant="ghost"
-                  className="w-full text-destructive hover:bg-destructive/5 hover:text-destructive font-semibold"
-                  onClick={closeSession}
-                >
-                  <XCircle className="w-4 h-4 mr-2" /> Encerrar Chamada
-                </Button>
+                  <TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger asChild>
+                        <Button
+                          variant="ghost"
+                          className="w-full text-destructive hover:bg-destructive/10 hover:text-destructive font-black py-6 border-2 border-transparent hover:border-destructive/20 transition-all rounded-2xl"
+                          onClick={() => {
+                            if (window.confirm("Deseja realmente encerrar a chamada agora? Alunos não poderão mais registrar presença.")) {
+                              closeSession();
+                            }
+                          }}
+                        >
+                          <XCircle className="w-5 h-5 mr-2" /> ENCERRAR CHAMADA
+                        </Button>
+                      </TooltipTrigger>
+                      <TooltipContent>
+                        <p>Bloqueia novos registros de presença</p>
+                      </TooltipContent>
+                    </Tooltip>
+                  </TooltipProvider>
+                </div>
               </div>
             )}
           </>

@@ -55,11 +55,11 @@ interface LessonEntry {
 }
 
 const STATUS_CONFIG = {
-  realizada: { label: 'Realizada', color: 'bg-success/10 text-success border-success/30', icon: CheckCircle2 },
-  finalizada: { label: 'Finalizada', color: 'bg-primary/10 text-primary border-primary/30', icon: ShieldCheck },
-  hoje: { label: 'Hoje', color: 'bg-primary/10 text-primary border-primary/30', icon: Play },
-  programada: { label: 'Programada', color: 'bg-muted text-muted-foreground border-border', icon: Clock },
-  passada_sem_chamada: { label: 'Sem chamada', color: 'bg-destructive/10 text-destructive border-destructive/30', icon: AlertCircle },
+  realizada: { label: 'REALIZADA', color: 'bg-success/20 text-success border-success/40 font-black', icon: CheckCircle2 },
+  finalizada: { label: 'FINALIZADA', color: 'bg-primary/20 text-primary border-primary/40 font-black', icon: ShieldCheck },
+  hoje: { label: 'HOJE', color: 'bg-primary/20 text-primary border-primary/40 font-black', icon: Play },
+  programada: { label: 'PROGRAMADA', color: 'bg-muted text-muted-foreground border-border font-black', icon: Clock },
+  passada_sem_chamada: { label: 'SEM CHAMADA', color: 'bg-destructive/20 text-destructive border-destructive/40 font-black', icon: AlertCircle },
 };
 
 export default function Aulas() {
@@ -362,11 +362,26 @@ export default function Aulas() {
   }
 
   return (
-    <div className="max-w-5xl mx-auto space-y-6 animate-fade-in">
+    <div className="max-w-5xl mx-auto space-y-6 animate-fade-in pb-10">
+      {/* Legend / Status Map */}
+      <div className="flex flex-wrap gap-4 py-3 px-4 bg-muted/30 rounded-2xl border border-border/50 shadow-inner">
+        <p className="text-[10px] font-black text-muted-foreground uppercase tracking-widest w-full mb-1">Legenda de Estados</p>
+        {Object.entries(STATUS_CONFIG).map(([key, config]) => (
+          <div key={key} className="flex items-center gap-2 group cursor-default">
+            <div className={cn("w-3 h-3 rounded-full shadow-sm transition-transform group-hover:scale-125", config.color.split(' ')[0])} />
+            <span className="text-[10px] font-black uppercase tracking-tighter text-muted-foreground">{config.label}</span>
+          </div>
+        ))}
+        <div className="flex items-center gap-2 border-l border-border/50 pl-4 ml-auto">
+          <div className="w-3 h-3 rounded-full bg-success animate-pulse shadow-[0_0_8px_rgba(34,197,94,0.5)]" />
+          <span className="text-[10px] font-black uppercase tracking-tighter text-success">AO VIVO / ABERTA</span>
+        </div>
+      </div>
+
       {/* Header */}
-      <div>
-        <h1 className="text-2xl font-display font-bold text-foreground">Aulas</h1>
-        <p className="text-sm text-muted-foreground mt-0.5">Histórico completo de aulas planejadas, realizadas e programadas</p>
+      <div className="flex flex-col gap-1">
+        <h1 className="text-3xl font-black tracking-tight text-foreground uppercase">Aulas</h1>
+        <p className="text-sm font-bold text-muted-foreground">Gerencie o planejamento, registros e histórico de frequências.</p>
       </div>
 
       {/* Active session alert */}

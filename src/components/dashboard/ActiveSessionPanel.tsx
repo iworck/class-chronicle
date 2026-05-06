@@ -6,8 +6,15 @@ import { toast } from '@/hooks/use-toast';
 import {
   Clock, Users, MapPin, XCircle, Copy, CheckCircle2,
   Loader2, Radio, BookOpen, AlertTriangle, RotateCcw, ListChecks,
+  ExternalLink, QrCode, Check, Info, HelpCircle
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -204,21 +211,23 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
             {/* Header */}
             <div className="flex items-center justify-between mb-5 flex-wrap gap-2 relative z-10">
               <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-success/10 text-success">
-                  <Radio className="w-6 h-6 animate-pulse" />
+                <div className="flex items-center justify-center w-12 h-12 rounded-2xl bg-success/20 text-success shadow-[0_0_15px_rgba(34,197,94,0.3)] border border-success/30">
+                  <Radio className="w-7 h-7 animate-pulse" />
                 </div>
                 <div>
                   <div className="flex items-center gap-2">
-                    <span className="font-bold text-foreground text-base tracking-tight">Aula em Andamento</span>
-                    <Badge variant="default" className="bg-success text-success-foreground hover:bg-success border-none text-[10px] font-black uppercase px-1.5 h-4">
+                    <span className="font-black text-foreground text-lg tracking-tight uppercase">Aula Ativa</span>
+                    <Badge variant="default" className="bg-success text-success-foreground hover:bg-success border-none text-[11px] font-black uppercase px-2 py-0.5 h-5 shadow-[0_0_10px_rgba(34,197,94,0.5)] animate-pulse">
                       AO VIVO
                     </Badge>
                   </div>
-                  <p className="text-xs text-muted-foreground font-medium">Os alunos já podem registrar presença</p>
+                  <p className="text-xs text-success font-bold flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" /> Registros liberados
+                  </p>
                 </div>
               </div>
-              <div className="bg-muted/50 px-3 py-1.5 rounded-lg flex items-center gap-2 text-foreground font-mono font-bold border border-border">
-                <Clock className="w-4 h-4 text-muted-foreground" />
+              <div className="bg-success/10 px-3 py-2 rounded-xl flex items-center gap-2 text-success font-mono font-black text-lg border-2 border-success/20 shadow-inner">
+                <Clock className="w-5 h-5" />
                 {formatElapsed(elapsedSecs)}
               </div>
             </div>
@@ -288,24 +297,42 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
 
             {/* Ações: lançar presença manual + encerrar */}
             <div className="grid grid-cols-2 gap-3">
-              <Button
-                variant="outline"
-                className="h-11 rounded-xl border-border hover:border-primary hover:bg-primary/[0.02] hover:text-primary font-bold shadow-sm transition-all"
-                onClick={() => setManualSessionId(session.id)}
-              >
-                <ListChecks className="w-4 h-4 mr-2" /> Presença
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="outline"
+                      className="h-11 rounded-xl border-2 border-border hover:border-primary hover:bg-primary/[0.05] hover:text-primary font-black shadow-sm transition-all group"
+                      onClick={() => setManualSessionId(session.id)}
+                    >
+                      <ListChecks className="w-5 h-5 mr-2 transition-transform group-hover:scale-110" /> Presença
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-bold">Lançar ou editar frequências manualmente</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
 
-              <Button
-                variant="destructive"
-                className="h-11 rounded-xl font-bold shadow-md shadow-destructive/10 transition-all hover:scale-[1.02] active:scale-[0.98]"
-                disabled={closing === session.id}
-                onClick={() => setCloseDialogSessionId(session.id)}
-              >
-                {closing === session.id
-                  ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />...</>
-                  : <><XCircle className="w-4 h-4 mr-2" /> Encerrar</>}
-              </Button>
+              <TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Button
+                      variant="destructive"
+                      className="h-11 rounded-xl font-black shadow-lg shadow-destructive/20 transition-all hover:scale-[1.05] active:scale-[0.95] border-2 border-transparent hover:border-white/20"
+                      disabled={closing === session.id}
+                      onClick={() => setCloseDialogSessionId(session.id)}
+                    >
+                      {closing === session.id
+                        ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />...</>
+                        : <><XCircle className="w-5 h-5 mr-2" /> Encerrar</>}
+                    </Button>
+                  </TooltipTrigger>
+                  <TooltipContent>
+                    <p className="font-bold">Finalizar chamada definitivamente</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
             </div>
           </div>
         );
@@ -414,28 +441,44 @@ export default function ActiveSessionPanel({ professorUserId, onSessionClosed, l
           <AlertDialog open onOpenChange={(v) => { if (!v) setCloseDialogSessionId(null); }}>
             <AlertDialogContent>
               <AlertDialogHeader>
-                <AlertDialogTitle className="flex items-center gap-2">
-                  <AlertTriangle className="w-5 h-5 text-warning" />
-                  Encerrar chamada?
+                <AlertDialogTitle className="flex items-center gap-3 text-destructive text-xl font-black uppercase tracking-tight">
+                  <AlertTriangle className="w-8 h-8 animate-bounce text-destructive" />
+                  Encerrar Chamada?
                 </AlertDialogTitle>
                 <AlertDialogDescription asChild>
-                  <div>
-                    <p>Ao encerrar, os alunos não poderão mais registrar presença com o código.</p>
-                    <p className="mt-2"><strong>{present} aluno(s)</strong> registraram presença de <strong>{total} registros</strong> no total.</p>
-                    <p className="mt-2 text-xs">Caso tenha encerrado por engano, você pode <strong>reabrir</strong> a chamada logo após.</p>
+                  <div className="space-y-4 pt-2">
+                    <p className="text-foreground font-bold leading-relaxed">
+                      Ao encerrar, os alunos <span className="underline decoration-destructive/50 decoration-2 font-black">não poderão mais</span> registrar presença usando o código ou QR Code.
+                    </p>
+                    <div className="bg-muted/50 p-4 rounded-2xl border border-border space-y-2">
+                      <div className="flex justify-between items-center text-sm">
+                        <span className="text-muted-foreground font-bold uppercase tracking-widest text-[10px]">Alunos Registrados</span>
+                        <span className="font-black text-primary text-lg">{present} / {total}</span>
+                      </div>
+                      <div className="h-2 w-full bg-muted rounded-full overflow-hidden">
+                        <div 
+                          className="h-full bg-primary transition-all duration-500" 
+                          style={{ width: `${total > 0 ? (present / total) * 100 : 0}%` }}
+                        />
+                      </div>
+                    </div>
+                    <p className="text-xs text-muted-foreground font-medium italic">
+                      Dica: Se encerrar por engano, você poderá reabrir a sessão no histórico logo abaixo.
+                    </p>
                   </div>
                 </AlertDialogDescription>
               </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel onClick={() => setCloseDialogSessionId(null)}>Cancelar</AlertDialogCancel>
+              <AlertDialogFooter className="gap-2 sm:gap-0 mt-6">
+                <AlertDialogCancel onClick={() => setCloseDialogSessionId(null)} className="rounded-xl font-bold h-12">CANCELAR</AlertDialogCancel>
                 <Button
                   variant="destructive"
                   disabled={closing === session.id}
                   onClick={() => closeSession(session.id)}
+                  className="rounded-xl font-black h-12 shadow-xl shadow-destructive/20 active:scale-95 transition-transform"
                 >
                   {closing === session.id
-                    ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" />Encerrando...</>
-                    : 'Encerrar chamada'}
+                    ? <><Loader2 className="w-5 h-5 mr-2 animate-spin" /> ENCERRANDO...</>
+                    : 'SIM, ENCERRAR AGORA'}
                 </Button>
               </AlertDialogFooter>
             </AlertDialogContent>
