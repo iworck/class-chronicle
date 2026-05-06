@@ -100,10 +100,12 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; role?: AppRole 
 
 
 const Usuarios = () => {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
   const isSuperAdmin = hasRole('super_admin');
   const isAdmin = hasRole('admin');
+  const isDiretor = hasRole('diretor');
   const canManage = isSuperAdmin || isAdmin;
+  const canViewAudit = canManage || isDiretor;
   const assignableRoles = isSuperAdmin ? ALL_ROLES : ALL_ROLES.filter(r => r !== 'super_admin');
 
   const [profiles, setProfiles] = useState<UserProfile[]>([]);
@@ -113,9 +115,15 @@ const Usuarios = () => {
   const [units, setUnits] = useState<Unit[]>([]);
   const [allUserCampuses, setAllUserCampuses] = useState<UserCampus[]>([]);
   const [allUserUnits, setAllUserUnits] = useState<UserUnit[]>([]);
+  const [allUserCourses, setAllUserCourses] = useState<UserCourse[]>([]);
+  const [allUserSubjects, setAllUserSubjects] = useState<UserSubject[]>([]);
+  const [allCourses, setAllCourses] = useState<{ id: string, name: string }[]>([]);
+  const [allSubjects, setAllSubjects] = useState<{ id: string, name: string }[]>([]);
+  const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
   const [activeTab, setActiveTab] = useState<TabKey>('todos');
+
 
   // Edit profile dialog
   const [editDialogOpen, setEditDialogOpen] = useState(false);
