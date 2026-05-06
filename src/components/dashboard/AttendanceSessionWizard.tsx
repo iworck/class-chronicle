@@ -7,7 +7,7 @@ import { Badge } from '@/components/ui/badge';
 import { toast } from '@/hooks/use-toast';
 import {
   MapPin, Monitor, Wifi, Play, Loader2, Copy, CheckCircle2, Clock,
-  AlertTriangle, BookOpen, Users
+  AlertTriangle, BookOpen, Users, XCircle, ArrowRight
 } from 'lucide-react';
 import { cn } from '@/lib/utils';
 
