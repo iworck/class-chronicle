@@ -126,7 +126,8 @@ const EXAM_TYPE_LABELS: Record<string, string> = {
 };
 
 const Turmas = () => {
-  const { hasRole } = useAuth();
+  const { hasRole, user } = useAuth();
+
   const canManage = hasRole('super_admin') || hasRole('admin') || hasRole('coordenador');
 
   const [classes, setClasses] = useState<ClassRow[]>([]);
