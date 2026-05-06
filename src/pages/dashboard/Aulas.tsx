@@ -55,11 +55,11 @@ interface LessonEntry {
 }
 
 const STATUS_CONFIG = {
-  realizada: { label: 'Realizada', color: 'bg-success/10 text-success border-success/30', icon: CheckCircle2 },
-  finalizada: { label: 'Finalizada', color: 'bg-primary/10 text-primary border-primary/30', icon: ShieldCheck },
-  hoje: { label: 'Hoje', color: 'bg-primary/10 text-primary border-primary/30', icon: Play },
-  programada: { label: 'Programada', color: 'bg-muted text-muted-foreground border-border', icon: Clock },
-  passada_sem_chamada: { label: 'Sem chamada', color: 'bg-destructive/10 text-destructive border-destructive/30', icon: AlertCircle },
+  realizada: { label: 'REALIZADA', color: 'bg-success/20 text-success border-success/40 font-black', icon: CheckCircle2 },
+  finalizada: { label: 'FINALIZADA', color: 'bg-primary/20 text-primary border-primary/40 font-black', icon: ShieldCheck },
+  hoje: { label: 'HOJE', color: 'bg-primary/20 text-primary border-primary/40 font-black', icon: Play },
+  programada: { label: 'PROGRAMADA', color: 'bg-muted text-muted-foreground border-border font-black', icon: Clock },
+  passada_sem_chamada: { label: 'SEM CHAMADA', color: 'bg-destructive/20 text-destructive border-destructive/40 font-black', icon: AlertCircle },
 };
 
 export default function Aulas() {
