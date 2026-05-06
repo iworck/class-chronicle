@@ -392,21 +392,43 @@ const Usuarios = () => {
   }
 
   async function handleSaveRoles() {
-    if (!rolesUserId) return;
+    if (!rolesUserId || !user) return;
     setSavingRoles(true);
     const currentRoles = getRolesForUser(rolesUserId);
     const toAdd = selectedRoles.filter(r => !currentRoles.includes(r));
     const toRemove = currentRoles.filter(r => !selectedRoles.includes(r));
+    
+    const auditLogs: any[] = [];
+
     for (const role of toRemove) {
       const rec = allRoles.find(r => r.user_id === rolesUserId && r.role === role);
-      if (rec) await supabase.from('user_roles').delete().eq('id', rec.id);
+      if (rec) {
+        await supabase.from('user_roles').delete().eq('id', rec.id);
+        auditLogs.push({ changed_by_user_id: user.id, target_user_id: rolesUserId, action: 'REMOVE_ROLE', entity_name: role });
+      }
     }
     if (toAdd.length > 0) {
       const { error } = await supabase.from('user_roles').insert(toAdd.map(role => ({ user_id: rolesUserId, role })));
-      if (error) { toast({ title: 'Erro ao atribuir papéis', description: error.message, variant: 'destructive' }); setSavingRoles(false); return; }
+      if (error) { 
+        toast({ title: 'Erro ao atribuir papéis', description: error.message, variant: 'destructive' }); 
+        setSavingRoles(false); 
+        return; 
+      }
+      for (const role of toAdd) {
+        auditLogs.push({ changed_by_user_id: user.id, target_user_id: rolesUserId, action: 'ADD_ROLE', entity_name: role });
+      }
     }
-    toast({ title: 'Papéis atualizados com sucesso' }); setRolesDialogOpen(false); fetchAll(); setSavingRoles(false);
+
+    if (auditLogs.length > 0) {
+      await supabase.from('permission_audit_logs').insert(auditLogs);
+    }
+
+    toast({ title: 'Papéis atualizados com sucesso' }); 
+    setRolesDialogOpen(false); 
+    fetchAll(); 
+    setSavingRoles(false);
   }
+
 
   // --- Assignments ---
   function openAssignDialog(profile: UserProfile) {
