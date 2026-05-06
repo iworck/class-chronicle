@@ -85,7 +85,7 @@ const ROLE_SINGULAR: Record<string, string> = {
 
 const ALL_ROLES: AppRole[] = ['super_admin', 'admin', 'diretor', 'gerente', 'coordenador', 'professor', 'aluno'];
 
-type TabKey = 'todos' | 'admin' | 'diretor' | 'gerente' | 'coordenador' | 'professor' | 'aluno';
+type TabKey = 'todos' | 'admin' | 'diretor' | 'gerente' | 'coordenador' | 'professor' | 'aluno' | 'auditoria';
 
 const TABS: { key: TabKey; label: string; icon: React.ReactNode; role?: AppRole }[] = [
   { key: 'todos', label: 'Todos', icon: <Users className="w-4 h-4" /> },
@@ -95,7 +95,9 @@ const TABS: { key: TabKey; label: string; icon: React.ReactNode; role?: AppRole 
   { key: 'coordenador', label: 'Coordenadores', icon: <UserPlus className="w-4 h-4" />, role: 'coordenador' },
   { key: 'professor', label: 'Professores', icon: <UserPlus className="w-4 h-4" />, role: 'professor' },
   { key: 'aluno', label: 'Alunos', icon: <UserPlus className="w-4 h-4" />, role: 'aluno' },
+  { key: 'auditoria', label: 'Auditoria', icon: <FileText className="w-4 h-4" /> },
 ];
+
 
 const Usuarios = () => {
   const { hasRole } = useAuth();
