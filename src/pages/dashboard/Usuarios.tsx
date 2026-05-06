@@ -18,7 +18,7 @@ import { Badge } from '@/components/ui/badge';
 import { Checkbox } from '@/components/ui/checkbox';
 import { toast } from '@/hooks/use-toast';
 import {
-  Search, Pencil, Shield, Loader2, Users, MapPin, Plus, UserPlus, KeyRound, Mail, MessageSquare, Eye, Copy,
+  Search, Pencil, Shield, Loader2, Users, MapPin, Plus, UserPlus, KeyRound, Mail, MessageSquare, Eye, Copy, FileText, BookOpen, GraduationCap,
 } from 'lucide-react';
 import { Textarea } from '@/components/ui/textarea';
 
