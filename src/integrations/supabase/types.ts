@@ -1006,6 +1006,36 @@ export type Database = {
           },
         ]
       }
+      permission_audit_logs: {
+        Row: {
+          action: string
+          changed_by_user_id: string
+          created_at: string
+          entity_id: string | null
+          entity_name: string | null
+          id: string
+          target_user_id: string
+        }
+        Insert: {
+          action: string
+          changed_by_user_id: string
+          created_at?: string
+          entity_id?: string | null
+          entity_name?: string | null
+          id?: string
+          target_user_id: string
+        }
+        Update: {
+          action?: string
+          changed_by_user_id?: string
+          created_at?: string
+          entity_id?: string | null
+          entity_name?: string | null
+          id?: string
+          target_user_id?: string
+        }
+        Relationships: []
+      }
       permissions: {
         Row: {
           action: string
