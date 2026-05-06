@@ -1164,10 +1164,10 @@ const Usuarios = () => {
                                             .map(ms => allSubjects.find(s => s.id === ms.subject_id))
                                             .filter(Boolean);
                                           
-                                          const semesterClasses = allClasses.filter(c => c.course_id === course.id && c.semester_id === matrix.id); // semester_id might be used differently, logic check:
-                                          // Note: In some systems classes are linked to semesters/matrices differently.
-                                          // Let's find classes for this course.
-                                          const courseClasses = allClasses.filter(cl => cl.course_id === course.id);
+                                          const semesterClasses = allClasses.filter(cl => cl.course_id === course.id && cl.semester_id === matrix.id); // matrix.id is often used as a grouping for classes in this schema
+                                          
+                                          // Let's find classes for this course and semester if possible, otherwise fallback to all course classes
+                                          const displayClasses = semesterClasses.length > 0 ? semesterClasses : allClasses.filter(cl => cl.course_id === course.id);
 
                                           return (
                                             <div key={sem as number} className="ml-4 border-l-2 border-primary/20 pl-3">
