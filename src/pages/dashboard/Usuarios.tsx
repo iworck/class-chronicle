@@ -119,12 +119,14 @@ const Usuarios = () => {
   const [allUserUnits, setAllUserUnits] = useState<UserUnit[]>([]);
   const [allUserCourses, setAllUserCourses] = useState<UserCourse[]>([]);
   const [allUserSubjects, setAllUserSubjects] = useState<UserSubject[]>([]);
+  const [allUserClasses, setAllUserClasses] = useState<UserClass[]>([]);
   const [allCourses, setAllCourses] = useState<{ id: string, name: string }[]>([]);
   const [allSubjects, setAllSubjects] = useState<any[]>([]);
   const [allMatrices, setAllMatrices] = useState<any[]>([]);
   const [allMatrixSubjects, setAllMatrixSubjects] = useState<any[]>([]);
   const [allClasses, setAllClasses] = useState<any[]>([]);
   const [auditLogs, setAuditLogs] = useState<AuditLog[]>([]);
+  const [expandedSections, setExpandedSections] = useState<Record<string, boolean>>({});
 
   const [loading, setLoading] = useState(true);
   const [search, setSearch] = useState('');
